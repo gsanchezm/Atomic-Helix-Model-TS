@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "@kernel/*":    ["src/kernel/*"],
+      "@plugins/*":   ["src/plugins/*"],
+      "@core/*":      ["src/core/*"],
+      "@devices/*":   ["src/devices/*"],
+      "@proto/*":     ["src/proto/*"],
+      "@telemetry/*": ["src/telemetry/*"],
+      "@utils/*":     ["src/utils/*"]
+    }
+  },
+  "include": ["src/**/*"]
+}

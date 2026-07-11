@@ -1,0 +1,105 @@
+# Dependencies
+node_modules/
+
+# Build and runtime output
+dist/
+build/
+coverage/
+tmp/
+temp/
+.cache/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Per-checkout test-harness lock (created by src/core/tests/support/run-lock.ts)
+.ahm-run.lock
+
+# Environment and local config
+.env
+.env.*
+!.env.example
+
+# OS / editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# TypeScript / tooling
+*.tsbuildinfo
+
+# Local agent/tooling and large app artifacts
+assets/**
+!assets/
+!assets/apps/
+!assets/apps/android/
+!assets/apps/android/.gitkeep
+!assets/apps/ios/
+!assets/apps/ios/.gitkeep
+.antigravity/
+.agents/
+# Docs are local by default; paper-facing documentation is tracked as reproducible evidence.
+docs/*
+!docs/research/
+!docs/architecture/
+!docs/superpowers/
+target/
+src/core/tests/checkout/simulations/checkout-rows.generated.ts
+results/
+ahm_artifacts/
+ahm-artifacs-old/
+ahm-artifacts-old/
+generate-ahm-data.sh
+.claude/
+CLAUDE.md
+.antigravitycli/
+.agents/
+.agent/
+.antigravity/
+AGENTS.md
+run-and-download.sh
+analyze_telemetry.py
+figures/
+*.csv
+visual-results/
+
+# visual-baselines/: the directory placeholder is tracked (via .gitkeep)
+# but the PNGs inside are ignored locally — dev laptops generate their
+# own baselines via `pnpm visual:refresh` for iteration without polluting
+# the canonical set. The canonical baselines come from the
+# update-visual-baselines.yml workflow which force-stages PNGs in the
+# Linux container (mcr.microsoft.com/playwright:v1.58.2-jammy) and opens
+# a PR. Both visual.yml and the refresh workflow watch
+# visual-baselines/** so the trigger still fires when a PR ships
+# regenerated baselines.
+visual-baselines/*
+!visual-baselines/.gitkeep
+
+# Metrics pipeline output — schemas/summary stay tracked, runs are local
+metrics/raw/**
+!metrics/raw/
+!metrics/raw/*/
+!metrics/raw/**/.gitkeep
+metrics/processed/**
+!metrics/processed/
+!metrics/processed/.gitkeep
+metrics/figures/**
+!metrics/figures/
+!metrics/figures/.gitkeep
+
+# Devices
+**/iphone_physical.json
+
+reports/
+
+# Local-only working artifacts (not part of the product, not for upstream)
+cucumber.focused.js
+OMNIPIZZA-PLATFORM-BUGS.md
+OMNIPIZZA-FOLLOWUP-*.md
+bugs/

@@ -1,0 +1,133 @@
+version: "3.9"
+
+services:
+
+  # ─── Microkernel ────────────────────────────────────────────────────────────
+
+  proxy:
+    build:
+      context: .
+      target: proxy
+    ports:
+      - "50051:50051"
+    environment:
+      - PLAYWRIGHT_ADDRESS=playwright-plugin:50052
+      - APPIUM_ADDRESS=appium-plugin:50053
+      - GATLING_ADDRESS=gatling-plugin:50054
+      - API_ADAPTER_ADDRESS=api-plugin:50055
+      - PLATFORM=${PLATFORM:-web}
+      - VIEWPORT=${VIEWPORT:-desktop}
+    depends_on:
+      - playwright-plugin
+      - api-plugin
+
+  # ─── Web Plugin ─────────────────────────────────────────────────────────────
+
+  playwright-plugin:
+    build:
+      context: .
+      target: playwright-plugin
+    environment:
+      - PLAYWRIGHT_PORT=50052
+      - HEADLESS=${HEADLESS:-true}
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ─── Mobile Plugin ──────────────────────────────────────────────────────────
+
+  android-emulator:
+    image: halimqarroum/docker-android:api-34
+    privileged: true            # required for KVM on Linux
+    devices:
+      - /dev/kvm                # hardware acceleration — Linux only; remove on macOS CI
+    ports:
+      - "5554:5554"             # ADB console
+      - "5555:5555"             # ADB connection
+    environment:
+      - API_LEVEL=${ANDROID_API_LEVEL:-34}
+      - IMG_TYPE=${ANDROID_IMG_TYPE:-google_apis}
+      - ARCHITECTURE=x86_64
+      - DEVICE_ID=${ANDROID_DEVICE_ID:-pixel}
+      - MEMORY=${ANDROID_EMULATOR_MEMORY:-4096}
+      - CORES=${ANDROID_EMULATOR_CORES:-2}
+      - DISABLE_ANIMATION=1
+      - SKIP_AUTH=1
+    healthcheck:
+      test: ["CMD-SHELL", "adb -H localhost -P 5037 devices 2>/dev/null | grep -q emulator || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 120s        # emulators take ~2 min to fully boot
+    profiles:
+      - mobile
+
+  appium-server:
+    image: appium/appium:latest
+    ports:
+      - "4723:4723"
+    environment:
+      - APPIUM_ARGS=--relaxed-security
+    depends_on:
+      android-emulator:
+        condition: service_healthy
+    profiles:
+      - mobile
+
+  appium-plugin:
+    build:
+      context: .
+      target: appium-plugin
+    environment:
+      - APPIUM_PORT_GRPC=50053
+      - APPIUM_HOST=appium-server
+      - APPIUM_PORT=4723
+      - PLATFORM=${PLATFORM:-android}
+      - CAP_PROFILE=${CAP_PROFILE:-docker_android}
+      - ANDROID_APP_PATH=${ANDROID_APP_PATH}
+      - ANDROID_UDID=${ANDROID_UDID}
+      - IOS_APP_PATH=${IOS_APP_PATH}
+      - IOS_UDID=${IOS_UDID:-auto}
+    depends_on:
+      - appium-server
+    profiles:
+      - mobile
+
+  # ─── API Plugin ─────────────────────────────────────────────────────────────
+
+  api-plugin:
+    build:
+      context: .
+      target: api-plugin
+    environment:
+      - API_PLUGIN_PORT=50055
+      - API_BASE_URL=${API_BASE_URL}
+
+  # ─── Performance Plugin ─────────────────────────────────────────────────────
+
+  gatling-plugin:
+    build:
+      context: .
+      target: gatling-plugin
+    environment:
+      - GATLING_PLUGIN_PORT=50054
+    profiles:
+      - performance
+
+  # ─── Test Runner ────────────────────────────────────────────────────────────
+
+  test-runner:
+    build:
+      context: .
+      target: test-runner
+    environment:
+      - PROXY_ADDRESS=proxy:50051
+      - DRIVER=${DRIVER:-playwright}
+      - PLATFORM=${PLATFORM:-web}
+      - VIEWPORT=${VIEWPORT:-desktop}
+      - API_BASE_URL=${API_BASE_URL}
+      - BASE_URL=${BASE_URL}
+      - LANGUAGE=${LANGUAGE:-en}
+    depends_on:
+      - proxy

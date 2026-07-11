@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package ptom;
+
+// --- Core Service (used by client→proxy and proxy→plugin) ---
+
+service ActionService {
+  rpc ExecuteIntent (IntentRequest) returns (IntentResponse);
+  rpc HealthCheck (HealthRequest) returns (HealthResponse);
+}
+
+message IntentRequest {
+  string actionId = 1;
+  string targetSelector = 2;
+  string platform = 3;
+  // Wall-clock dispatch timestamp (epoch ms) injected by the client.
+  // Used by the proxy to compute Pi-Calculus serialization latency
+  // (network time-of-flight + protobuf marshalling) on the receiving side.
+  double clientSentAt = 4;
+}
+
+message IntentResponse {
+  string status = 1;
+  string payload = 2;
+  string errorMessage = 3;
+}
+
+// --- Health Check ---
+
+message HealthRequest {}
+
+message HealthResponse {
+  string pluginName = 1;
+  string status = 2;
+}
+
+// --- Plugin Registry (dynamic discovery) ---
+
+service PluginRegistry {
+  rpc Register (PluginInfo) returns (RegistrationAck);
+  rpc ListPlugins (Empty) returns (PluginList);
+}
+
+message Empty {}
+
+message PluginInfo {
+  string name = 1;
+  string address = 2;
+  repeated string capabilities = 3;
+}
+
+message RegistrationAck {
+  bool accepted = 1;
+  string message = 2;
+}
+
+message PluginList {
+  repeated PluginInfo plugins = 1;
+}
