@@ -1,4 +1,4 @@
-# Automated Atomic Testing
+# Atomic Helix Model
 
 > **One scenario, one atom of behavior — on every platform.** A reference implementation of the Automated Atomic Testing method: every Gherkin scenario verifies exactly one behavior, owns disjoint state, injects its preconditions through the API, and runs unchanged against Web, Mobile, API, visual and load targets.
 
