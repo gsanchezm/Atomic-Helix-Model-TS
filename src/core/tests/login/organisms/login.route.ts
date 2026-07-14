@@ -263,21 +263,28 @@ export class LoginRoute {
     // mirrors that contract here so the assertion text stays platform-agnostic.
     private normalizeApiErrorMessage(attempt: { message: string; body?: unknown }): string {
         const body = attempt.body;
-        if (body && typeof body === 'object') {
-            const direct = (body as Record<string, unknown>).error;
-            if (typeof direct === 'string' && direct.trim()) {
-                return `Invalid credentials: ${direct.trim()}`;
-            }
-            const detail = (body as Record<string, unknown>).detail;
-            if (Array.isArray(detail) && detail.length > 0) {
-                const reasons = detail
-                    .map((d) => (typeof d === 'object' && d !== null ? (d as Record<string, unknown>).msg : null))
-                    .filter((m): m is string => typeof m === 'string');
-                if (reasons.length) {
-                    return `Invalid credentials: ${reasons.join('; ')}`;
-                }
-            }
+        const fallback = `Invalid credentials: ${attempt.message}`;
+        if (!body || typeof body !== 'object') return fallback;
+
+        const response = body as Record<string, unknown>;
+        const direct = response.error;
+        if (typeof direct === 'string' && direct.trim()) {
+            return `Invalid credentials: ${direct.trim()}`;
         }
-        return `Invalid credentials: ${attempt.message}`;
+
+        const detail = response.detail;
+        if (!Array.isArray(detail) || detail.length === 0) return fallback;
+
+        const reasons = detail
+            .map((item) => (
+                typeof item === 'object' && item !== null
+                    ? (item as Record<string, unknown>).msg
+                    : null
+            ))
+            .filter((message): message is string => typeof message === 'string');
+
+        return reasons.length > 0
+            ? `Invalid credentials: ${reasons.join('; ')}`
+            : fallback;
     }
 }

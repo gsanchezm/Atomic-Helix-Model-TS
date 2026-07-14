@@ -11,7 +11,9 @@ import { logger } from '@utils/logger';
 import {
     AppiumDeviceConfig,
     DeviceAppBinding,
+    DeviceAppInfo,
     DeviceIdentity,
+    DevicePlatform,
     DevicePlatformInfo,
 } from '@devices/device-passport.types';
 
@@ -31,6 +33,23 @@ export interface AppiumCapabilitiesPassport
 }
 
 const APPIUM_PREFIX = 'appium:';
+const PLATFORM_NAMES: Readonly<Record<DevicePlatform, string>> = {
+    android: 'Android',
+    ios: 'iOS',
+};
+
+type CapabilityWriter = (caps: Record<string, unknown>, app: DeviceAppInfo | undefined) => void;
+
+const APP_CAPABILITY_WRITERS: Readonly<Record<DevicePlatform, CapabilityWriter>> = {
+    android(caps, app) {
+        if (!app) return;
+        if (app.package) caps['appium:appPackage'] = app.package;
+        if (app.waitActivity) caps['appium:appWaitActivity'] = app.waitActivity;
+    },
+    ios(caps, app) {
+        if (app?.bundleId) caps['appium:bundleId'] = app.bundleId;
+    },
+};
 
 function withPrefix(key: string): string {
     return key.startsWith(APPIUM_PREFIX) || key === 'platformName' ? key : `${APPIUM_PREFIX}${key}`;
@@ -52,7 +71,7 @@ export function toAppiumCapabilities(
     options: AppiumCapsOptions = {},
 ): Record<string, unknown> {
     const caps: Record<string, unknown> = {
-        platformName: passport.platform === 'android' ? 'Android' : 'iOS',
+        platformName: PLATFORM_NAMES[passport.platform],
     };
 
     if (passport.osVersion) caps['appium:platformVersion'] = passport.osVersion;
@@ -61,13 +80,8 @@ export function toAppiumCapabilities(
     const udid = options.udidOverride ?? passport.udid ?? undefined;
     if (udid) caps['appium:udid'] = udid;
 
-    // App binding — Android uses package + (optionally) APK path; iOS uses bundleId + (optionally) .app path.
-    if (passport.platform === 'android') {
-        if (passport.app?.package) caps['appium:appPackage'] = passport.app.package;
-        if (passport.app?.waitActivity) caps['appium:appWaitActivity'] = passport.app.waitActivity;
-    } else {
-        if (passport.app?.bundleId) caps['appium:bundleId'] = passport.app.bundleId;
-    }
+    // App binding — each platform owns its capability mapping.
+    APP_CAPABILITY_WRITERS[passport.platform](caps, passport.app);
     const binary = resolveBinaryPath(passport.app?.binaryPath, options.binaryPathOverride);
     if (binary) caps['appium:app'] = binary;
 

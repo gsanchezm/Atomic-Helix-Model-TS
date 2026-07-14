@@ -8,6 +8,17 @@ import { readCsv, round2 } from './lib/csv';
 import { P } from './lib/paths';
 
 const CATEGORY = 'Reliability';
+type TrackedOutcome = 'PASS' | 'FAIL';
+
+interface TransitionCounter {
+  total: number;
+  changed: number;
+  changesTo: TrackedOutcome;
+}
+
+function isTrackedOutcome(value: string): value is TrackedOutcome {
+  return value === 'PASS' || value === 'FAIL';
+}
 
 function main(): void {
   const records: QualityRecord[] = [];
@@ -49,10 +60,10 @@ function main(): void {
   }
 
   let flakyCount = 0;
-  let passToFail = 0;
-  let totalPassTransitions = 0; // # of PASS observations that have a successor
-  let failToPass = 0;
-  let totalFailTransitions = 0; // # of FAIL observations that have a successor
+  const transitions: Record<TrackedOutcome, TransitionCounter> = {
+    PASS: { total: 0, changed: 0, changesTo: 'FAIL' },
+    FAIL: { total: 0, changed: 0, changesTo: 'PASS' },
+  };
 
   for (const rows of groups.values()) {
     const ordered = [...rows].sort((a, b) =>
@@ -61,18 +72,13 @@ function main(): void {
     const seq = ordered.map(outcomeOf);
     if (seq.includes('PASS') && seq.includes('FAIL')) flakyCount += 1;
 
-    if (seq.length >= 2) {
-      for (let i = 0; i < seq.length - 1; i++) {
-        const cur = seq[i];
-        const next = seq[i + 1];
-        if (cur === 'PASS') {
-          totalPassTransitions += 1;
-          if (next === 'FAIL') passToFail += 1;
-        } else if (cur === 'FAIL') {
-          totalFailTransitions += 1;
-          if (next === 'PASS') failToPass += 1;
-        }
-      }
+    for (let i = 0; i < seq.length - 1; i++) {
+      const current = seq[i];
+      if (!isTrackedOutcome(current)) continue;
+
+      const counter = transitions[current];
+      counter.total += 1;
+      if (seq[i + 1] === counter.changesTo) counter.changed += 1;
     }
   }
 
@@ -88,14 +94,18 @@ function main(): void {
   records.push({
     metric_category: CATEGORY,
     metric_name: 'pass_to_fail_probability',
-    metric_value: totalPassTransitions > 0 ? (round2(passToFail / totalPassTransitions) as number) : null,
+    metric_value: transitions.PASS.total > 0
+      ? (round2(transitions.PASS.changed / transitions.PASS.total) as number)
+      : null,
     metric_unit: 'ratio',
     source_file: 'metrics/processed/scenario_outcome_history.csv',
   });
   records.push({
     metric_category: CATEGORY,
     metric_name: 'fail_to_pass_probability',
-    metric_value: totalFailTransitions > 0 ? (round2(failToPass / totalFailTransitions) as number) : null,
+    metric_value: transitions.FAIL.total > 0
+      ? (round2(transitions.FAIL.changed / transitions.FAIL.total) as number)
+      : null,
     metric_unit: 'ratio',
     source_file: 'metrics/processed/scenario_outcome_history.csv',
   });

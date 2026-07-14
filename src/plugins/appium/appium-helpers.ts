@@ -310,10 +310,12 @@ export async function scrollIntoViewSafe(
 ): Promise<void> {
     if (await isFrameInTapZone(driver, target)) return;
 
-    if (PLATFORM === 'android') {
-        if (await scrollIntoViewAndroid(driver, selector)) {
-            if (await isFrameInTapZone(driver, target)) return;
-        }
+    if (
+        PLATFORM === 'android' &&
+        await scrollIntoViewAndroid(driver, selector) &&
+        await isFrameInTapZone(driver, target)
+    ) {
+        return;
     }
 
     let displayed = await isTrulyDisplayed(driver, target);
