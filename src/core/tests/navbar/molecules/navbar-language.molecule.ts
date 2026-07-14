@@ -17,7 +17,7 @@
 //     it's NOT runtime-interpolated; the locator-resolver passes unknown
 //     keys through as raw selectors. So we cannot READ_TEXT on the bare
 //     key for an arbitrary pizza.
-//   - Web (playwright): use EVALUATE to query any matching add-to-cart
+//   - Web (playwright): use a fixed browser command to query a matching add-to-cart
 //     button by its `[data-testid^='add-to-cart-']` prefix and read its
 //     textContent. This is platform-neutral across markets/pizzas.
 //   - Native mobile (appium / mobilewright): the bottom-strip switch
@@ -30,6 +30,8 @@ import { sendIntent } from '@kernel/client';
 import { logger } from '@utils/logger';
 import { INTENT } from '@kernel/intents';
 import { getDriver, isApiDriver, isNativeMobileDriver, isWebDriver } from './navbar-shell.molecule';
+import { BROWSER_COMMAND } from '@kernel/browser-command';
+import { sendBrowserCommand } from '@core/tests/support/browser-command';
 
 const log = logger.child({ layer: 'molecule', domain: 'navbar', action: 'language' });
 
@@ -132,10 +134,8 @@ async function readAddToCartLabel(): Promise<string> {
         const label = (result.payload ?? '').trim();
         // Close best-effort: dedicated close button if it exists, else Escape.
         await sendIntent(INTENT.CLICK, 'closeBuilderButton').catch(async () => {
-            await sendIntent(
-                INTENT.EVALUATE,
-                "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true }))",
-            ).catch(() => { /* best-effort */ });
+            await sendBrowserCommand(BROWSER_COMMAND.DISPATCH_ESCAPE)
+                .catch(() => { /* best-effort */ });
         });
         return label;
     }
@@ -158,19 +158,13 @@ async function readAddToCartLabel(): Promise<string> {
 async function firstCatalogPizzaIdOrEmpty(): Promise<string> {
     // The language switch re-renders the catalog: `catalogScreen` (the
     // container `switchHeaderLanguage` waits on) can be present again before
-    // the per-pizza cards have re-mounted, so a bare EVALUATE here races the
+    // the per-pizza cards have re-mounted, so a bare command here races the
     // i18n re-flow and reads zero cards → '' → the assertion fails with an
     // empty label. Wait for at least one add-to-cart button to re-appear
     // first. Best-effort: a genuine absence still falls through to '' so the
     // caller's contract (return '' when there's no catalog) is preserved.
     await sendIntent(INTENT.WAIT_FOR_ELEMENT, `[data-testid^='add-to-cart-']||${MODAL_OPEN_WAIT_MS}`)
-        .catch(() => { /* fall through; EVALUATE below returns '' if truly absent */ });
-    const script = `(() => {
-        const el = document.querySelector("[data-testid^='add-to-cart-']");
-        if (!el) return '';
-        const tid = el.getAttribute('data-testid') ?? '';
-        return tid.replace(/^add-to-cart-/, '').replace(/-(desktop|responsive)$/, '');
-    })()`;
-    const result = await sendIntent(INTENT.EVALUATE, script);
+        .catch(() => { /* fall through; command below returns '' if truly absent */ });
+    const result = await sendBrowserCommand(BROWSER_COMMAND.GET_FIRST_PIZZA_ID);
     return (result.payload ?? '').trim();
 }

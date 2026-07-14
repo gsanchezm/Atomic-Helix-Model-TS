@@ -111,7 +111,7 @@ Telemetry is the objective record of execution behavior. Four streams feed the m
 
 | Stream | Source | Destination |
 |---|---|---|
-| Step / scenario events | step-level logger | `results/run-*/telemetry.jsonl` |
+| Step / scenario events | step-level logger | `results/run-*/telemetry*.jsonl` (one file per parallel worker) |
 | API & visual contract events | contract telemetry writer | `metrics/raw/api/*.jsonl`, `metrics/raw/visual/*.jsonl` |
 | Performance summary | Gatling plugin writer | `metrics/raw/gatling/<runId>/summary.json` |
 | Per-intent proxy overhead | proxy stdout | `logs/<tool>/proxy.log` |

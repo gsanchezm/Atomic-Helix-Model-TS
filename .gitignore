@@ -17,9 +17,6 @@ pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Per-checkout test-harness lock (created by src/core/tests/support/run-lock.ts)
-.ahm-run.lock
-
 # Environment and local config
 .env
 .env.*
@@ -97,6 +94,10 @@ metrics/figures/**
 **/iphone_physical.json
 
 reports/
+
+# Locally generated gRPC certificate material. Only the directory marker is tracked.
+certs/grpc/*
+!certs/grpc/.gitkeep
 
 # Local-only working artifacts (not part of the product, not for upstream)
 cucumber.focused.js

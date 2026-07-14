@@ -90,8 +90,8 @@ env:
   NODE_VERSION: '22'
   LOG_LEVEL: info
   OMNIPIZZA_RELEASES_REPO: gsanchezm/OmniPizza
-  PLAYWRIGHT_VERSION: '1.58.2'
-  PLAYWRIGHT_IMAGE: mcr.microsoft.com/playwright:v1.58.2-jammy
+  PLAYWRIGHT_VERSION: '1.61.1'
+  PLAYWRIGHT_IMAGE: mcr.microsoft.com/playwright:v1.61.1-jammy
 
 # Cancel in-flight runs of the same ref when a new commit lands.
 concurrency:
@@ -146,12 +146,20 @@ jobs:
   # Job: API
   # ---------------------------------------------------------------------------
   api:
-    name: API
+    name: API — ${{ matrix.suite }}
     runs-on: ubuntu-latest
     if: >-
       github.event_name != 'workflow_dispatch'
       || inputs.platform == 'all'
       || inputs.platform == 'api'
+    concurrency:
+      group: ${{ matrix.suite == 'writes' && 'standard-user-writes' || format('tom-api-reads-{0}-{1}', github.run_id, github.run_attempt) }}
+      cancel-in-progress: false
+      queue: max
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [reads, writes]
     env:
       ARCHITECTURE_TYPE: TOM
       EXPERIMENT_BATCH_ID: ${{ inputs.experiment_batch_id || 'batch-adhoc' }}
@@ -159,7 +167,7 @@ jobs:
       TOOL_NAME: api
       PLATFORM: api
       DRIVER: api
-      TOM_RUN_ID: tom-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.run_index || github.run_attempt }}-api
+      TOM_RUN_ID: tom-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.run_index || github.run_attempt }}-api-${{ matrix.suite }}
 
     steps:
       - uses: actions/checkout@v4
@@ -210,7 +218,14 @@ jobs:
         run: echo "RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
 
       - name: Run Cucumber suite (API layer)
-        run: pnpm test:json:api
+        shell: bash
+        run: |
+          if [ "${{ matrix.suite }}" = "reads" ]; then
+            TAG_EXPRESSION="not @writes-shared-state"
+          else
+            TAG_EXPRESSION="@writes-shared-state"
+          fi
+          pnpm test:json:api -- --tags "$TAG_EXPRESSION"
         env:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           PLATFORM: api
@@ -236,7 +251,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: tom-metrics-api-${{ github.run_id }}
+          name: tom-metrics-api-${{ matrix.suite }}-${{ github.run_id }}
           path: |
             metrics/
             results/
@@ -248,7 +263,7 @@ jobs:
   # Job: Playwright — Desktop (functional)
   # ---------------------------------------------------------------------------
   playwright-desktop:
-    name: Playwright — Desktop
+    name: Playwright — Desktop ${{ matrix.suite }}
     runs-on: ubuntu-latest
     if: >-
       github.event_name != 'workflow_dispatch'
@@ -257,8 +272,16 @@ jobs:
       || inputs.platform == 'playwright-desktop'
       || inputs.platform == 'pixelmatch'
       || inputs.platform == 'pixelmatch-desktop'
+    concurrency:
+      group: ${{ matrix.suite == 'writes' && 'standard-user-writes' || format('tom-playwright-reads-{0}-{1}-desktop', github.run_id, github.run_attempt) }}
+      cancel-in-progress: false
+      queue: max
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [reads, writes]
     container:
-      image: mcr.microsoft.com/playwright:v1.58.2-jammy
+      image: mcr.microsoft.com/playwright:v1.61.1-jammy
       options: --user 0
     env:
       ARCHITECTURE_TYPE: TOM
@@ -269,7 +292,7 @@ jobs:
       VIEWPORT: desktop
       DRIVER: playwright
       PLUGIN_PIXELMATCH: 'false'
-      TOM_RUN_ID: tom-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.run_index || github.run_attempt }}-playwright-desktop
+      TOM_RUN_ID: tom-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.run_index || github.run_attempt }}-playwright-desktop-${{ matrix.suite }}
 
     steps:
       - uses: actions/checkout@v4
@@ -339,7 +362,14 @@ jobs:
         run: echo "RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
 
       - name: Run E2E tests
-        run: pnpm test:json:web:desktop
+        shell: bash
+        run: |
+          if [ "${{ matrix.suite }}" = "reads" ]; then
+            TAG_EXPRESSION="not @writes-shared-state"
+          else
+            TAG_EXPRESSION="@writes-shared-state"
+          fi
+          pnpm test:json:web:desktop -- --tags "$TAG_EXPRESSION"
         env:
           BASE_URL: ${{ secrets.BASE_URL }}
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
@@ -366,7 +396,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: tom-metrics-playwright-desktop-${{ github.run_id }}
+          name: tom-metrics-playwright-desktop-${{ matrix.suite }}-${{ github.run_id }}
           path: |
             metrics/
             results/
@@ -378,7 +408,7 @@ jobs:
   # Job: Playwright — Responsive (functional)
   # ---------------------------------------------------------------------------
   playwright-responsive:
-    name: Playwright — Responsive
+    name: Playwright — Responsive ${{ matrix.suite }}
     runs-on: ubuntu-latest
     if: >-
       github.event_name != 'workflow_dispatch'
@@ -387,8 +417,16 @@ jobs:
       || inputs.platform == 'playwright-responsive'
       || inputs.platform == 'pixelmatch'
       || inputs.platform == 'pixelmatch-responsive'
+    concurrency:
+      group: ${{ matrix.suite == 'writes' && 'standard-user-writes' || format('tom-playwright-reads-{0}-{1}-responsive', github.run_id, github.run_attempt) }}
+      cancel-in-progress: false
+      queue: max
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [reads, writes]
     container:
-      image: mcr.microsoft.com/playwright:v1.58.2-jammy
+      image: mcr.microsoft.com/playwright:v1.61.1-jammy
       options: --user 0
     env:
       ARCHITECTURE_TYPE: TOM
@@ -399,7 +437,7 @@ jobs:
       VIEWPORT: responsive
       DRIVER: playwright
       PLUGIN_PIXELMATCH: 'false'
-      TOM_RUN_ID: tom-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.run_index || github.run_attempt }}-playwright-responsive
+      TOM_RUN_ID: tom-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.run_index || github.run_attempt }}-playwright-responsive-${{ matrix.suite }}
 
     steps:
       - uses: actions/checkout@v4
@@ -469,7 +507,14 @@ jobs:
         run: echo "RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
 
       - name: Run E2E tests
-        run: pnpm test:json:web:responsive
+        shell: bash
+        run: |
+          if [ "${{ matrix.suite }}" = "reads" ]; then
+            TAG_EXPRESSION="not @writes-shared-state"
+          else
+            TAG_EXPRESSION="@writes-shared-state"
+          fi
+          pnpm test:json:web:responsive -- --tags "$TAG_EXPRESSION"
         env:
           BASE_URL: ${{ secrets.BASE_URL }}
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
@@ -496,7 +541,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: tom-metrics-playwright-responsive-${{ github.run_id }}
+          name: tom-metrics-playwright-responsive-${{ matrix.suite }}-${{ github.run_id }}
           path: |
             metrics/
             results/
@@ -523,8 +568,12 @@ jobs:
         || inputs.platform == 'pixelmatch-desktop'
       )
     runs-on: ubuntu-latest
+    concurrency:
+      group: standard-user-writes
+      cancel-in-progress: false
+      queue: max
     container:
-      image: mcr.microsoft.com/playwright:v1.58.2-jammy
+      image: mcr.microsoft.com/playwright:v1.61.1-jammy
       options: --user 0
     env:
       ARCHITECTURE_TYPE: TOM
@@ -676,8 +725,12 @@ jobs:
         || inputs.platform == 'pixelmatch-responsive'
       )
     runs-on: ubuntu-latest
+    concurrency:
+      group: standard-user-writes
+      cancel-in-progress: false
+      queue: max
     container:
-      image: mcr.microsoft.com/playwright:v1.58.2-jammy
+      image: mcr.microsoft.com/playwright:v1.61.1-jammy
       options: --user 0
     env:
       ARCHITECTURE_TYPE: TOM
@@ -808,7 +861,7 @@ jobs:
   # Job: Appium — Android (docker-android emulator)
   # ---------------------------------------------------------------------------
   appium-android:
-    name: Appium — Android
+    name: Appium — Android ${{ matrix.suite }}
     needs: resolve-omnipizza-release
     if: >-
       always()
@@ -820,6 +873,14 @@ jobs:
         || inputs.platform == 'appium-android'
       )
     runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ matrix.suite == 'writes' && 'standard-user-writes' || format('tom-android-reads-{0}-{1}', github.run_id, github.run_attempt) }}
+      cancel-in-progress: false
+      queue: max
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [reads, writes]
     env:
       ARCHITECTURE_TYPE: TOM
       EXPERIMENT_BATCH_ID: ${{ inputs.experiment_batch_id || 'batch-adhoc' }}
@@ -827,7 +888,7 @@ jobs:
       TOOL_NAME: appium-android
       PLATFORM: android
       DRIVER: appium
-      TOM_RUN_ID: tom-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.run_index || github.run_attempt }}-appium-android
+      TOM_RUN_ID: tom-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.run_index || github.run_attempt }}-appium-android-${{ matrix.suite }}
 
     steps:
       - uses: actions/checkout@v4
@@ -954,7 +1015,14 @@ jobs:
 
       - name: Run E2E tests
         id: android_tests
-        run: pnpm test --tags '@android'
+        shell: bash
+        run: |
+          if [ "${{ matrix.suite }}" = "reads" ]; then
+            TAG_EXPRESSION="@android and not @writes-shared-state"
+          else
+            TAG_EXPRESSION="@android and @writes-shared-state"
+          fi
+          pnpm test --tags "$TAG_EXPRESSION"
         env:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           PLATFORM: android
@@ -996,7 +1064,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: tom-metrics-appium-android-${{ github.run_id }}
+          name: tom-metrics-appium-android-${{ matrix.suite }}-${{ github.run_id }}
           path: |
             metrics/
             results/
@@ -1012,7 +1080,7 @@ jobs:
   # Job: Appium — iOS (macOS simulator)
   # ---------------------------------------------------------------------------
   appium-ios:
-    name: Appium — iOS
+    name: Appium — iOS ${{ matrix.suite }}
     needs: resolve-omnipizza-release
     if: >-
       always()
@@ -1024,6 +1092,14 @@ jobs:
         || inputs.platform == 'appium-ios'
       )
     runs-on: macos-latest
+    concurrency:
+      group: ${{ matrix.suite == 'writes' && 'standard-user-writes' || format('tom-ios-reads-{0}-{1}', github.run_id, github.run_attempt) }}
+      cancel-in-progress: false
+      queue: max
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [reads, writes]
     env:
       ARCHITECTURE_TYPE: TOM
       EXPERIMENT_BATCH_ID: ${{ inputs.experiment_batch_id || 'batch-adhoc' }}
@@ -1031,7 +1107,7 @@ jobs:
       TOOL_NAME: appium-ios
       PLATFORM: ios
       DRIVER: appium
-      TOM_RUN_ID: tom-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.run_index || github.run_attempt }}-appium-ios
+      TOM_RUN_ID: tom-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.run_index || github.run_attempt }}-appium-ios-${{ matrix.suite }}
 
     steps:
       - uses: actions/checkout@v4
@@ -1083,14 +1159,12 @@ jobs:
 
       - name: Start MinIO Telemetry Storage
         run: |
-          case "$(uname -m)" in
-            arm64) MINIO_ARCH="arm64" ;;
-            x86_64) MINIO_ARCH="amd64" ;;
-            *)
-              echo "Unsupported macOS architecture: $(uname -m)"
-              exit 1
-              ;;
-          esac
+          MACHINE_ARCH=$(uname -m)
+          MINIO_ARCH=$(node -p "({ arm64: 'arm64', x86_64: 'amd64' })[process.argv[1]] || ''" "$MACHINE_ARCH")
+          if [ -z "$MINIO_ARCH" ]; then
+            echo "Unsupported macOS architecture: $MACHINE_ARCH"
+            exit 1
+          fi
 
           curl -fL "https://dl.min.io/server/minio/release/darwin-${MINIO_ARCH}/minio" \
             -o /tmp/minio
@@ -1157,7 +1231,14 @@ jobs:
         run: echo "RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
 
       - name: Run E2E tests
-        run: pnpm test --tags '@ios'
+        shell: bash
+        run: |
+          if [ "${{ matrix.suite }}" = "reads" ]; then
+            TAG_EXPRESSION="@ios and not @writes-shared-state"
+          else
+            TAG_EXPRESSION="@ios and @writes-shared-state"
+          fi
+          pnpm test --tags "$TAG_EXPRESSION"
         env:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           PLATFORM: ios
@@ -1190,7 +1271,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: tom-metrics-appium-ios-${{ github.run_id }}
+          name: tom-metrics-appium-ios-${{ matrix.suite }}-${{ github.run_id }}
           path: |
             metrics/
             results/
@@ -1208,6 +1289,12 @@ jobs:
       github.event_name != 'workflow_dispatch'
       || inputs.platform == 'all'
       || inputs.platform == 'gatling'
+    # checkout-load writes orders for standard_user; there is no read-only
+    # simulation to split into a separate leg.
+    concurrency:
+      group: standard-user-writes
+      cancel-in-progress: false
+      queue: max
     env:
       ARCHITECTURE_TYPE: TOM
       EXPERIMENT_BATCH_ID: ${{ inputs.experiment_batch_id || 'batch-adhoc' }}

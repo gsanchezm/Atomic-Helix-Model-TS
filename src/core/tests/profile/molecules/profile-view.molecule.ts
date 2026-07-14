@@ -3,6 +3,7 @@ import { INTENT } from '@kernel/intents';
 import { logger } from '@utils/logger';
 import type { CountryCode } from '@plugins/api/http';
 import { dismissIOSSaveAlertIfPresent } from './profile-save.molecule';
+import { seedWebPersistedStores as seedPersistedStores } from '@core/tests/support/browser-command';
 
 const log = logger.child({ layer: 'molecule', domain: 'profile', action: 'view' });
 
@@ -67,7 +68,7 @@ export async function openProfileScreen(args: OpenProfileArgs): Promise<void> {
         // Prime the origin first — about:blank has no localStorage scope.
         log.info({ baseUrl: root }, 'Priming origin before localStorage seed');
         await sendIntent(INTENT.NAVIGATE, root);
-        await seedWebPersistedStores({
+        await seedPersistedStores({
             market: args.market,
             language: args.language,
             token: args.accessToken,
@@ -297,60 +298,4 @@ async function assertInputValue(key: string, expected: string, label: string): P
 
 function isApiDriver(): boolean {
     return (process.env.DRIVER ?? 'playwright').toLowerCase() === 'api';
-}
-
-async function seedWebPersistedStores(args: {
-    market: CountryCode;
-    language: LanguageCode;
-    token: string;
-}): Promise<void> {
-    // Mirrors the seed in order_success/molecules/order-success-screen.molecule.ts.
-    // Profile lives behind ProtectedRoute too, so the persisted auth + country
-    // stores must be primed before NAVIGATE so the page hydrates instead of
-    // redirecting to /login.
-    const auth = {
-        state: { token: args.token, username: 'standard_user', behavior: null },
-        version: 0,
-    };
-    const country = {
-        state: {
-            countryCode: args.market,
-            language: args.language,
-            locale: deriveLocale(args.market, args.language),
-            currency: deriveCurrency(args.market),
-            countryInfo: null,
-        },
-        version: 0,
-    };
-    const chLangLine =
-        args.market === 'CH'
-            ? `localStorage.setItem('chLang', ${JSON.stringify(args.language)});`
-            : '';
-    const script = `
-        localStorage.setItem('token', ${JSON.stringify(args.token)});
-        localStorage.setItem('username', 'standard_user');
-        localStorage.setItem('countryCode', ${JSON.stringify(args.market)});
-        ${chLangLine}
-        localStorage.setItem('omnipizza-auth', ${JSON.stringify(JSON.stringify(auth))});
-        localStorage.setItem('omnipizza-country', ${JSON.stringify(JSON.stringify(country))});
-    `;
-    await sendIntent(INTENT.EVALUATE, script);
-}
-
-function deriveLocale(market: CountryCode, lang: LanguageCode): string {
-    if (market === 'CH') return lang === 'fr' ? 'fr-CH' : 'de-CH';
-    if (market === 'US') return 'en-US';
-    if (market === 'MX') return 'es-MX';
-    if (market === 'JP') return 'ja-JP';
-    return 'en-US';
-}
-
-function deriveCurrency(market: CountryCode): string {
-    switch (market) {
-        case 'US': return 'USD';
-        case 'MX': return 'MXN';
-        case 'CH': return 'CHF';
-        case 'JP': return 'JPY';
-        default: return 'USD';
-    }
 }

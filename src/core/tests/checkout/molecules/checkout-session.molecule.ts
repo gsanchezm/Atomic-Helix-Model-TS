@@ -2,6 +2,8 @@ import { sendIntent } from '@kernel/client';
 import { logger } from '@utils/logger';
 import type { CartItemResponse, CountryInfo } from '@core/tests/checkout/dao/checkout.types';
 import { INTENT } from '@kernel/intents';
+import { BROWSER_COMMAND } from '@kernel/browser-command';
+import { sendBrowserCommand } from '@core/tests/support/browser-command';
 
 const log = logger.child({ layer: 'molecule', action: 'session' });
 
@@ -47,21 +49,12 @@ export async function injectBrowserSession(session: BrowserSessionState): Promis
         version: 0,
     });
 
-    const setters: string[] = [
-        `localStorage.setItem('token', '${session.token}')`,
-        `localStorage.setItem('access_token', '${session.token}')`,
-        `localStorage.setItem('accessToken', '${session.token}')`,
-        `localStorage.setItem('username', '${session.username}')`,
-        `localStorage.setItem('user', '${session.username}')`,
-        `localStorage.setItem('country_code', '${session.countryCode}')`,
-        `localStorage.setItem('countryCode', '${session.countryCode}')`,
-        `localStorage.setItem('omnipizza-country', ${JSON.stringify(countryState)})`,
-        // Clear stale cart/order state so the frontend fetches fresh from backend for this scenario.
-        `localStorage.removeItem('omnipizza-cart')`,
-        `localStorage.removeItem('omnipizza-order')`,
-    ];
-
-    await sendIntent(INTENT.EVALUATE, setters.join('; '));
+    await sendBrowserCommand(BROWSER_COMMAND.SEED_CHECKOUT_SESSION, {
+        token: session.token,
+        username: session.username,
+        countryCode: session.countryCode,
+        countryState,
+    });
 
     log.info(
         { cartItemCount: session.cartItems.length, countryCode: session.countryCode, locale },

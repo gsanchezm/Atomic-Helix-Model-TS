@@ -19,6 +19,8 @@ import {
     assertLogoutLabel,
 } from '@core/tests/login/molecules/login-session.molecule';
 import type { CheckoutWorld } from '@core/tests/support/world';
+import { BROWSER_COMMAND } from '@kernel/browser-command';
+import { sendBrowserCommand } from '@core/tests/support/browser-command';
 
 const log = logger.child({ layer: 'route', domain: 'login' });
 
@@ -234,7 +236,7 @@ export class LoginRoute {
         playwright: async () => {
             const baseUrl = process.env.BASE_URL;
             if (!baseUrl) return;
-            await sendIntent(INTENT.EVALUATE, 'localStorage.clear(); sessionStorage.clear()');
+            await sendBrowserCommand(BROWSER_COMMAND.CLEAR_STORAGE);
             await sendIntent(INTENT.NAVIGATE, baseUrl);
         },
         api: async () => { /* noop */ },

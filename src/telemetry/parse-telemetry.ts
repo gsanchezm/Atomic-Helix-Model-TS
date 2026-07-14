@@ -9,21 +9,28 @@ if (!targetDir) {
 }
 
 const resolvedDir = resolve(targetDir);
-const jsonlPath = join(resolvedDir, 'telemetry.jsonl');
-
 const events: any[] = [];
 
-if (existsSync(jsonlPath)) {
+const telemetryFiles = existsSync(resolvedDir)
+  ? readdirSync(resolvedDir)
+      .filter((file) => /^telemetry(?:-.+)?\.jsonl$/.test(file))
+      .sort()
+  : [];
+
+for (const telemetryFile of telemetryFiles) {
+  const jsonlPath = join(resolvedDir, telemetryFile);
   try {
     const fileContent = readFileSync(jsonlPath, 'utf-8');
     const lines = fileContent.trim().split('\n').filter(line => line.length > 0);
     lines.forEach(line => events.push(JSON.parse(line)));
-    console.log(`[AHM Parser] Parsed ${lines.length} events from telemetry.jsonl`);
+    console.log(`[AHM Parser] Parsed ${lines.length} events from ${telemetryFile}`);
   } catch (err) {
     console.error(`Failed to read ${jsonlPath}:`, err);
   }
-} else {
-  console.log(`[AHM Parser] No telemetry.jsonl found in ${resolvedDir}`);
+}
+
+if (telemetryFiles.length === 0) {
+  console.log(`[AHM Parser] No telemetry JSONL files found in ${resolvedDir}`);
 }
 
 function findGatlingLogs(dir: string, fileList: string[] = []): string[] {

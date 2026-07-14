@@ -39,6 +39,7 @@ if (!tag) {
 
 const browser = (process.env.BROWSER || 'chromium').trim().toLowerCase();
 const outPath = path.join('reports', `playwright-${viewport}-${browser}.json`);
+const extraArgs = process.argv.slice(3).filter((arg, index) => !(index === 0 && arg === '--'));
 
 // Resolve the cucumber CLI entry. The documented path is the package's bin
 // script; fall back to require.resolve so an atypical install layout still works.
@@ -64,7 +65,7 @@ if (!fs.existsSync(cucumberBin)) {
 
 const child = spawn(
     process.execPath,
-    [cucumberBin, '--tags', tag, '--format', 'json:' + outPath],
+    [cucumberBin, '--tags', tag, '--format', 'json:' + outPath, ...extraArgs],
     {
         stdio: 'inherit',
         shell: false,

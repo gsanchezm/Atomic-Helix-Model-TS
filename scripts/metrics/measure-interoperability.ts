@@ -212,18 +212,15 @@ function main(): void {
   // --- successful_oracle_composition_count: compositions whose oracles all have evidence; NA if no execution ---
   let successfulCompositions: string | number = NA;
   if (haveExecution || apiAvailable || visualAvailable || perfAvailable || uiAvailable) {
+    const evidenceByDimension: Readonly<Record<OracleDim, boolean>> = {
+      API: apiAvailable === 1,
+      VISUAL: visualAvailable === 1,
+      PERFORMANCE: perfAvailable === 1,
+      UI_WEB: uiAvailable === 1,
+      UI_MOBILE: uiAvailable === 1,
+    };
     const dimHasEvidence = (d: OracleDim): boolean => {
-      switch (d) {
-        case 'API':
-          return apiAvailable === 1;
-        case 'VISUAL':
-          return visualAvailable === 1;
-        case 'PERFORMANCE':
-          return perfAvailable === 1;
-        case 'UI_WEB':
-        case 'UI_MOBILE':
-          return uiAvailable === 1;
-      }
+      return evidenceByDimension[d];
     };
     const successSigs = new Set<string>();
     for (const dims of allCompositions) {

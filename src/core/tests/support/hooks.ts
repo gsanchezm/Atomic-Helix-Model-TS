@@ -2,25 +2,13 @@ import { AfterStep, AfterAll, BeforeAll } from '@cucumber/cucumber';
 import { ensureTelemetryFile, logEvent, TelemetryEvent } from '@telemetry/logger';
 import { streamToMinio } from '@telemetry/minio-publisher';
 import { randomUUID } from 'crypto';
-import { acquireRunLock, releaseRunLock } from './run-lock';
 import { warmUpServices } from './warm-up';
 
 let currentRunId: string;
 let telemetryFilePath: string;
 
-// Install signal/exit handlers exactly once at module load so the lock is
-// released even when cucumber's AfterAll is skipped (Ctrl+C, uncaught throw
-// during BeforeAll, process.kill from outside).
-const releaseOnExit = () => { releaseRunLock(); };
-process.once('exit',    releaseOnExit);
-process.once('SIGINT',  () => { releaseRunLock(); process.exit(130); });
-process.once('SIGTERM', () => { releaseRunLock(); process.exit(143); });
-
 BeforeAll(async function () {
-  // Acquire BEFORE generating the runId so a failed acquire produces a clean
-  // abort with no telemetry side-effects.
-  acquireRunLock();
-  currentRunId = randomUUID();
+  currentRunId = process.env.TOM_RUN_ID || randomUUID();
   // Wake the Render free-tier dynos so the first scenario doesn't eat the
   // cold start and blow its element-wait budget.
   await warmUpServices();
@@ -28,12 +16,11 @@ BeforeAll(async function () {
 
 AfterStep(async function ({ pickle, pickleStep, result }) {
   // Translate cucumber status to AHM outcome
-  let outcome: 'PASS' | 'FAIL' | 'SKIPPED' = 'SKIPPED';
-  if (result.status === 'PASSED') {
-    outcome = 'PASS';
-  } else if (result.status === 'FAILED') {
-    outcome = 'FAIL';
-  }
+  const outcomes: Readonly<Record<string, 'PASS' | 'FAIL' | 'SKIPPED'>> = {
+    PASSED: 'PASS',
+    FAILED: 'FAIL',
+  };
+  const outcome = outcomes[result.status] ?? 'SKIPPED';
 
   const durationMs = result.duration ?
     (result.duration.seconds * 1000) + (result.duration.nanos / 1_000_000) : 0;
@@ -55,16 +42,11 @@ AfterStep(async function ({ pickle, pickleStep, result }) {
 });
 
 AfterAll(async function () {
-  try {
-    if (currentRunId) {
-      telemetryFilePath = ensureTelemetryFile(currentRunId);
-    }
+  if (currentRunId) {
+    telemetryFilePath = ensureTelemetryFile(currentRunId);
+  }
 
-    if (telemetryFilePath && currentRunId) {
-      await streamToMinio(telemetryFilePath, currentRunId);
-    }
-  } finally {
-    // Always release, even if telemetry flush threw.
-    releaseRunLock();
+  if (telemetryFilePath && currentRunId) {
+    await streamToMinio(telemetryFilePath, currentRunId);
   }
 });

@@ -6,15 +6,29 @@ export const AssertTextAction: ActionHandler<PlaywrightActionContext> = {
     name: 'ASSERT_TEXT',
     async execute({ page, target }) {
         const { selector, value: expected } = parseSelectorValue(target, 'ASSERT_TEXT action');
-        const actual = await page.locator(selector).innerText();
-        // Case/whitespace-insensitive: label casing is presentation, not
-        // semantics (web CSS text-transform uppercases; native renders as-is),
-        // so "FULL NAME" (web innerText) and "Full name" (native) both match.
-        if (actual.trim().toLowerCase() !== expected.trim().toLowerCase()) {
-            throw new Error(
-                `[ASSERT_TEXT] Mismatch on "${selector}": expected "${expected}", got "${actual}"`,
-            );
+        const locator = page.locator(selector);
+        const configuredTimeout = Number(process.env.TOM_ASSERT_TIMEOUT_MS ?? '5000');
+        const timeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0
+            ? configuredTimeout
+            : 5000;
+        const deadline = performance.now() + timeoutMs;
+        const normalizedExpected = expected.trim().toLowerCase();
+        let actual = '';
+
+        while (performance.now() < deadline) {
+            const remainingMs = Math.max(1, deadline - performance.now());
+            actual = await locator.innerText({ timeout: remainingMs });
+
+            // Label casing is presentation, not semantics (web CSS
+            // text-transform uppercases while native renders as-is).
+            if (actual.trim().toLowerCase() === normalizedExpected) return actual;
+
+            await new Promise((resolve) => setTimeout(resolve, Math.min(100, remainingMs)));
         }
-        return actual;
+
+        throw new Error(
+            `[ASSERT_TEXT] Mismatch on "${selector}" after ${timeoutMs}ms: ` +
+            `expected "${expected}", got "${actual}"`,
+        );
     },
 };

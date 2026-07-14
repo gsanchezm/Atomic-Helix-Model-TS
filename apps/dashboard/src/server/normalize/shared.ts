@@ -1,4 +1,5 @@
 import type { RunInfo, Tool, ToolSummary } from '../../shared/types.js';
+import type { ToolKind } from '../../shared/kinds.js';
 
 export interface AdapterContext {
   runId: string;
@@ -11,48 +12,53 @@ export type Adapter = (
   ctx: AdapterContext,
 ) => Tool | Promise<Tool>;
 
+type SummaryHandler = (tool: Tool) => ToolSummary;
+
+const SUMMARY_HANDLERS: Readonly<Record<ToolKind, SummaryHandler>> = {
+  web_ui: (tool) => {
+    const { tests: _tests, browsers: _browsers, viewports: _viewports, ...rest } =
+      tool as Extract<Tool, { kind: 'web_ui' }>;
+    void _tests;
+    void _browsers;
+    void _viewports;
+    return rest;
+  },
+  api: (tool) => {
+    const { tests: _tests, ...rest } = tool as Extract<Tool, { kind: 'api' }>;
+    void _tests;
+    return rest;
+  },
+  mobile_ui: (tool) => {
+    const { platforms, ...rest } = tool as Extract<Tool, { kind: 'mobile_ui' }>;
+    return {
+      ...rest,
+      platforms: {
+        android: stripTests(platforms.android),
+        ios: stripTests(platforms.ios),
+      },
+    };
+  },
+  performance: (tool) => {
+    const { perf, ...rest } = tool as Extract<Tool, { kind: 'performance' }>;
+    const { distribution: _distribution, scenarios: _scenarios, ...perfRest } = perf;
+    void _distribution;
+    void _scenarios;
+    return { ...rest, perf: perfRest };
+  },
+  visual: (tool) => {
+    const { diffs: _diffs, ...rest } = tool as Extract<Tool, { kind: 'visual' }>;
+    void _diffs;
+    return rest;
+  },
+};
+
 /**
  * Strip detail-heavy arrays from a Tool to produce its ToolSummary.
  * The /api/runs/:runId endpoint returns these summaries so the overview
  * page doesn't have to download every test case for every tool.
  */
 export function summarize(tool: Tool): ToolSummary {
-  switch (tool.kind) {
-    case 'web_ui': {
-      const { tests: _tests, browsers: _browsers, viewports: _viewports, ...rest } = tool;
-      void _tests;
-      void _browsers;
-      void _viewports;
-      return rest;
-    }
-    case 'api': {
-      const { tests: _tests, ...rest } = tool;
-      void _tests;
-      return rest;
-    }
-    case 'mobile_ui': {
-      const { platforms, ...rest } = tool;
-      return {
-        ...rest,
-        platforms: {
-          android: stripTests(platforms.android),
-          ios: stripTests(platforms.ios),
-        },
-      };
-    }
-    case 'performance': {
-      const { perf, ...rest } = tool;
-      const { distribution: _d, scenarios: _s, ...perfRest } = perf;
-      void _d;
-      void _s;
-      return { ...rest, perf: perfRest };
-    }
-    case 'visual': {
-      const { diffs: _diffs, ...rest } = tool;
-      void _diffs;
-      return rest;
-    }
-  }
+  return SUMMARY_HANDLERS[tool.kind](tool);
 }
 
 function stripTests<T extends { tests: unknown }>(

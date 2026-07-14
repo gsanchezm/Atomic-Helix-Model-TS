@@ -60,7 +60,7 @@ function isPortFree(port: number): Promise<boolean> {
         const probe = net.createServer();
         probe.once('error',     () => resolve(false));
         probe.once('listening', () => probe.close(() => resolve(true)));
-        probe.listen(port, '0.0.0.0');
+        probe.listen(port, process.env.TOM_BIND_ADDRESS?.trim() || '127.0.0.1');
     });
 }
 

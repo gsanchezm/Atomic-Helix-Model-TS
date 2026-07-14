@@ -7,20 +7,20 @@ COPY . .
 # --- Plugin Targets ---
 
 FROM base AS proxy
-CMD ["npx", "ts-node", "src/kernel/chaos-proxy.ts"]
+CMD ["npx", "ts-node", "-r", "tsconfig-paths/register", "-r", "dotenv/config", "src/kernel/chaos-proxy.ts"]
 
 FROM base AS playwright-plugin
 RUN npx playwright install --with-deps chromium
-CMD ["npx", "ts-node", "src/plugins/playwright/server.ts"]
+CMD ["npx", "ts-node", "-r", "tsconfig-paths/register", "-r", "dotenv/config", "src/plugins/playwright/server.ts"]
 
 FROM base AS appium-plugin
-CMD ["npx", "ts-node", "src/plugins/appium/server.ts"]
+CMD ["npx", "ts-node", "-r", "tsconfig-paths/register", "-r", "dotenv/config", "src/plugins/appium/server.ts"]
 
 FROM base AS api-plugin
-CMD ["npx", "ts-node", "src/plugins/api/server.ts"]
+CMD ["npx", "ts-node", "-r", "tsconfig-paths/register", "-r", "dotenv/config", "src/plugins/api/server.ts"]
 
 FROM base AS gatling-plugin
-CMD ["npx", "ts-node", "src/plugins/gatling/server.ts"]
+CMD ["npx", "ts-node", "-r", "tsconfig-paths/register", "-r", "dotenv/config", "src/plugins/gatling/server.ts"]
 
 FROM base AS test-runner
 CMD ["npx", "cucumber-js"]

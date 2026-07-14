@@ -4,6 +4,7 @@ import { INTENT } from '@kernel/intents';
 import { openPizzaCard } from '@core/tests/catalog/molecules/catalog-card.molecule';
 import { openCatalogScreen } from '@core/tests/catalog/molecules/catalog-browse.molecule';
 import type { CountryCode } from '@core/tests/pizzaBuilder/dao/pizzaBuilder.types';
+import { seedWebPersistedStores as seedPersistedStores } from '@core/tests/support/browser-command';
 
 const log = logger.child({ layer: 'molecule', domain: 'pizzaBuilder', action: 'open' });
 
@@ -39,7 +40,7 @@ interface OpenBuilderArgs {
  * Lands directly on the pizza-builder screen for the given item, market and
  * language. Atomic, deep-linked entry — mirrors order_success.
  *
- * Web (playwright): NAVIGATE to root (so EVALUATE has an origin — about:blank
+ * Web (playwright): NAVIGATE to root (so browser storage has an origin — about:blank
  * throws SecurityError on localStorage access), seed the omnipizza-auth +
  * omnipizza-country Zustand-persisted stores, NAVIGATE to `/catalog`, wait
  * for `screen-catalog`, click the pizza card (`pizza-card-<pizzaId>-<viewport>`)
@@ -91,7 +92,7 @@ export async function openPizzaBuilder(args: OpenBuilderArgs): Promise<void> {
         // on about:blank.
         log.info({ baseUrl: root }, 'Priming origin before localStorage seed');
         await sendIntent(INTENT.NAVIGATE, root);
-        await seedWebPersistedStores({
+        await seedPersistedStores({
             market: args.market,
             language: args.language,
             token: args.accessToken,
@@ -112,70 +113,6 @@ export async function openPizzaBuilder(args: OpenBuilderArgs): Promise<void> {
     throw new Error(
         `pizzaBuilder feature requires DRIVER in {playwright, mobilewright, appium, api}; got "${driver}".`,
     );
-}
-
-/**
- * Pre-seeds the two Zustand-persisted stores OmniPizza web reads on boot —
- * `omnipizza-auth` and `omnipizza-country`. Mirror of
- * order-success-screen.molecule.seedWebPersistedStores. Kept inline (not
- * imported) so the pizza-builder slice stays decoupled from order_success's
- * private helpers.
- */
-async function seedWebPersistedStores(args: {
-    market: CountryCode;
-    language: LanguageCode;
-    token: string;
-}): Promise<void> {
-    const auth = {
-        state: {
-            token: args.token,
-            username: 'standard_user',
-            behavior: null,
-        },
-        version: 0,
-    };
-    const country = {
-        state: {
-            countryCode: args.market,
-            language: args.language,
-            locale: deriveLocale(args.market, args.language),
-            currency: deriveCurrency(args.market),
-            countryInfo: null,
-        },
-        version: 0,
-    };
-
-    const chLangLine =
-        args.market === 'CH'
-            ? `localStorage.setItem('chLang', ${JSON.stringify(args.language)});`
-            : '';
-    const script = `
-        localStorage.setItem('token', ${JSON.stringify(args.token)});
-        localStorage.setItem('username', 'standard_user');
-        localStorage.setItem('countryCode', ${JSON.stringify(args.market)});
-        ${chLangLine}
-        localStorage.setItem('omnipizza-auth', ${JSON.stringify(JSON.stringify(auth))});
-        localStorage.setItem('omnipizza-country', ${JSON.stringify(JSON.stringify(country))});
-    `;
-    await sendIntent(INTENT.EVALUATE, script);
-}
-
-function deriveLocale(market: CountryCode, lang: LanguageCode): string {
-    if (market === 'CH') return lang === 'fr' ? 'fr-CH' : 'de-CH';
-    if (market === 'US') return 'en-US';
-    if (market === 'MX') return 'es-MX';
-    if (market === 'JP') return 'ja-JP';
-    return 'en-US';
-}
-
-function deriveCurrency(market: CountryCode): string {
-    switch (market) {
-        case 'US': return 'USD';
-        case 'MX': return 'MXN';
-        case 'CH': return 'CHF';
-        case 'JP': return 'JPY';
-        default:   return 'USD';
-    }
 }
 
 // -- builder-rendered assertions ---------------------------------------

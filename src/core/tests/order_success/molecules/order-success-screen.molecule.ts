@@ -2,6 +2,7 @@ import { sendIntent } from '@kernel/client';
 import { logger } from '@utils/logger';
 import { INTENT } from '@kernel/intents';
 import type { CountryCode } from '@core/tests/checkout/dao/checkout.types';
+import { seedWebPersistedStores as seedPersistedStores } from '@core/tests/support/browser-command';
 
 const log = logger.child({ layer: 'molecule', domain: 'order_success' });
 
@@ -58,12 +59,12 @@ export async function openOrderSuccess(args: OpenSuccessArgs): Promise<void> {
         }
         const root = baseUrl.replace(/\/+$/, '');
         // Playwright starts on about:blank which has no localStorage scope —
-        // EVALUATE-ing storage there throws SecurityError. Navigate to the
-        // app's root first so the seed script runs in the right origin,
+        // Browser storage is unavailable there. Navigate to the app's root
+        // first so the seed command runs in the right origin,
         // then navigate to /order-success with the orderId.
         log.info({ baseUrl: root }, 'Priming origin before localStorage seed');
         await sendIntent(INTENT.NAVIGATE, root);
-        await seedWebPersistedStores({
+        await seedPersistedStores({
             market: args.market,
             language: args.language,
             token: args.accessToken,
@@ -78,59 +79,6 @@ export async function openOrderSuccess(args: OpenSuccessArgs): Promise<void> {
         `order_success feature requires DRIVER in {playwright, mobilewright, appium}; got "${driver}". ` +
         `The success screen is UI-only; api driver cannot satisfy the assertions.`,
     );
-}
-
-/**
- * Pre-seeds the two Zustand-persisted stores that OmniPizza web reads on
- * boot: `omnipizza-auth` (token + username) and `omnipizza-country`
- * (countryCode + language + locale + currency). The persist envelope
- * shape ({ state, version }) mirrors the format produced by
- * `zustand/middleware`'s `persist` (see frontend/src/store.js).
- *
- * Also writes the loose localStorage keys (`token`, `username`,
- * `countryCode`, `chLang`) because the app reads them imperatively in a
- * few places (auth init, country headers, CH language preference).
- */
-async function seedWebPersistedStores(args: {
-    market: CountryCode;
-    language: LanguageCode;
-    token: string;
-}): Promise<void> {
-    const auth = {
-        state: {
-            token: args.token,
-            username: 'standard_user',
-            behavior: null,
-        },
-        version: 0,
-    };
-    const country = {
-        state: {
-            countryCode: args.market,
-            language: args.language,
-            locale: deriveLocale(args.market, args.language),
-            currency: deriveCurrency(args.market),
-            countryInfo: null,
-        },
-        version: 0,
-    };
-
-    // Build the script so the values are JSON-quoted exactly once and the
-    // final localStorage entries are JSON strings (Zustand persist parses
-    // them with JSON.parse on rehydrate).
-    const chLangLine =
-        args.market === 'CH'
-            ? `localStorage.setItem('chLang', ${JSON.stringify(args.language)});`
-            : '';
-    const script = `
-        localStorage.setItem('token', ${JSON.stringify(args.token)});
-        localStorage.setItem('username', 'standard_user');
-        localStorage.setItem('countryCode', ${JSON.stringify(args.market)});
-        ${chLangLine}
-        localStorage.setItem('omnipizza-auth', ${JSON.stringify(JSON.stringify(auth))});
-        localStorage.setItem('omnipizza-country', ${JSON.stringify(JSON.stringify(country))});
-    `;
-    await sendIntent(INTENT.EVALUATE, script);
 }
 
 // -- wait + presence ---------------------------------------------------
@@ -204,22 +152,4 @@ function needsLangParam(market: CountryCode, lang: LanguageCode): boolean {
     // other markets the language is set by setCountry on the mobile side
     // (MARKET_LANG mapping in useAppStore.ts), so we omit the param.
     return market === 'CH' && (lang === 'de' || lang === 'fr');
-}
-
-function deriveLocale(market: CountryCode, lang: LanguageCode): string {
-    if (market === 'CH') return lang === 'fr' ? 'fr-CH' : 'de-CH';
-    if (market === 'US') return 'en-US';
-    if (market === 'MX') return 'es-MX';
-    if (market === 'JP') return 'ja-JP';
-    return 'en-US';
-}
-
-function deriveCurrency(market: CountryCode): string {
-    switch (market) {
-        case 'US': return 'USD';
-        case 'MX': return 'MXN';
-        case 'CH': return 'CHF';
-        case 'JP': return 'JPY';
-        default: return 'USD';
-    }
 }

@@ -17,6 +17,7 @@
 import { sendIntent } from '@kernel/client';
 import { logger } from '@utils/logger';
 import { INTENT } from '@kernel/intents';
+import { seedWebPersistedStores as seedPersistedStores } from '@core/tests/support/browser-command';
 
 const log = logger.child({ layer: 'molecule', domain: 'navbar', action: 'shell' });
 
@@ -113,7 +114,7 @@ export async function openCatalogScreen(args: OpenCatalogArgs): Promise<void> {
     const root = baseUrl.replace(/\/+$/, '');
     log.info({ baseUrl: root }, 'Priming origin before localStorage seed');
     await sendIntent(INTENT.NAVIGATE, root);
-    await seedWebPersistedStores({
+    await seedPersistedStores({
         market: args.market,
         language: args.language,
         token: args.accessToken,
@@ -127,45 +128,6 @@ export async function openCatalogScreen(args: OpenCatalogArgs): Promise<void> {
 // Mirrors order-success-screen.molecule.ts. Keeps the seed shape aligned so
 // both routes hydrate the same Zustand stores; if that contract changes
 // upstream, both molecules update together.
-async function seedWebPersistedStores(args: {
-    market: MarketCode;
-    language: LanguageCode;
-    token: string;
-}): Promise<void> {
-    const auth = {
-        state: {
-            token: args.token,
-            username: 'standard_user',
-            behavior: null,
-        },
-        version: 0,
-    };
-    const country = {
-        state: {
-            countryCode: args.market,
-            language: args.language,
-            locale: deriveLocale(args.market, args.language),
-            currency: deriveCurrency(args.market),
-            countryInfo: null,
-        },
-        version: 0,
-    };
-
-    const chLangLine =
-        args.market === 'CH'
-            ? `localStorage.setItem('chLang', ${JSON.stringify(args.language)});`
-            : '';
-    const script = `
-        localStorage.setItem('token', ${JSON.stringify(args.token)});
-        localStorage.setItem('username', 'standard_user');
-        localStorage.setItem('countryCode', ${JSON.stringify(args.market)});
-        ${chLangLine}
-        localStorage.setItem('omnipizza-auth', ${JSON.stringify(JSON.stringify(auth))});
-        localStorage.setItem('omnipizza-country', ${JSON.stringify(JSON.stringify(country))});
-    `;
-    await sendIntent(INTENT.EVALUATE, script);
-}
-
 // -- desktop navbar assertions ----------------------------------------
 
 /**
@@ -262,24 +224,6 @@ function needsLangParam(market: MarketCode, lang: LanguageCode): boolean {
     // Mirrors order-success-screen.molecule.ts: useDeepLinkParams.ts only
     // honors lang=de|fr (CH-only override).
     return market === 'CH' && (lang === 'de' || lang === 'fr');
-}
-
-function deriveLocale(market: MarketCode, lang: LanguageCode): string {
-    if (market === 'CH') return lang === 'fr' ? 'fr-CH' : 'de-CH';
-    if (market === 'US') return 'en-US';
-    if (market === 'MX') return 'es-MX';
-    if (market === 'JP') return 'ja-JP';
-    return 'en-US';
-}
-
-function deriveCurrency(market: MarketCode): string {
-    switch (market) {
-        case 'US': return 'USD';
-        case 'MX': return 'MXN';
-        case 'CH': return 'CHF';
-        case 'JP': return 'JPY';
-        default: return 'USD';
-    }
 }
 
 // Re-exported for the route to check driver state symmetrically with the

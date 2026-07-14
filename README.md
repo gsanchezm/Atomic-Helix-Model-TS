@@ -26,7 +26,7 @@ A test is **atomic** when it satisfies four rules:
 | **No UI-driven setup** | Preconditions are *injected* via API ($S_0$ state injection), never rebuilt by clicking through screens. | `<domain>/dao/*.dao.ts` — `Given` steps short-circuit to the `api` plugin instead of driving the UI. |
 | **Deterministic outcome** | Transient noise (stale elements, network jitter) is absorbed; real failures fail fast, once. | The kernel's chaos suppression ($\lambda < 0$): exponential-backoff retries for transient errors only. |
 
-Atomicity is what makes everything else in this repo possible: because scenarios share no state and never build preconditions through the UI, the same `.feature` can be dispatched to a Playwright browser, an Appium device, or a Gatling load simulation **without modification** — and parallelized with no ordering constraints.
+Atomicity is what makes everything else in this repo possible: scenarios never build preconditions through the UI, and the same `.feature` can be dispatched to a Playwright browser, an Appium device, or a Gatling load simulation **without modification**. Scenarios that mutate OmniPizza's fixed `standard_user` are explicitly tagged `@writes-shared-state` and serialized; the rest can run without ordering constraints.
 
 The formal model behind the layering (Atomic Helix Model, π-Calculus, $\lambda < 0$ chaos suppression) lives at the bottom of this README — read it if you want, skip it if you just want the suite running.
 
@@ -223,6 +223,54 @@ cp .env.example .env
 
 `PROXY_ADDRESS=localhost:50051` is what `kernel/client.ts` uses to reach the proxy.
 
+### gRPC security and execution mode
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TOM_BIND_ADDRESS` | `127.0.0.1` | Listen interface for the proxy and plugin servers |
+| `TOM_TLS_ENABLED` | `false` | Enables TLS credentials; server cert/key are then required on servers |
+| `TOM_TLS_CA_PATH` | — | PEM CA used by clients and by servers that verify client certificates |
+| `TOM_TLS_SERVER_CERT_PATH` / `TOM_TLS_SERVER_KEY_PATH` | — | PEM identity for a gRPC server |
+| `TOM_TLS_CLIENT_CERT_PATH` / `TOM_TLS_CLIENT_KEY_PATH` | — | Optional PEM client identity for mTLS |
+| `TOM_TLS_REQUIRE_CLIENT_CERT` | `false` | Requires a trusted client certificate on servers |
+| `TOM_IN_PROCESS_PLUGINS` | empty | Comma-separated local plugins that bypass the second gRPC hop |
+
+Any non-loopback bind fails unless TLS is enabled. Arbitrary `EVALUATE` actions are rejected at both proxy and plugin boundaries; browser-side operations use the closed `BROWSER_COMMAND` registry with JSON arguments.
+
+`pnpm proxy:in-process` selects `playwright,api` for a local fast path. It lowers local latency at the cost of process isolation; regular `pnpm proxy` keeps the microkernel gRPC path.
+
+### Parallel cross-browser runs
+
+Install all three Playwright engines once:
+
+```bash
+pnpm exec playwright install chromium firefox webkit
+```
+
+Run the complete cross-browser suite with the local orchestrator:
+
+```bash
+pnpm test:all-browsers
+```
+
+The orchestrator keeps one proxy and one API plugin alive, runs Chromium, Firefox, and WebKit concurrently for desktop, restarts only the Playwright plugin with `VIEWPORT=responsive`, and then runs all three responsive legs. This preserves one FIFO write lock for the entire local run.
+
+For a desktop-only run, start the shared services in separate terminals:
+
+```bash
+pnpm proxy
+pnpm plugin:playwright
+pnpm plugin:api
+```
+
+Then run Chromium, Firefox, and WebKit concurrently, with four Cucumber workers per engine:
+
+```bash
+pnpm test:parallel-browsers
+```
+
+All three invocations must use the same proxy. Read-only scenarios run concurrently; scenarios tagged `@writes-shared-state` acquire the proxy's FIFO write lock before touching the shared account.
+
 ### Mobile (Appium HTTP server)
 
 | Variable         | Default     | Description                                                                  |
@@ -254,11 +302,12 @@ cp .env.example .env
 
 Steps and molecules use logical keys (`streetInput`); the proxy resolves them based on `PLATFORM` + `VIEWPORT`. The same suite runs across all surfaces unchanged.
 
-> **Restart the proxy** after editing `*.locators.json` — locators are cached at startup.
+Locator files are cached and watched recursively. Editing a `*.locators.json` file invalidates the cache; set `TOM_LOCATOR_WATCH=false` to disable hot reload.
 
 ## Docker
 
 ```bash
+pnpm grpc:certs:dev                          # local CA + per-service certificates
 docker compose up                              # web + api
 docker compose --profile mobile up             # android emulator + appium daemon + appium plugin
 docker compose --profile performance up        # standalone Gatling
@@ -311,7 +360,7 @@ The workflow assumes a few things already exist in the repo. Set these up **once
   # optional: -f target_branch=main
   ```
 
-  It wipes `visual-baselines/*.png`, regenerates them in the pinned `playwright:v1.58.2-jammy` Linux container, `git add -f`'s them, and opens a PR. **Merge that PR** so the canonical PNGs land in git. Thereafter the helix `Visual gate` compares against them.
+  It wipes `visual-baselines/*.png`, regenerates them in the pinned `playwright:v1.61.1-jammy` Linux container, `git add -f`'s them, and opens a PR. **Merge that PR** so the canonical PNGs land in git. Thereafter the helix `Visual gate` compares against them.
 
 **5. Dispatch the workflow** — _Actions → "AHM — Execution Helix" → Run workflow_, or via CLI:
 

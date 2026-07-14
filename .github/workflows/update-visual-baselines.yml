@@ -31,6 +31,10 @@ jobs:
   capture:
     name: Capture baselines (${{ matrix.viewport }})
     runs-on: ubuntu-latest
+    concurrency:
+      group: standard-user-writes
+      cancel-in-progress: false
+      queue: max
     strategy:
       fail-fast: false
       # One viewport at a time: the profile is shared per-username on the demo
@@ -41,7 +45,7 @@ jobs:
         viewport: [desktop, responsive]
 
     container:
-      image: mcr.microsoft.com/playwright:v1.58.2-jammy
+      image: mcr.microsoft.com/playwright:v1.61.1-jammy
       options: --user 0
 
     env:

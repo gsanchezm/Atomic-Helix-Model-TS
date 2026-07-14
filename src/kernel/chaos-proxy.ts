@@ -5,15 +5,31 @@ import { logger } from '@utils/logger';
 import { resolveLocator } from '@kernel/locator-resolver';
 import { ensurePortFree } from '@kernel/port-guard';
 import { INTENT, LEGACY_INTENT_ALIASES } from '@kernel/intents';
+import { WriteLock } from '@kernel/write-lock';
+import {
+    assertActionAllowed,
+    bindAddress,
+    createClientCredentials,
+    createServerCredentials,
+    tlsEnabled,
+} from '@kernel/grpc-security';
+import {
+    inProcessPluginNames,
+    isInProcessPlugin,
+    routeInProcess,
+    shutdownInProcessPlugins,
+    validateInProcessPlugins,
+} from '@kernel/in-process-plugin-router';
 
 // --- Constants ---
 
 const PROTO_PATH = path.resolve(__dirname, '../proto/ptom.proto');
 const DEFAULT_MAX_RETRIES = 3;
 const BASE_BACKOFF_MS = 100;
+const MAX_BACKOFF_JITTER_MS = 100;
 const SERVER_PORT_NUMBER = 50051;
-const SERVER_PORT = `0.0.0.0:${SERVER_PORT_NUMBER}`;
 const ACTION_TYPE_SEPARATOR = '||';
+const writeLock = new WriteLock();
 
 // --- Plugin Address Configuration (Environment-driven) ---
 
@@ -36,7 +52,15 @@ interface IntentOutcome {
     status: 'PASS' | 'FAIL';
     payload?: string;
     error?: string;
+    transportLatencyMs?: number;
 }
+
+interface PluginRouteResult {
+    payload: string;
+    transportLatencyMs: number;
+}
+
+type ControlIntentHandler = (leaseId: string) => Promise<IntentOutcome>;
 
 interface TelemetryRecord {
     timestamp: string;
@@ -45,7 +69,7 @@ interface TelemetryRecord {
     status: 'PASS' | 'FAIL';
     durationMs: number;
     error: string | null;
-    piCalculusLatencyMs: number; // Pi-Calculus gRPC serialization cost
+    piCalculusLatencyMs: number; // Monotonic proxy-to-plugin gRPC transport RTT
     proxyOverheadMs: number;     // Architectural overhead of the microkernel
 }
 
@@ -64,6 +88,17 @@ const ptomProto = (grpc.loadPackageDefinition(packageDefinition) as any).ptom;
 
 const pluginClients: Map<string, any> = new Map();
 
+const CONTROL_INTENT_HANDLERS: Readonly<Partial<Record<string, ControlIntentHandler>>> = {
+    [INTENT.ACQUIRE_WRITE_LOCK]: async (leaseId) => {
+        await writeLock.acquire(leaseId);
+        return { status: 'PASS', payload: 'Shared-state write lock acquired.' };
+    },
+    [INTENT.RELEASE_WRITE_LOCK]: async (leaseId) => {
+        writeLock.release(leaseId);
+        return { status: 'PASS', payload: 'Shared-state write lock released.' };
+    },
+};
+
 function getPluginClient(platform: string): any {
     // Platform may be structured as "playwright:0" — extract the driver name for routing
     const key = platform.split(':')[0].toLowerCase();
@@ -76,7 +111,7 @@ function getPluginClient(platform: string): any {
 
     const client = new ptomProto.ActionService(
         address,
-        grpc.credentials.createInsecure(),
+        createClientCredentials(),
     );
     pluginClients.set(key, client);
     return client;
@@ -88,10 +123,18 @@ function routeToPlugin(
     platform: string,
     actionId: string,
     targetSelector: string,
-): Promise<string> {
+): Promise<PluginRouteResult> {
+    if (isInProcessPlugin(platform)) {
+        return routeInProcess(platform, actionId, targetSelector).then((payload) => ({
+            payload,
+            transportLatencyMs: 0,
+        }));
+    }
+
     const client = getPluginClient(platform);
 
     return new Promise((resolve, reject) => {
+        const startMark = performance.now();
         client.ExecuteIntent(
             { actionId, targetSelector, platform },
             (err: Error | null, response: any) => {
@@ -99,7 +142,12 @@ function routeToPlugin(
                 if (response.status === 'FAIL') {
                     return reject(new Error(response.errorMessage));
                 }
-                resolve(response.payload);
+                const roundTripMs = performance.now() - startMark;
+                const serverDurationMs = Number(response.serverDurationMs) || 0;
+                resolve({
+                    payload: response.payload,
+                    transportLatencyMs: Math.max(0, roundTripMs - serverDurationMs),
+                });
             },
         );
     });
@@ -133,13 +181,17 @@ const delay = (ms: number): Promise<void> =>
 // --- 6. Chaos Suppressor (Lyapunov Stabilizer) ---
 
 async function suppressChaos(
-    intentFn: () => Promise<string>,
+    intentFn: () => Promise<PluginRouteResult>,
     maxRetries: number = DEFAULT_MAX_RETRIES,
 ): Promise<IntentOutcome> {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
             const result = await intentFn();
-            return { status: 'PASS', payload: result };
+            return {
+                status: 'PASS',
+                payload: result.payload,
+                transportLatencyMs: result.transportLatencyMs,
+            };
         } catch (error: unknown) {
             const retriesExhausted = attempt >= maxRetries;
             const deterministic = !isTransientJitter(error);
@@ -151,7 +203,8 @@ async function suppressChaos(
                 };
             }
 
-            const delayMs = BASE_BACKOFF_MS * (1 << (attempt + 1));
+            const delayMs = (BASE_BACKOFF_MS * (1 << (attempt + 1)))
+                + Math.floor(Math.random() * MAX_BACKOFF_JITTER_MS);
             logger.warn(
                 `[Chaos Control] Perturbation intercepted: ${(error as Error).name}. ` +
                 `Dampening for ${delayMs}ms (${attempt + 1}/${maxRetries}).`,
@@ -166,7 +219,8 @@ async function suppressChaos(
 // --- 7. TYPE-Aware Locator Resolution ---
 
 const PASSTHROUGH_ACTIONS = new Set<string>([
-    INTENT.NAVIGATE, INTENT.TEARDOWN, INTENT.EVALUATE, INTENT.HIDE_KEYBOARD,
+    INTENT.NAVIGATE, INTENT.TEARDOWN, INTENT.BROWSER_COMMAND, INTENT.HIDE_KEYBOARD,
+    INTENT.ACQUIRE_WRITE_LOCK, INTENT.RELEASE_WRITE_LOCK,
     // Failure screenshot: carries no logical target — passes empty string directly.
     INTENT.SCREENSHOT,
     // Visual oracle: targets are `feature||snapshotId||{json}`, resolved
@@ -195,7 +249,7 @@ function isMobilewrightPlatform(platform: string): boolean {
 function resolveSelector(actionId: string, rawSelector: string, platform: string): string {
     const normalized = actionId.toUpperCase();
 
-    // NAVIGATE, TEARDOWN, EVALUATE pass raw values — bypassing locator resolution.
+    // NAVIGATE, TEARDOWN and BROWSER_COMMAND pass structured/raw values without locator resolution.
     if (PASSTHROUGH_ACTIONS.has(normalized)) {
         return rawSelector;
     }
@@ -246,30 +300,32 @@ function emitTelemetry(
 // --- 9. gRPC Handler ---
 
 async function handleExecuteIntent(call: any, callback: any): Promise<void> {
-    const receiveTime = Date.now(); // Absolute timestamp upon reception
     const startMark = performance.now(); // High-resolution mark for duration calculation
-    
-    // The client is expected to inject 'clientSentAt'. Defaults to 0 if absent.
-    const { actionId, targetSelector, platform, clientSentAt } = call.request;
-
-    // 1. Calculate Pi-Calculus Latency (Network Time-of-Flight & Serialization)
-    const grpcLatencyMs = clientSentAt ? (receiveTime - clientSentAt) : 0;
+    const { actionId, targetSelector, platform } = call.request;
 
     let outcome: IntentOutcome;
     let pluginStartMark = 0;
     let pluginDurationMs = 0;
 
     try {
-        // --- THE INDIRECTION BOUNDARY (PROXY PATTERN) ---
-        // Intercept the logical key and resolve it to a platform/viewport-specific concrete selector.
-        const concreteSelector = resolveSelector(actionId, targetSelector, platform);
+        assertActionAllowed(actionId);
+        const normalizedAction = actionId.toUpperCase();
+        const controlHandler = CONTROL_INTENT_HANDLERS[normalizedAction];
 
-        // Measure strictly the temporal cost of the driver (Playwright/Appium) execution.
-        pluginStartMark = performance.now();
-        outcome = await suppressChaos(() =>
-            routeToPlugin(platform, actionId, concreteSelector),
-        );
-        pluginDurationMs = performance.now() - pluginStartMark;
+        if (controlHandler) {
+            outcome = await controlHandler(targetSelector);
+        } else {
+            // --- THE INDIRECTION BOUNDARY (PROXY PATTERN) ---
+            // Intercept the logical key and resolve it to a platform/viewport-specific concrete selector.
+            const concreteSelector = resolveSelector(actionId, targetSelector, platform);
+
+            // Measure strictly the temporal cost of the driver (Playwright/Appium) execution.
+            pluginStartMark = performance.now();
+            outcome = await suppressChaos(() =>
+                routeToPlugin(platform, actionId, concreteSelector),
+            );
+            pluginDurationMs = performance.now() - pluginStartMark;
+        }
 
     } catch (error: any) {
         outcome = { status: 'FAIL', error: error.message };
@@ -279,6 +335,7 @@ async function handleExecuteIntent(call: any, callback: any): Promise<void> {
     }
 
     const totalDurationMs = performance.now() - startMark;
+    const grpcLatencyMs = outcome.transportLatencyMs ?? 0;
     
     // 2. Calculate Proxy Overhead (Total duration minus the target UI driver execution time)
     const proxyOverheadMs = totalDurationMs - pluginDurationMs;
@@ -290,12 +347,16 @@ async function handleExecuteIntent(call: any, callback: any): Promise<void> {
         status: outcome.status,
         payload: outcome.payload ?? '',
         errorMessage: outcome.error ?? '',
+        serverDurationMs: totalDurationMs,
     });
 }
 
 // --- 10. Server Bootstrap ---
 
 async function main(): Promise<void> {
+    validateInProcessPlugins();
+    const serverAddress = bindAddress(SERVER_PORT_NUMBER);
+    const serverCredentials = createServerCredentials();
     await ensurePortFree(SERVER_PORT_NUMBER);
 
     const server = new grpc.Server();
@@ -304,19 +365,48 @@ async function main(): Promise<void> {
         ExecuteIntent: handleExecuteIntent,
     });
 
-    server.bindAsync(
-        SERVER_PORT,
-        grpc.ServerCredentials.createInsecure(),
-        (err, port) => {
-            if (err) {
-                logger.error(`[p-TOM] Failed to bind microkernel server: ${err}`);
-                process.exit(1);
-            }
-            logger.warn(
-                `[p-TOM] Microkernel listening on TCP port ${port} (Pi-Calculus Channel established)`,
-            );
-        },
+    const port = await new Promise<number>((resolve, reject) => {
+        server.bindAsync(serverAddress, serverCredentials, (err, boundPort) => {
+            if (err) reject(err);
+            else resolve(boundPort);
+        });
+    });
+
+    const inProcess = inProcessPluginNames();
+    logger.warn(
+        `[p-TOM] Microkernel listening on ${bindAddress(port)} ` +
+        `(${tlsEnabled() ? 'TLS' : 'insecure transport'}; ` +
+        `in-process plugins: ${inProcess.length > 0 ? inProcess.join(', ') : 'none'})`,
     );
+
+    let shuttingDown = false;
+    const gracefulShutdown = async (signal: NodeJS.Signals): Promise<void> => {
+        if (shuttingDown) return;
+        shuttingDown = true;
+        logger.info(`[p-TOM] ${signal} received; shutting down gracefully.`);
+
+        const shutdownServer = new Promise<void>((resolve) => {
+            const forceTimer = setTimeout(() => {
+                logger.warn('[p-TOM] Graceful shutdown timed out; forcing server shutdown.');
+                server.forceShutdown();
+                resolve();
+            }, 5000);
+            forceTimer.unref();
+            server.tryShutdown((err) => {
+                clearTimeout(forceTimer);
+                if (err) logger.error(`[p-TOM] Shutdown error: ${err.message}`);
+                resolve();
+            });
+        });
+
+        await Promise.allSettled([shutdownServer, shutdownInProcessPlugins()]);
+        for (const client of pluginClients.values()) grpc.closeClient(client);
+        pluginClients.clear();
+        process.exit(0);
+    };
+
+    process.once('SIGINT', () => { void gracefulShutdown('SIGINT'); });
+    process.once('SIGTERM', () => { void gracefulShutdown('SIGTERM'); });
 }
 
 main().catch((err) => {

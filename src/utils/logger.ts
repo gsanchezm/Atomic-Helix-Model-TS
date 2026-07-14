@@ -1,15 +1,14 @@
-import pino from 'pino';
+import pino, { type DestinationStream } from 'pino';
 
-export const logger = pino({
-    level: process.env.LOG_LEVEL || 'info',
-    transport:
-        process.env.NODE_ENV !== 'production'
-            ? {
-                target: 'pino-pretty',
-                options: {
-                    colorize: true,
-                    translateTime: 'SYS:standard',
-                },
-            }
-            : undefined,
-});
+const stream: DestinationStream = process.env.NODE_ENV !== 'production'
+    ? pino.transport({
+        target: 'pino-pretty',
+        options: {
+            colorize: true,
+            translateTime: 'SYS:standard',
+            destination: 2,
+        },
+    })
+    : pino.destination(2);
+
+export const logger = pino({ level: process.env.LOG_LEVEL || 'info' }, stream);

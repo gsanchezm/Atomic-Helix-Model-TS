@@ -137,7 +137,7 @@ export class NavbarRoute {
     /**
      * Cross-slice assertion of the language switch: the catalog's
      * add-to-cart button text must reflect the post-switch translation.
-     * Read happens inside the molecule (EVALUATE on web, READ_TEXT on
+     * Read happens inside the molecule (allowlisted browser command on web, READ_TEXT on
      * native mobile via a templated witness selector).
      */
     async verifyAddToCartLabel(expected: string): Promise<void> {

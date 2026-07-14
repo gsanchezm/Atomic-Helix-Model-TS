@@ -55,12 +55,11 @@ env:
   # `resolve-omnipizza-release` job (queries GitHub's /releases/latest)
   # and consumed by the mobile jobs via `needs.<job>.outputs.base_url`.
   OMNIPIZZA_RELEASES_REPO: gsanchezm/OmniPizza
-  PLAYWRIGHT_VERSION: '1.58.2'
-  PLAYWRIGHT_IMAGE: mcr.microsoft.com/playwright:v1.58.2-jammy
+  PLAYWRIGHT_VERSION: '1.61.1'
+  PLAYWRIGHT_IMAGE: mcr.microsoft.com/playwright:v1.61.1-jammy
 
-# Cancel in-flight runs of the same ref when a new commit lands — visual
-# baselines + functional captures should reflect the latest tip, not race
-# with an older revision.
+# Keep only the newest run for a ref. Cross-ref and cross-workflow writes are
+# independently serialized by the job-level standard-user-writes group.
 concurrency:
   group: helix-${{ github.ref }}
   cancel-in-progress: true
@@ -182,9 +181,17 @@ jobs:
   # Job 1: API E2E
   # ---------------------------------------------------------------------------
   api-smoke:
-    name: E2E — API Checkout
+    name: E2E — API ${{ matrix.suite }}
     needs: gate-api
     runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ matrix.suite == 'writes' && 'standard-user-writes' || format('api-reads-{0}-{1}', github.run_id, github.run_attempt) }}
+      cancel-in-progress: false
+      queue: max
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [reads, writes]
 
     steps:
       - uses: actions/checkout@v6
@@ -229,7 +236,14 @@ jobs:
           PLUGIN_API: 'true'
 
       - name: Run Cucumber suite (API layer)
-        run: pnpm test --tags '@api'
+        shell: bash
+        run: |
+          if [ "${{ matrix.suite }}" = "reads" ]; then
+            TAG_EXPRESSION="@api and not @writes-shared-state"
+          else
+            TAG_EXPRESSION="@api and @writes-shared-state"
+          fi
+          pnpm test --tags "$TAG_EXPRESSION"
         env:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           PLATFORM: api
@@ -238,6 +252,7 @@ jobs:
           MINIO_PORT: '9000'
           MINIO_ACCESS_KEY: minioadmin
           MINIO_SECRET_KEY: minioadmin
+          TOM_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-api-${{ matrix.suite }}
 
       - name: Parse JSONL to CSV Artifacts
         if: always()
@@ -253,12 +268,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ahm-telemetry-${{ github.job }}-${{ github.run_id }}
+          name: ahm-telemetry-${{ github.job }}-${{ matrix.suite }}-${{ github.run_id }}
           path: results/
           retention-days: 30
 
   # ---------------------------------------------------------------------------
-  # Job 2: Web E2E — Desktop (Functional only)
+  # Job 2: Web E2E — Desktop (reads/writes x browser)
   #
   # Runs the @desktop slice of every feature inside the pinned Playwright
   # container with `PLUGIN_PIXELMATCH=false` so the `@visual` After hooks in
@@ -272,15 +287,24 @@ jobs:
   # rendering parity needed for the visual pass is also present here.
   # ---------------------------------------------------------------------------
   e2e-web:
-    name: E2E — Playwright Desktop (functional)
+    name: E2E — Playwright Desktop ${{ matrix.suite }} (${{ matrix.browser }})
     needs: gate-web-desktop
     runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ matrix.suite == 'writes' && 'standard-user-writes' || format('web-reads-{0}-{1}-desktop-{2}', github.run_id, github.run_attempt, matrix.browser) }}
+      cancel-in-progress: false
+      queue: max
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+        suite: [reads, writes]
 
     # Pinned Playwright container. Kept identical to the visual job so a
     # functional regression that depends on rendering shows up in the same
     # environment that captures baselines.
     container:
-      image: mcr.microsoft.com/playwright:v1.58.2-jammy
+      image: mcr.microsoft.com/playwright:v1.61.1-jammy
       options: --user 0
 
     steps:
@@ -341,6 +365,7 @@ jobs:
         env:
           BASE_URL: ${{ secrets.BASE_URL }}
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          BROWSER: ${{ matrix.browser }}
           PLATFORM: web
           VIEWPORT: desktop
           DRIVER: playwright
@@ -356,10 +381,19 @@ jobs:
           PLUGIN_API: 'true'
 
       - name: Run E2E tests
-        run: pnpm test:json:web:desktop
+        shell: bash
+        run: |
+          if [ "${{ matrix.suite }}" = "reads" ]; then
+            TAG_EXPRESSION="not @writes-shared-state"
+          else
+            TAG_EXPRESSION="@writes-shared-state"
+          fi
+          pnpm test:json:web:desktop -- --tags "$TAG_EXPRESSION"
         env:
           BASE_URL: ${{ secrets.BASE_URL }}
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          BROWSER: ${{ matrix.browser }}
+          CUCUMBER_PARALLEL: '4'
           PLATFORM: web
           VIEWPORT: desktop
           DRIVER: playwright
@@ -370,13 +404,13 @@ jobs:
           # doesn't load capability it won't use AND the hook self-skips
           # if the plugin ever did register the capability.
           PLUGIN_PIXELMATCH: 'false'
-          TOM_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-desktop-func
+          TOM_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-desktop-${{ matrix.suite }}-${{ matrix.browser }}
 
       - name: Upload service logs
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: service-logs-${{ github.job }}-${{ github.run_id }}
+          name: service-logs-${{ github.job }}-${{ matrix.suite }}-${{ matrix.browser }}-${{ github.run_id }}
           path: /tmp/ahm-ci-logs/
           if-no-files-found: ignore
           retention-days: 7
@@ -395,23 +429,32 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ahm-telemetry-${{ github.job }}-${{ github.run_id }}
+          name: ahm-telemetry-${{ github.job }}-${{ matrix.suite }}-${{ matrix.browser }}-${{ github.run_id }}
           path: results/
           if-no-files-found: ignore
           retention-days: 30
 
   # ---------------------------------------------------------------------------
-  # Job 3: Web E2E — Responsive (Functional only)
+  # Job 3: Web E2E — Responsive (reads/writes x browser)
   # Mirrors Job 2's design (pinned container, no pixelmatch). See Job 2's
   # header for the full rationale and the link to visual-web-responsive.
   # ---------------------------------------------------------------------------
   e2e-web-responsive:
-    name: E2E — Playwright Responsive (functional)
+    name: E2E — Playwright Responsive ${{ matrix.suite }} (${{ matrix.browser }})
     needs: gate-web-responsive
     runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ matrix.suite == 'writes' && 'standard-user-writes' || format('web-reads-{0}-{1}-responsive-{2}', github.run_id, github.run_attempt, matrix.browser) }}
+      cancel-in-progress: false
+      queue: max
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+        suite: [reads, writes]
 
     container:
-      image: mcr.microsoft.com/playwright:v1.58.2-jammy
+      image: mcr.microsoft.com/playwright:v1.61.1-jammy
       options: --user 0
 
     steps:
@@ -466,6 +509,7 @@ jobs:
         env:
           BASE_URL: ${{ secrets.BASE_URL }}
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          BROWSER: ${{ matrix.browser }}
           PLATFORM: web
           VIEWPORT: responsive
           DRIVER: playwright
@@ -478,23 +522,32 @@ jobs:
           PLUGIN_API: 'true'
 
       - name: Run E2E tests
-        run: pnpm test:json:web:responsive
+        shell: bash
+        run: |
+          if [ "${{ matrix.suite }}" = "reads" ]; then
+            TAG_EXPRESSION="not @writes-shared-state"
+          else
+            TAG_EXPRESSION="@writes-shared-state"
+          fi
+          pnpm test:json:web:responsive -- --tags "$TAG_EXPRESSION"
         env:
           BASE_URL: ${{ secrets.BASE_URL }}
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          BROWSER: ${{ matrix.browser }}
+          CUCUMBER_PARALLEL: '4'
           PLATFORM: web
           VIEWPORT: responsive
           DRIVER: playwright
           PROXY_ADDRESS: 127.0.0.1:50051
           HEADLESS: 'true'
           PLUGIN_PIXELMATCH: 'false'
-          TOM_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-responsive-func
+          TOM_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-responsive-${{ matrix.suite }}-${{ matrix.browser }}
 
       - name: Upload service logs
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: service-logs-${{ github.job }}-${{ github.run_id }}
+          name: service-logs-${{ github.job }}-${{ matrix.suite }}-${{ matrix.browser }}-${{ github.run_id }}
           path: /tmp/ahm-ci-logs/
           if-no-files-found: ignore
           retention-days: 7
@@ -513,7 +566,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ahm-telemetry-${{ github.job }}-${{ github.run_id }}
+          name: ahm-telemetry-${{ github.job }}-${{ matrix.suite }}-${{ matrix.browser }}-${{ github.run_id }}
           path: results/
           if-no-files-found: ignore
           retention-days: 30
@@ -533,17 +586,21 @@ jobs:
   #      reason that has nothing to do with rendering. We still run visual
   #      on `if: always()` so a functional red doesn't hide visual red, but
   #      sequencing keeps the timeline interpretable.
-  # The responsive line (e2e-web-responsive → visual-web-responsive) runs
-  # in parallel to the desktop line; only WITHIN each line is sequential.
+  # Desktop/responsive read legs run freely in parallel. Visual jobs join the
+  # same standard-user write queue because they include tagged write scenarios.
   # ---------------------------------------------------------------------------
   visual-web:
     name: Visual — Playwright Desktop (Pixelmatch)
     needs: e2e-web
     if: always() && needs.e2e-web.result != 'skipped' && needs.e2e-web.result != 'cancelled'
     runs-on: ubuntu-latest
+    concurrency:
+      group: standard-user-writes
+      cancel-in-progress: false
+      queue: max
 
     container:
-      image: mcr.microsoft.com/playwright:v1.58.2-jammy
+      image: mcr.microsoft.com/playwright:v1.61.1-jammy
       options: --user 0
 
     steps:
@@ -675,17 +732,21 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Job 3b: Visual — Playwright Responsive (Pixelmatch capture + gate)
-  # Mirrors visual-web. `needs: e2e-web-responsive` — sequential within the
-  # responsive line, parallel to the desktop line.
+  # Mirrors visual-web. `needs: e2e-web-responsive`; both visual jobs share
+  # the standard-user write queue.
   # ---------------------------------------------------------------------------
   visual-web-responsive:
     name: Visual — Playwright Responsive (Pixelmatch)
     needs: e2e-web-responsive
     if: always() && needs.e2e-web-responsive.result != 'skipped' && needs.e2e-web-responsive.result != 'cancelled'
     runs-on: ubuntu-latest
+    concurrency:
+      group: standard-user-writes
+      cancel-in-progress: false
+      queue: max
 
     container:
-      image: mcr.microsoft.com/playwright:v1.58.2-jammy
+      image: mcr.microsoft.com/playwright:v1.61.1-jammy
       options: --user 0
 
     steps:
@@ -809,9 +870,17 @@ jobs:
   # Job 4: Android E2E
   # ---------------------------------------------------------------------------
   e2e-android:
-    name: E2E — Appium Android
+    name: E2E — Appium Android ${{ matrix.suite }}
     needs: [gate-android, resolve-omnipizza-release]
     runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ matrix.suite == 'writes' && 'standard-user-writes' || format('android-reads-{0}-{1}', github.run_id, github.run_attempt) }}
+      cancel-in-progress: false
+      queue: max
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [reads, writes]
 
     steps:
       - uses: actions/checkout@v6
@@ -927,7 +996,14 @@ jobs:
 
       - name: Run E2E tests
         id: android_tests
-        run: pnpm test --tags '@android'
+        shell: bash
+        run: |
+          if [ "${{ matrix.suite }}" = "reads" ]; then
+            TAG_EXPRESSION="@android and not @writes-shared-state"
+          else
+            TAG_EXPRESSION="@android and @writes-shared-state"
+          fi
+          pnpm test --tags "$TAG_EXPRESSION"
         env:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           PLATFORM: android
@@ -941,6 +1017,7 @@ jobs:
           MINIO_PORT: '9000'
           MINIO_ACCESS_KEY: minioadmin
           MINIO_SECRET_KEY: minioadmin
+          TOM_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-android-${{ matrix.suite }}
 
       - name: Show Android emulator logs
         if: failure()
@@ -966,7 +1043,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ahm-telemetry-${{ github.job }}-${{ github.run_id }}
+          name: ahm-telemetry-${{ github.job }}-${{ matrix.suite }}-${{ github.run_id }}
           path: results/
           retention-days: 30
 
@@ -978,9 +1055,17 @@ jobs:
   # Job 5: iOS E2E
   # ---------------------------------------------------------------------------
   e2e-ios:
-    name: E2E — Appium iOS
+    name: E2E — Appium iOS ${{ matrix.suite }}
     needs: [gate-ios, resolve-omnipizza-release]
     runs-on: macos-latest
+    concurrency:
+      group: ${{ matrix.suite == 'writes' && 'standard-user-writes' || format('ios-reads-{0}-{1}', github.run_id, github.run_attempt) }}
+      cancel-in-progress: false
+      queue: max
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [reads, writes]
 
     steps:
       - uses: actions/checkout@v6
@@ -1032,14 +1117,12 @@ jobs:
 
       - name: Start MinIO Telemetry Storage
         run: |
-          case "$(uname -m)" in
-            arm64) MINIO_ARCH="arm64" ;;
-            x86_64) MINIO_ARCH="amd64" ;;
-            *)
-              echo "Unsupported macOS architecture: $(uname -m)"
-              exit 1
-              ;;
-          esac
+          MACHINE_ARCH=$(uname -m)
+          MINIO_ARCH=$(node -p "({ arm64: 'arm64', x86_64: 'amd64' })[process.argv[1]] || ''" "$MACHINE_ARCH")
+          if [ -z "$MINIO_ARCH" ]; then
+            echo "Unsupported macOS architecture: $MACHINE_ARCH"
+            exit 1
+          fi
 
           curl -fL "https://dl.min.io/server/minio/release/darwin-${MINIO_ARCH}/minio" \
             -o /tmp/minio
@@ -1095,7 +1178,14 @@ jobs:
           MINIO_SECRET_KEY: minioadmin
 
       - name: Run E2E tests
-        run: pnpm test --tags '@ios'
+        shell: bash
+        run: |
+          if [ "${{ matrix.suite }}" = "reads" ]; then
+            TAG_EXPRESSION="@ios and not @writes-shared-state"
+          else
+            TAG_EXPRESSION="@ios and @writes-shared-state"
+          fi
+          pnpm test --tags "$TAG_EXPRESSION"
         env:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           PLATFORM: ios
@@ -1111,6 +1201,7 @@ jobs:
           MINIO_PORT: '9000'
           MINIO_ACCESS_KEY: minioadmin
           MINIO_SECRET_KEY: minioadmin
+          TOM_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-ios-${{ matrix.suite }}
 
       - name: Parse JSONL to CSV Artifacts
         if: always()
@@ -1126,7 +1217,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ahm-telemetry-${{ github.job }}-${{ github.run_id }}
+          name: ahm-telemetry-${{ github.job }}-${{ matrix.suite }}-${{ github.run_id }}
           path: results/
           retention-days: 30
 

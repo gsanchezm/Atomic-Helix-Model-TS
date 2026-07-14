@@ -26,15 +26,16 @@ let activeFilePath = '';
  */
 export function logEvent(event: TelemetryEvent): string {
   if (!sessionDir) {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const methodology = process.env.METHODOLOGY || 'bdd';
     const platform = process.env.PLATFORM || 'unknown';
     const viewport = process.env.VIEWPORT || 'default';
-    
-    const folderName = `run-${timestamp}-${methodology}-${platform}-${viewport}`;
+    const runId = event.runId.replace(/[^a-zA-Z0-9_.-]/g, '_');
+    const workerId = process.env.CUCUMBER_WORKER_ID;
+
+    const folderName = `run-${runId}-${methodology}-${platform}-${viewport}`;
     sessionDir = join(process.cwd(), 'results', folderName);
     mkdirSync(sessionDir, { recursive: true });
-    activeFilePath = join(sessionDir, 'telemetry.jsonl');
+    activeFilePath = join(sessionDir, workerId == null ? 'telemetry.jsonl' : `telemetry-${workerId}.jsonl`);
   }
 
   // Enrich event with execution matrix

@@ -28,6 +28,8 @@ import {
     placeOrder,
     verifyOrderAccepted as verifyOrderOnUI,
 } from '@core/tests/checkout/molecules/checkout-order.molecule';
+import { BROWSER_COMMAND } from '@kernel/browser-command';
+import { sendBrowserCommand } from '@core/tests/support/browser-command';
 import type { CheckoutWorld } from '@core/tests/support/world';
 import { INTENT } from '@kernel/intents';
 
@@ -277,7 +279,7 @@ export class CheckoutRoute {
         'playwright': async () => {
             const baseUrl = process.env.BASE_URL;
             if (!baseUrl) return; // nothing to navigate to; safe no-op
-            await sendIntent(INTENT.EVALUATE, 'localStorage.clear(); sessionStorage.clear()');
+            await sendBrowserCommand(BROWSER_COMMAND.CLEAR_STORAGE);
             await sendIntent(INTENT.NAVIGATE, baseUrl);
         },
         // No client state to clear for pure API runs.

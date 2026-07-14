@@ -8,7 +8,7 @@ import { ReadTextAction } from '@plugins/playwright/actions/ReadText';
 import { WaitForElementAction } from '@plugins/playwright/actions/WaitForElement';
 import { AssertTextAction } from '@plugins/playwright/actions/AssertText';
 import { ScrollToAction } from '@plugins/playwright/actions/ScrollTo';
-import { EvaluateAction } from '@plugins/playwright/actions/Evaluate';
+import { BrowserCommandAction } from '@plugins/playwright/actions/BrowserCommand';
 import { ScreenshotAction } from '@plugins/playwright/actions/Screenshot';
 
 let cachedRegistry: ActionRegistry<PlaywrightActionContext> | null = null;
@@ -26,7 +26,7 @@ export function getPlaywrightActionRegistry(): ActionRegistry<PlaywrightActionCo
         .register(WaitForElementAction)
         .register(AssertTextAction)
         .register(ScrollToAction)
-        .register(EvaluateAction)
+        .register(BrowserCommandAction)
         .register(ScreenshotAction);
 
     cachedRegistry = registry;

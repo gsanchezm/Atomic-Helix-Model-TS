@@ -1,4 +1,5 @@
 import * as Minio from 'minio';
+import { basename } from 'node:path';
 
 const minioClient = new Minio.Client({
   endPoint: process.env.MINIO_ENDPOINT || 'localhost',
@@ -22,7 +23,7 @@ export async function streamToMinio(filePath: string, runId: string): Promise<vo
       console.log(`[AHM Telemetry] Created MinIO bucket: ${bucketName}`);
     }
     
-    const objectName = `run-${runId}/telemetry.jsonl`;
+    const objectName = `run-${runId}/${basename(filePath)}`;
     const metaData = {
       'Content-Type': 'application/x-ndjson',
     };

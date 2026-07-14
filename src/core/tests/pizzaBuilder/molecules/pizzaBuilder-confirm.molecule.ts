@@ -1,6 +1,8 @@
 import { sendIntent } from '@kernel/client';
 import { INTENT } from '@kernel/intents';
 import { logger } from '@utils/logger';
+import { BROWSER_COMMAND } from '@kernel/browser-command';
+import { sendBrowserCommand } from '@core/tests/support/browser-command';
 
 const log = logger.child({ layer: 'molecule', domain: 'pizzaBuilder', action: 'confirm' });
 
@@ -30,13 +32,13 @@ export async function clickConfirmAddToCart(): Promise<void> {
 
 /**
  * Asserts the pizza-builder closed after the confirm click. We probe for
- * the closeBuilderButton being gone — under playwright we use EVALUATE to
+ * the closeBuilderButton being gone — under playwright we use a named command to
  * check the DOM directly (so we don't depend on a "wait for hidden"
  * primitive), and under mobile we re-issue a WAIT_FOR_ELEMENT with a tiny
  * timeout and fail-on-success.
  *
  * If WAIT_FOR_ELEMENT eventually grows a "hidden" mode this collapses to a
- * one-liner; until then, the EVALUATE escape hatch keeps the assertion
+ * one-liner; until then, the fixed browser command keeps the assertion
  * deterministic on the platform we use most.
  */
 export async function assertBuilderClosed(): Promise<void> {
@@ -51,10 +53,7 @@ export async function assertBuilderClosed(): Promise<void> {
         // customizer modal unmounts.
         const start = Date.now();
         while (Date.now() - start < CLOSE_WAIT_MS) {
-            const probe = await sendIntent(
-                INTENT.EVALUATE,
-                `(() => document.querySelector("[data-testid='customizer-close']") === null)()`,
-            );
+            const probe = await sendBrowserCommand(BROWSER_COMMAND.IS_BUILDER_CLOSED);
             const text = (probe.payload ?? '').trim().toLowerCase();
             if (text === 'true') {
                 log.info({ driver }, 'Builder closed (web)');
@@ -67,7 +66,7 @@ export async function assertBuilderClosed(): Promise<void> {
 
     // Mobile: the screen container disappears when the customizer closes.
     // No "wait for not-present" primitive in the kernel today; check via a
-    // short polling EVALUATE-equivalent intent if available, otherwise log
+    // short polling equivalent intent if available, otherwise log
     // a soft warning so the scenario doesn't hang.
     log.info({ driver }, 'Builder closed assertion deferred on mobile (no hidden primitive)');
 }
@@ -97,11 +96,8 @@ export async function assertNavbarCartCount(expected: string): Promise<void> {
         // feature uses "0" for the empty state, so on a 0 expectation the
         // element may not be in the DOM at all — we then assert absence.
         if (expected === '0') {
-            const probe = await sendIntent(
-                INTENT.EVALUATE,
-                `(() => { const el = document.querySelector("[data-testid='nav-cart-count']"); return el === null ? '0' : (el.textContent || '').trim(); })()`,
-            );
-            const actual = (probe.payload ?? '').trim();
+            const probe = await sendBrowserCommand(BROWSER_COMMAND.READ_CART_COUNT);
+            const actual = (probe.payload ?? '').trim() || '0';
             if (actual !== '0') {
                 throw new Error(`[navCartCount] expected "0" (absent or zero), got "${actual}"`);
             }
@@ -110,10 +106,7 @@ export async function assertNavbarCartCount(expected: string): Promise<void> {
 
         // Non-zero — poll the badge until its text matches.
         for (let attempt = 0; attempt < CART_COUNT_POLL_ATTEMPTS; attempt++) {
-            const probe = await sendIntent(
-                INTENT.EVALUATE,
-                `(() => { const el = document.querySelector("[data-testid='nav-cart-count']"); return el ? (el.textContent || '').trim() : ''; })()`,
-            );
+            const probe = await sendBrowserCommand(BROWSER_COMMAND.READ_CART_COUNT);
             const actual = (probe.payload ?? '').trim();
             if (actual === expected) {
                 log.info({ expected, driver }, 'Cart count matched');

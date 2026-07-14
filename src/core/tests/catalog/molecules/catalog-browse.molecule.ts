@@ -2,6 +2,11 @@ import { sendIntent } from '@kernel/client';
 import { INTENT } from '@kernel/intents';
 import { logger } from '@utils/logger';
 import type { CountryCode } from '@core/tests/checkout/dao/checkout.types';
+import { BROWSER_COMMAND } from '@kernel/browser-command';
+import {
+    seedWebPersistedStores as seedPersistedStores,
+    sendBrowserCommand,
+} from '@core/tests/support/browser-command';
 
 const log = logger.child({ layer: 'molecule', action: 'catalog-browse' });
 
@@ -75,11 +80,11 @@ export async function openCatalogScreen(args: OpenCatalogArgs): Promise<void> {
     const root = baseUrl.replace(/\/+$/, '');
 
     // Prime the origin before seeding localStorage — about:blank has no
-    // localStorage scope (EVALUATE throws SecurityError there). Same dance
+    // localStorage scope (browser commands throw SecurityError there). Same dance
     // the order_success slice runs through.
     log.info({ baseUrl: root }, 'Priming origin before localStorage seed');
     await sendIntent(INTENT.NAVIGATE, root);
-    await seedWebPersistedStores({
+    await seedPersistedStores({
         market: args.market,
         language: args.language,
         token: args.accessToken,
@@ -148,12 +153,7 @@ export async function readVisiblePizzaNames(candidateIds?: string[]): Promise<st
         }
         return names;
     }
-    const script = `JSON.stringify(
-        Array.from(document.querySelectorAll("[data-testid^='pizza-name-']"))
-            .map((el) => (el.textContent ?? '').trim())
-            .filter((s) => s.length > 0),
-    )`;
-    const result = await sendIntent(INTENT.EVALUATE, script);
+    const result = await sendBrowserCommand(BROWSER_COMMAND.GET_VISIBLE_PIZZA_NAMES);
     try {
         const parsed = JSON.parse(result.payload ?? '[]');
         return Array.isArray(parsed) ? parsed.map((s) => String(s)) : [];
@@ -199,13 +199,7 @@ export async function assertAddToCartLabelVisible(label: string): Promise<void> 
     // the modal's button text, assert, then close the modal so the visual
     // After hook captures the catalog and not a leftover modal.
     // testid shape is add-to-cart-<id>-<viewport> — strip both ends.
-    const firstIdScript = `(() => {
-        const el = document.querySelector("[data-testid^='add-to-cart-']");
-        if (!el) return '';
-        const tid = el.getAttribute('data-testid') || '';
-        return tid.replace(/^add-to-cart-/, '').replace(/-(desktop|responsive)$/, '');
-    })()`;
-    const idResult = await sendIntent(INTENT.EVALUATE, firstIdScript);
+    const idResult = await sendBrowserCommand(BROWSER_COMMAND.GET_FIRST_PIZZA_ID);
     const pizzaId = (idResult.payload ?? '').trim();
     if (!pizzaId) {
         throw new Error(
@@ -226,10 +220,8 @@ export async function assertAddToCartLabelVisible(label: string): Promise<void> 
     // (the OmniPizza modal binds Escape → close). Both are best-effort —
     // the assertion result is what matters and the next scenario re-NAVIGATEs.
     await sendIntent(INTENT.CLICK, 'closeBuilderButton').catch(async () => {
-        await sendIntent(
-            INTENT.EVALUATE,
-            "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true }))",
-        ).catch(() => { /* best-effort */ });
+        await sendBrowserCommand(BROWSER_COMMAND.DISPATCH_ESCAPE)
+            .catch(() => { /* best-effort */ });
     });
 
     if (!actual.includes(wanted)) {
@@ -275,12 +267,7 @@ export async function assertSectionTitle(title: string): Promise<void> {
         return;
     }
     // Web: scan all headings for the localized text.
-    const escaped = title.replace(/'/g, "\\'");
-    const script = `(() => {
-        const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4'));
-        return headings.some((h) => (h.textContent ?? '').trim().includes('${escaped}'));
-    })()`;
-    const result = await sendIntent(INTENT.EVALUATE, script);
+    const result = await sendBrowserCommand(BROWSER_COMMAND.HAS_HEADING_TEXT, { text: title });
     if ((result.payload ?? '').trim() !== 'true') {
         throw new Error(`[catalog] section title "${title}" not found in any heading`);
     }
@@ -293,61 +280,4 @@ function needsLangParam(market: CountryCode, lang: LanguageCode): boolean {
     // other markets carry an implicit locale derived from `market` alone.
     // Mirrors the rule in order-success-screen.molecule.ts.
     return market === 'CH' && (lang === 'de' || lang === 'fr');
-}
-
-async function seedWebPersistedStores(args: {
-    market: CountryCode;
-    language: LanguageCode;
-    token: string;
-}): Promise<void> {
-    const auth = {
-        state: {
-            token: args.token,
-            username: 'standard_user',
-            behavior: null,
-        },
-        version: 0,
-    };
-    const country = {
-        state: {
-            countryCode: args.market,
-            language: args.language,
-            locale: deriveLocale(args.market, args.language),
-            currency: deriveCurrency(args.market),
-            countryInfo: null,
-        },
-        version: 0,
-    };
-
-    const chLangLine =
-        args.market === 'CH'
-            ? `localStorage.setItem('chLang', ${JSON.stringify(args.language)});`
-            : '';
-    const script = `
-        localStorage.setItem('token', ${JSON.stringify(args.token)});
-        localStorage.setItem('username', 'standard_user');
-        localStorage.setItem('countryCode', ${JSON.stringify(args.market)});
-        ${chLangLine}
-        localStorage.setItem('omnipizza-auth', ${JSON.stringify(JSON.stringify(auth))});
-        localStorage.setItem('omnipizza-country', ${JSON.stringify(JSON.stringify(country))});
-    `;
-    await sendIntent(INTENT.EVALUATE, script);
-}
-
-function deriveLocale(market: CountryCode, lang: LanguageCode): string {
-    if (market === 'CH') return lang === 'fr' ? 'fr-CH' : 'de-CH';
-    if (market === 'US') return 'en-US';
-    if (market === 'MX') return 'es-MX';
-    if (market === 'JP') return 'ja-JP';
-    return 'en-US';
-}
-
-function deriveCurrency(market: CountryCode): string {
-    switch (market) {
-        case 'US': return 'USD';
-        case 'MX': return 'MXN';
-        case 'CH': return 'CHF';
-        case 'JP': return 'JPY';
-        default: return 'USD';
-    }
 }

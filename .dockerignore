@@ -1,0 +1,10 @@
+.git
+.env
+node_modules
+certs/grpc
+logs
+reports
+results
+metrics/raw
+metrics/processed
+visual-results

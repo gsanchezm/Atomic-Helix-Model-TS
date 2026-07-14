@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One-shot local orchestration: web (desktop+responsive) + visual (desktop+responsive) + gatling,
-# then merge + ingest into the dashboard. Sequential (single-tenancy lock). Mirrors
+# then merge + ingest into the dashboard. Mirrors
 # ahm-execution-helix.yml env per phase. Continues through test failures (we want results
 # captured even if some scenarios fail; retry:1 in cucumber.js absorbs cold-start flakes).
 set -uo pipefail
@@ -31,7 +31,6 @@ wait_port(){ # port
 
 teardown(){ # "p1,p2,..."
   powershell.exe -NoProfile -Command "foreach(\$p in $1){ \$c=Get-NetTCPConnection -State Listen -LocalPort \$p -ErrorAction SilentlyContinue; foreach(\$x in \$c){ try{ Stop-Process -Id \$x.OwningProcess -Force -ErrorAction Stop }catch{} } }" >/dev/null 2>&1
-  rm -f .ahm-run.lock
   sleep 2
 }
 

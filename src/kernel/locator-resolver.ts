@@ -4,6 +4,22 @@ import * as path from 'path';
 const TESTS_DIR = path.resolve(__dirname, '../core/tests');
 
 let locatorsCache: Record<string, any> | null = null;
+let locatorWatcher: fs.FSWatcher | null = null;
+
+function watchLocatorFiles(): void {
+    if (locatorWatcher || (process.env.TOM_LOCATOR_WATCH ?? 'true').toLowerCase() === 'false') return;
+
+    try {
+        locatorWatcher = fs.watch(TESTS_DIR, { recursive: true }, (_event, filename) => {
+            if (!filename || !filename.toString().endsWith('.locators.json')) return;
+            locatorsCache = null;
+        });
+        // Loading locators in a short-lived script must not keep the process alive.
+        locatorWatcher.unref();
+    } catch (error) {
+        process.stderr.write(`[Proxy] Locator hot-reload disabled: ${(error as Error).message}\n`);
+    }
+}
 
 function resolveMobile(node: any, os: 'android' | 'ios'): string | undefined {
     if (typeof node.mobile === 'string') return node.mobile;
@@ -71,7 +87,12 @@ function loadLocators(): Record<string, any> {
     }
 
     locatorsCache = merged;
+    watchLocatorFiles();
     return merged;
+}
+
+export function invalidateLocatorCache(): void {
+    locatorsCache = null;
 }
 
 export function hasLocatorKey(logicalKey: string): boolean {

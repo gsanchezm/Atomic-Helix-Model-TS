@@ -10,91 +10,108 @@ const isDesktop = (process.env.VIEWPORT ?? 'desktop') === 'desktop';
 const VIEWPORT_TAG = isDesktop ? 'desktop' : 'responsive';
 const RESPONSIVE_VIEWPORT = { width: 390, height: 844 };  // iPhone 14 Pro
 
-// --- Browser singleton + per-session context map ---
+// --- Browser-per-engine pool + per-session context map ---
 // Each parallel Cucumber worker gets its own isolated BrowserContext → Page.
+// The browser engine is encoded in the session ID by client.ts, allowing
+// concurrent Chromium/Firefox/WebKit invocations to share one plugin process.
 
-let browser: Browser | null = null;
-const sessions: Map<string, { context: BrowserContext; page: Page }> = new Map();
+const browsers: Map<string, Promise<Browser>> = new Map();
+const sessions: Map<string, { context: BrowserContext; page: Page; engine: string }> = new Map();
+const SUPPORTED_ENGINES = new Set(['chromium', 'chrome', 'edge', 'msedge', 'firefox', 'webkit']);
+const BROWSER_CHANNELS: Readonly<Record<string, 'chrome' | 'msedge' | undefined>> = {
+    chromium: undefined,
+    chrome: 'chrome',
+    edge: 'msedge',
+    msedge: 'msedge',
+};
 
-async function ensureBrowser(): Promise<Browser> {
-    if (browser) return browser;
+function resolveBrowserEngine(sessionId: string): string {
+    const encodedEngine = sessionId.split('-')[0]?.trim().toLowerCase();
+    const configuredEngine = (process.env.BROWSER ?? 'chromium').trim().toLowerCase();
+    const engine = SUPPORTED_ENGINES.has(encodedEngine) ? encodedEngine : configuredEngine;
+
+    if (!SUPPORTED_ENGINES.has(engine)) {
+        logger.warn(`[Playwright Adapter] Unknown BROWSER="${engine}", falling back to chromium.`);
+        return 'chromium';
+    }
+    return engine;
+}
+
+async function ensureBrowser(engine: string): Promise<Browser> {
+    const existing = browsers.get(engine);
+    if (existing) return existing;
+
+    const launch = launchBrowser(engine);
+    browsers.set(engine, launch);
+    try {
+        return await launch;
+    } catch (error) {
+        if (browsers.get(engine) === launch) browsers.delete(engine);
+        throw error;
+    }
+}
+
+async function launchBrowser(engine: string): Promise<Browser> {
 
     const headless = process.env.HEADLESS !== 'false';
-
-    // BROWSER selects the engine; defaults to chromium when unset.
-    // chromium-family (chromium/chrome/edge) launches via chromium.launch,
-    // optionally pinned to a system channel (chrome/msedge).
-    const engine = (process.env.BROWSER ?? 'chromium').trim().toLowerCase();
 
     // --start-maximized is a chromium-only flag; firefox/webkit reject it.
     const isChromiumFamily = engine === 'chromium' || engine === 'chrome' || engine === 'edge' || engine === 'msedge';
     const launchArgs = isChromiumFamily && isDesktop && !headless ? ['--start-maximized'] : [];
 
-    let channel: string | undefined;
-    switch (engine) {
-        case 'chrome':
-            channel = 'chrome';
-            break;
-        case 'edge':
-        case 'msedge':
-            channel = 'msedge';
-            break;
-        default:
-            channel = undefined;
-    }
+    const channel = BROWSER_CHANNELS[engine];
 
     const channelLabel = channel ? ` (channel: ${channel})` : '';
     logger.info(`[Playwright Adapter] Launching browser engine: ${engine}${channelLabel} (viewport: ${isDesktop ? 'maximized' : '390x844'}, headless: ${headless})...`);
 
-    switch (engine) {
-        case 'firefox':
-            browser = await firefox.launch({ headless });
-            break;
-        case 'webkit':
-            browser = await webkit.launch({ headless });
-            break;
-        case 'chromium':
-        case 'chrome':
-        case 'edge':
-        case 'msedge':
-            browser = await chromium.launch({ headless, args: launchArgs, ...(channel ? { channel } : {}) });
-            break;
-        default:
-            logger.info(`[Playwright Adapter] Unknown BROWSER="${engine}", falling back to chromium.`);
-            browser = await chromium.launch({ headless, args: launchArgs });
-    }
-
-    return browser;
+    const launchChromium = () => chromium.launch({
+        headless,
+        args: launchArgs,
+        ...(channel ? { channel } : {}),
+    });
+    const launchers: Readonly<Record<string, () => Promise<Browser>>> = {
+        chromium: launchChromium,
+        chrome: launchChromium,
+        edge: launchChromium,
+        msedge: launchChromium,
+        firefox: () => firefox.launch({ headless }),
+        webkit: () => webkit.launch({ headless }),
+    };
+    const launch = launchers[engine];
+    if (!launch) throw new Error(`[Playwright Adapter] Unsupported browser engine: ${engine}`);
+    return launch();
 }
 
 async function ensureSession(sessionId: string): Promise<{ browser: Browser; page: Page }> {
     if (sessions.has(sessionId)) {
         const s = sessions.get(sessionId)!;
-        return { browser: browser!, page: s.page };
+        return { browser: await browsers.get(s.engine)!, page: s.page };
     }
 
-    const b = await ensureBrowser();
+    const engine = resolveBrowserEngine(sessionId);
+    const b = await ensureBrowser(engine);
     const context = await b.newContext({ viewport: isDesktop ? null : RESPONSIVE_VIEWPORT });
     const page = await context.newPage();
-    sessions.set(sessionId, { context, page });
+    sessions.set(sessionId, { context, page, engine });
     logger.info(`[Playwright Adapter] Session "${sessionId}" created (total active: ${sessions.size})`);
     return { browser: b, page };
 }
 
 async function teardown(sessionId: string): Promise<void> {
     const session = sessions.get(sessionId);
-    if (session) {
-        await session.context.close();
-        sessions.delete(sessionId);
-        logger.info(`[Playwright Adapter] Session "${sessionId}" closed (remaining: ${sessions.size})`);
-    }
+    if (!session) return;
 
-    // Close browser when all sessions are done
-    if (sessions.size === 0 && browser) {
-        await browser.close();
-        browser = null;
-        logger.info('[Playwright Adapter] Browser closed — all sessions complete');
-    }
+    await session.context.close();
+    sessions.delete(sessionId);
+    logger.info(`[Playwright Adapter] Session "${sessionId}" closed (remaining: ${sessions.size})`);
+
+    const engineStillActive = [...sessions.values()].some(({ engine }) => engine === session.engine);
+    if (engineStillActive) return;
+
+    const browser = browsers.get(session.engine);
+    if (browser) await (await browser).close();
+    browsers.delete(session.engine);
+    logger.info(`[Playwright Adapter] ${session.engine} browser closed — no active sessions remain`);
 }
 
 // --- Read-only session accessors ---

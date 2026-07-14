@@ -1,6 +1,8 @@
 import { sendIntent } from '@kernel/client';
 import { logger } from '@utils/logger';
 import { INTENT } from '@kernel/intents';
+import { BROWSER_COMMAND } from '@kernel/browser-command';
+import { sendBrowserCommand } from '@core/tests/support/browser-command';
 
 const log = logger.child({ layer: 'molecule', action: 'navigation' });
 const CHECKOUT_PATH = '/checkout';
@@ -38,30 +40,6 @@ export async function navigateToCheckout(market?: string, accessToken?: string):
     }
     await sendIntent(INTENT.NAVIGATE, `${baseUrl}${CHECKOUT_PATH}`);
 
-    // Debug: check current URL and page state after navigation
-    const url = await sendIntent(INTENT.EVALUATE, 'window.location.href');
-    const storage = await sendIntent(
-        'EVALUATE',
-        'JSON.stringify(Object.keys(localStorage))',
-    );
-    const bodyText = await sendIntent(
-        'EVALUATE',
-        'document.body?.innerText?.substring(0, 500)',
-    );
-    // Debug: find all data-testid elements on the page
-    const testIds = await sendIntent(
-        'EVALUATE',
-        'JSON.stringify([...document.querySelectorAll("[data-testid]")].map(el => el.getAttribute("data-testid")))',
-    );
-    const viewport = await sendIntent(
-        'EVALUATE',
-        'JSON.stringify({ width: window.innerWidth, height: window.innerHeight })',
-    );
-    log.info({
-        currentUrl: url.payload,
-        localStorageKeys: storage.payload,
-        pageContent: bodyText.payload,
-        dataTestIds: testIds.payload,
-        viewport: viewport.payload,
-    }, 'Checkout page loaded');
+    const diagnostics = await sendBrowserCommand(BROWSER_COMMAND.GET_CHECKOUT_DIAGNOSTICS);
+    log.info(JSON.parse(diagnostics.payload || '{}'), 'Checkout page loaded');
 }

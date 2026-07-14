@@ -20,6 +20,20 @@ export type LocatorStrategy =
     | { kind: 'placeholder'; value: string; exact?: boolean }
     | { kind: 'type'; value: string };
 
+function parseJsonLocator(target: string): LocatorStrategy | undefined {
+    if (!target.startsWith('{')) return undefined;
+
+    try {
+        const parsed = JSON.parse(target) as LocatorStrategy;
+        if (!parsed || typeof parsed !== 'object' || !('kind' in parsed) || !('value' in parsed)) {
+            return undefined;
+        }
+        return parsed;
+    } catch {
+        return undefined;
+    }
+}
+
 /** Parse a target string into a structured locator strategy.
  *
  *  Accepted forms (in priority order):
@@ -30,14 +44,8 @@ export type LocatorStrategy =
  */
 export function parseLocator(target: string): LocatorStrategy {
     const trimmed = target.trim();
-    if (trimmed.startsWith('{')) {
-        try {
-            const parsed = JSON.parse(trimmed) as LocatorStrategy;
-            if (parsed && typeof parsed === 'object' && 'kind' in parsed && 'value' in parsed) return parsed;
-        } catch {
-            /* fall through */
-        }
-    }
+    const jsonLocator = parseJsonLocator(trimmed);
+    if (jsonLocator) return jsonLocator;
 
     const m = trimmed.match(/^(testId|label|text|role|placeholder|type):(.+)$/);
     if (m) {
@@ -52,14 +60,15 @@ export function parseLocator(target: string): LocatorStrategy {
 export async function locate(device: Device, strategy: LocatorStrategy): Promise<Locator> {
     const { Locator } = await loadCore();
     const root = Locator.root(device.driver);
-    switch (strategy.kind) {
-        case 'testId': return root.getByTestId(strategy.value);
-        case 'label': return root.getByLabel(strategy.value, { exact: strategy.exact });
-        case 'text': return root.getByText(strategy.value, { exact: strategy.exact });
-        case 'role': return root.getByRole(strategy.value, strategy.name ? { name: strategy.name } : undefined);
-        case 'placeholder': return root.getByPlaceholder(strategy.value, { exact: strategy.exact });
-        case 'type': return root.getByType(strategy.value);
-    }
+    const handlers = {
+        testId: (value: Extract<LocatorStrategy, { kind: 'testId' }>) => root.getByTestId(value.value),
+        label: (value: Extract<LocatorStrategy, { kind: 'label' }>) => root.getByLabel(value.value, { exact: value.exact }),
+        text: (value: Extract<LocatorStrategy, { kind: 'text' }>) => root.getByText(value.value, { exact: value.exact }),
+        role: (value: Extract<LocatorStrategy, { kind: 'role' }>) => root.getByRole(value.value, value.name ? { name: value.name } : undefined),
+        placeholder: (value: Extract<LocatorStrategy, { kind: 'placeholder' }>) => root.getByPlaceholder(value.value, { exact: value.exact }),
+        type: (value: Extract<LocatorStrategy, { kind: 'type' }>) => root.getByType(value.value),
+    };
+    return handlers[strategy.kind](strategy as never);
 }
 
 // Lazy ESM import — see mobilewright-lifecycle.ts for the same pattern.

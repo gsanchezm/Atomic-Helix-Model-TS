@@ -70,24 +70,25 @@ export function makeMissingTool(toolId: string): Tool {
     duration: '—',
     missing: true,
   } as const;
-  switch (entry?.kind ?? 'web_ui') {
-    case 'web_ui':      return { ...base, kind: 'web_ui', tests: [] };
-    case 'api':         return { ...base, kind: 'api', tests: [] };
-    case 'mobile_ui':   return {
+  const factories: Readonly<Record<ToolKind, () => Tool>> = {
+    web_ui: () => ({ ...base, kind: 'web_ui', tests: [] }),
+    api: () => ({ ...base, kind: 'api', tests: [] }),
+    mobile_ui: () => ({
       ...base,
       kind: 'mobile_ui',
       platforms: {
         android: { passed: 0, failed: 0, skipped: 0, duration: '—', device: '—', suites: [], tests: [] },
         ios:     { passed: 0, failed: 0, skipped: 0, duration: '—', device: '—', suites: [], tests: [] },
       },
-    };
-    case 'performance': return {
+    }),
+    performance: () => ({
       ...base,
       kind: 'performance',
       perf: { rps: 0, avgMs: 0, p95Ms: 0, p99Ms: 0, errorRate: 0, requests: 0, maxRps: 0, distribution: [], scenarios: [] },
-    };
-    case 'visual':      return { ...base, kind: 'visual', diffs: [] };
-  }
+    }),
+    visual: () => ({ ...base, kind: 'visual', diffs: [] }),
+  };
+  return factories[entry?.kind ?? 'web_ui']();
 }
 
 export class UnknownToolError extends Error {

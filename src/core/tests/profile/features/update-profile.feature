@@ -50,7 +50,7 @@ Feature: View and update the OmniPizza user profile across markets
   # This UI scenario asserts only that the form is EDITABLE and the SAVE is ACCEPTED
   # (the inputs remain after save, i.e. the save didn't error/crash the form). The
   # PATCH-contract value check lives in the @api scenario below.
-  @desktop @responsive @android @ios @visual
+  @desktop @responsive @android @ios @visual @writes-shared-state
   Scenario Outline: The profile form is editable and the save is accepted in <market>
     Given they are on the profile screen in market "<market>" using language "<language>"
     When they update the profile with full name "<fullName>", phone "<phone>", address "<address>", notes "<notes>"
@@ -68,7 +68,7 @@ Feature: View and update the OmniPizza user profile across markets
   # API-only: this checks the PATCH /api/users/me/profile contract under the api driver
   # (no UI reload race). Not run in UI/mobile suites, where the demo app's lack of
   # read-after-write persistence would make a post-save read-back flaky.
-  @api
+  @api @writes-shared-state
   Scenario Outline: Updated profile is readable through the profile API in <market>
     Given they are on the profile screen in market "<market>" using language "<language>"
     When they update the profile with full name "<fullName>", phone "<phone>", address "<address>", notes "<notes>"

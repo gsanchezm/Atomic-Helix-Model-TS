@@ -64,7 +64,7 @@ export class ActionRegistry<TContext extends ActionLogContext = ActionLogContext
         }
 
         const startedAt = Date.now();
-        const maskedTarget = maskActionTarget(context.target ?? '');
+        const maskedTarget = maskActionTarget(context.target ?? '', normalized);
 
         this.log.info(
             {

@@ -88,7 +88,7 @@ is the component that writes the file.
 |---|---|
 | `metrics/raw/run-manifest/<run-id>.json` | `scripts/metrics/generate-run-manifest.ts` |
 | `metrics/raw/cucumber-jsonl/<run-id>.jsonl` | `scripts/metrics/normalize-telemetry.ts` (from `reports/*.json`) |
-| `metrics/raw/tool-events/<run-id>.jsonl` | `scripts/metrics/normalize-telemetry.ts` (from `results/run-*/telemetry.jsonl`) |
+| `metrics/raw/tool-events/<run-id>.jsonl` | `scripts/metrics/normalize-telemetry.ts` (from `results/run-*/telemetry*.jsonl`) |
 | `metrics/raw/api/<run-id>.jsonl` | `src/core/contracts/contract-telemetry-writer.ts` (unchanged emitter) |
 | `metrics/raw/visual/<run-id>.jsonl` | Pixelmatch visual telemetry (`src/plugins/pixelmatch/support/visual-telemetry.ts`, unchanged emitter) |
 | `metrics/raw/gatling/<id>/summary.json` | Gatling action emitter (`src/plugins/gatling/actions/RunCheckoutLoad.ts`, unchanged) |

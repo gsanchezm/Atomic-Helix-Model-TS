@@ -18,7 +18,7 @@ Raw inputs live under `metrics/raw/`. JSONL files hold one record per line.
 |---|---|
 | `metrics/raw/run-manifest/<run-id>.json` | `scripts/metrics/generate-run-manifest.ts` |
 | `metrics/raw/cucumber-jsonl/<run-id>.jsonl` | `scripts/metrics/normalize-telemetry.ts` (from `reports/*.json`) |
-| `metrics/raw/tool-events/<run-id>.jsonl` | `scripts/metrics/normalize-telemetry.ts` (from `results/run-*/telemetry.jsonl`) |
+| `metrics/raw/tool-events/<run-id>.jsonl` | `scripts/metrics/normalize-telemetry.ts` (from `results/run-*/telemetry*.jsonl`) |
 | `metrics/raw/api/<run-id>.jsonl` | `src/core/contracts/contract-telemetry-writer.ts` (unchanged emitter) |
 | `metrics/raw/visual/<run-id>.jsonl` | Pixelmatch visual telemetry (unchanged emitter) |
 | `metrics/raw/gatling/<id>/summary.json` | Gatling action emitter (unchanged) |

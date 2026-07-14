@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
 
   # ─── Microkernel ────────────────────────────────────────────────────────────
@@ -9,14 +7,21 @@ services:
       context: .
       target: proxy
     ports:
-      - "50051:50051"
+      - "127.0.0.1:50051:50051"
     environment:
+      - TOM_BIND_ADDRESS=0.0.0.0
+      - TOM_TLS_ENABLED=true
+      - TOM_TLS_CA_PATH=/run/tom-tls/ca.pem
+      - TOM_TLS_SERVER_CERT_PATH=/run/tom-tls/proxy.pem
+      - TOM_TLS_SERVER_KEY_PATH=/run/tom-tls/proxy-key.pem
       - PLAYWRIGHT_ADDRESS=playwright-plugin:50052
       - APPIUM_ADDRESS=appium-plugin:50053
       - GATLING_ADDRESS=gatling-plugin:50054
       - API_ADAPTER_ADDRESS=api-plugin:50055
       - PLATFORM=${PLATFORM:-web}
       - VIEWPORT=${VIEWPORT:-desktop}
+    volumes:
+      - ./certs/grpc:/run/tom-tls:ro
     depends_on:
       - playwright-plugin
       - api-plugin
@@ -28,8 +33,15 @@ services:
       context: .
       target: playwright-plugin
     environment:
-      - PLAYWRIGHT_PORT=50052
+      - TOM_BIND_ADDRESS=0.0.0.0
+      - TOM_TLS_ENABLED=true
+      - TOM_TLS_CA_PATH=/run/tom-tls/ca.pem
+      - TOM_TLS_SERVER_CERT_PATH=/run/tom-tls/playwright-plugin.pem
+      - TOM_TLS_SERVER_KEY_PATH=/run/tom-tls/playwright-plugin-key.pem
+      - PLAYWRIGHT_PLUGIN_PORT=50052
       - HEADLESS=${HEADLESS:-true}
+    volumes:
+      - ./certs/grpc:/run/tom-tls:ro
     deploy:
       resources:
         limits:
@@ -80,7 +92,12 @@ services:
       context: .
       target: appium-plugin
     environment:
-      - APPIUM_PORT_GRPC=50053
+      - TOM_BIND_ADDRESS=0.0.0.0
+      - TOM_TLS_ENABLED=true
+      - TOM_TLS_CA_PATH=/run/tom-tls/ca.pem
+      - TOM_TLS_SERVER_CERT_PATH=/run/tom-tls/appium-plugin.pem
+      - TOM_TLS_SERVER_KEY_PATH=/run/tom-tls/appium-plugin-key.pem
+      - APPIUM_PLUGIN_PORT=50053
       - APPIUM_HOST=appium-server
       - APPIUM_PORT=4723
       - PLATFORM=${PLATFORM:-android}
@@ -89,6 +106,8 @@ services:
       - ANDROID_UDID=${ANDROID_UDID}
       - IOS_APP_PATH=${IOS_APP_PATH}
       - IOS_UDID=${IOS_UDID:-auto}
+    volumes:
+      - ./certs/grpc:/run/tom-tls:ro
     depends_on:
       - appium-server
     profiles:
@@ -101,8 +120,15 @@ services:
       context: .
       target: api-plugin
     environment:
+      - TOM_BIND_ADDRESS=0.0.0.0
+      - TOM_TLS_ENABLED=true
+      - TOM_TLS_CA_PATH=/run/tom-tls/ca.pem
+      - TOM_TLS_SERVER_CERT_PATH=/run/tom-tls/api-plugin.pem
+      - TOM_TLS_SERVER_KEY_PATH=/run/tom-tls/api-plugin-key.pem
       - API_PLUGIN_PORT=50055
       - API_BASE_URL=${API_BASE_URL}
+    volumes:
+      - ./certs/grpc:/run/tom-tls:ro
 
   # ─── Performance Plugin ─────────────────────────────────────────────────────
 
@@ -111,7 +137,14 @@ services:
       context: .
       target: gatling-plugin
     environment:
+      - TOM_BIND_ADDRESS=0.0.0.0
+      - TOM_TLS_ENABLED=true
+      - TOM_TLS_CA_PATH=/run/tom-tls/ca.pem
+      - TOM_TLS_SERVER_CERT_PATH=/run/tom-tls/gatling-plugin.pem
+      - TOM_TLS_SERVER_KEY_PATH=/run/tom-tls/gatling-plugin-key.pem
       - GATLING_PLUGIN_PORT=50054
+    volumes:
+      - ./certs/grpc:/run/tom-tls:ro
     profiles:
       - performance
 
@@ -122,6 +155,8 @@ services:
       context: .
       target: test-runner
     environment:
+      - TOM_TLS_ENABLED=true
+      - TOM_TLS_CA_PATH=/run/tom-tls/ca.pem
       - PROXY_ADDRESS=proxy:50051
       - DRIVER=${DRIVER:-playwright}
       - PLATFORM=${PLATFORM:-web}
@@ -129,5 +164,7 @@ services:
       - API_BASE_URL=${API_BASE_URL}
       - BASE_URL=${BASE_URL}
       - LANGUAGE=${LANGUAGE:-en}
+    volumes:
+      - ./certs/grpc:/run/tom-tls:ro
     depends_on:
       - proxy

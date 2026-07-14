@@ -1,3 +1,6 @@
+const configuredParallelism = Number.parseInt(process.env.CUCUMBER_PARALLEL || '1', 10);
+process.env.TOM_RUN_ID ||= `local-${Date.now()}-${process.pid}`;
+
 module.exports = {
   default: {
     paths: ["src/core/tests/**/*.feature"],
@@ -11,7 +14,9 @@ module.exports = {
     format: ["progress"],
 
     timeout: 300000,
-    parallel: 1,
+    parallel: Number.isFinite(configuredParallelism) && configuredParallelism > 0
+      ? configuredParallelism
+      : 1,
 
     // Render free-tier hosting (BASE_URL / API_BASE_URL on onrender.com) can
     // re-sleep a dyno mid-run or answer the first navigation slowly enough to
