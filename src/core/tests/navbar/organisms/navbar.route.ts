@@ -33,8 +33,8 @@ const log = logger.child({ layer: 'route', domain: 'navbar' });
 
 type Driver = 'playwright' | 'appium' | 'mobilewright' | 'api';
 
-const SUPPORTED_MARKETS: ReadonlyArray<MarketCode> = ['US', 'MX', 'CH', 'JP'];
-const SUPPORTED_LANGUAGES: ReadonlyArray<LanguageCode> = ['en', 'es', 'de', 'fr', 'ja'];
+const SUPPORTED_MARKETS: ReadonlyArray<MarketCode> = ['US', 'MX', 'CH', 'JP', 'SA'];
+const SUPPORTED_LANGUAGES: ReadonlyArray<LanguageCode> = ['en', 'es', 'de', 'fr', 'ja', 'ar'];
 
 export class NavbarRoute {
     constructor(private readonly world: CheckoutWorld) {}

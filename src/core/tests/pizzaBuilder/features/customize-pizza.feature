@@ -24,6 +24,7 @@ Feature: Customize a pizza in the builder across markets
       | CH     | Marinara   | de       |
       | CH     | Marinara   | fr       |
       | JP     | Pepperoni  | ja       |
+      | SA     | Margherita | ar       |
 
   @android @ios @visual @ui-only
   Scenario Outline: Builder section and total labels are translated for <item> in <market>/<language>
@@ -44,6 +45,7 @@ Feature: Customize a pizza in the builder across markets
       | CH     | Marinara   | de       | Größe       | Beläge          | GESCHÄTZTER GESAMTBETRAG |
       | CH     | Marinara   | fr       | Taille      | Garnitures      | Total estimé    |
       | JP     | Pepperoni  | ja       | サイズ      | トッピング       | 推定合計         |
+      | SA     | Margherita | ar       | الحجم       | الإضافات         | الإجمالي التقديري |
 
   @desktop @responsive @android @ios @visual
   Scenario Outline: Selecting a size updates the estimated total for <item> in <market>
@@ -58,6 +60,7 @@ Feature: Customize a pizza in the builder across markets
       | CH     | Marinara   | de       | Small  |
       | CH     | Marinara   | fr       | Small  |
       | JP     | Pepperoni  | ja       | Family |
+      | SA     | Margherita | ar       | Large  |
 
   @desktop @responsive @android @ios @visual
   Scenario Outline: Selecting toppings updates the estimated total for <item> in <market>
@@ -82,6 +85,7 @@ Feature: Customize a pizza in the builder across markets
       | CH     | Marinara   | de       | Small  | mushrooms             |
       | CH     | Marinara   | fr       | Small  | mushrooms             |
       | JP     | Pepperoni  | ja       | Family | mushrooms,pineapple   |
+      | SA     | Margherita | ar       | Large  | mushrooms             |
 
   @desktop @responsive @android @ios @visual @api
   Scenario Outline: Confirming add to cart closes the builder and increments the navbar cart count in <market>
@@ -99,3 +103,4 @@ Feature: Customize a pizza in the builder across markets
       | CH     | Marinara   | de       | Small  | 0            | 1             |
       | CH     | Marinara   | fr       | Small  | 0            | 1             |
       | JP     | Pepperoni  | ja       | Family | 0            | 1             |
+      | SA     | Margherita | ar       | Large  | 0            | 1             |

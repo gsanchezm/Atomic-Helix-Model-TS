@@ -29,8 +29,9 @@ const SUPPORTED_MARKETS = new Set<CountryCode>([
     CountryCode.MX,
     CountryCode.CH,
     CountryCode.JP,
+    CountryCode.SA,
 ]);
-const SUPPORTED_LANGUAGES = new Set<LanguageCode>(['en', 'es', 'de', 'fr', 'ja']);
+const SUPPORTED_LANGUAGES = new Set<LanguageCode>(['en', 'es', 'de', 'fr', 'ja', 'ar']);
 
 // Poll budget for read-after-write on the profile API (see verifyProfileApi).
 // 60 s covers Render's cold-dyno tail (~30 s typical) plus the observed FE

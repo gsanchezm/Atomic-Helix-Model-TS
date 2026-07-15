@@ -11,11 +11,12 @@ Feature: Browse the OmniPizza catalog across markets
   Background:
     Given the OmniPizza user is logged in as "standard_user"
 
-  @desktop @responsive @android @ios @visual @ui-only
+  @desktop @responsive @android @ios @visual @a11y @ui-only
   Scenario Outline: Catalog renders in <market>/<language>
     Given they are browsing the catalog in market "<market>" using language "<language>"
     Then the catalog screen is fully displayed
     And the add-to-cart label "<addToCartLabel>" is visible on a pizza card
+    And the current page passes the automated accessibility gate
 
     # addToCartLabel matches what the customizer modal's primary CTA renders.
     # OmniPizza confirmed 2026-05-24: PizzaCustomizerModal text map is
@@ -29,6 +30,7 @@ Feature: Browse the OmniPizza catalog across markets
       | CH     | de       | Hinzufügen     |
       | CH     | fr       | Ajouter        |
       | JP     | ja       | 追加            |
+      | SA     | ar       | أضف إلى السلة   |
 
   @android @ios @visual @ui-only
   Scenario Outline: Catalog shows the localized section title in <market>/<language>
@@ -42,6 +44,7 @@ Feature: Browse the OmniPizza catalog across markets
       | CH     | de       | Pizzen       |
       | CH     | fr       | Pizzas       |
       | JP     | ja       | ピザ         |
+      | SA     | ar       | البيتزا      |
 
   @desktop @responsive @android @ios @visual @api
   Scenario Outline: Searching narrows the catalog by name in <market>
@@ -63,6 +66,7 @@ Feature: Browse the OmniPizza catalog across markets
       | CH     | de       | Marinara  |
       | CH     | fr       | Marinara  |
       | JP     | ja       | BBQ       |
+      | SA     | ar       | مارغريتا  |
 
   @desktop @responsive @android @ios @visual @api
   Scenario Outline: Filtering by category narrows the catalog in <market>
@@ -77,6 +81,7 @@ Feature: Browse the OmniPizza catalog across markets
       | CH     | de       | veggie   |
       | CH     | fr       | veggie   |
       | JP     | ja       | meat     |
+      | SA     | ar       | popular  |
 
   @desktop @responsive @android @ios @visual @api
   Scenario Outline: Opening a pizza card launches the builder in <market>
@@ -91,3 +96,4 @@ Feature: Browse the OmniPizza catalog across markets
       | CH     | de       | Marinara   |
       | CH     | fr       | Marinara   |
       | JP     | ja       | Pepperoni  |
+      | SA     | ar       | مارغريتا   |

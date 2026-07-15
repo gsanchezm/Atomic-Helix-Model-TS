@@ -1,7 +1,7 @@
 import { sendIntent } from '@kernel/client';
 import { INTENT } from '@kernel/intents';
 
-const SUPPORTED_MARKETS = ['US', 'MX', 'CH', 'JP'] as const;
+const SUPPORTED_MARKETS = ['US', 'MX', 'CH', 'JP', 'SA'] as const;
 
 // CH is the only market whose login screen exposes a runtime language picker
 // (Swiss reality: DE + FR coexist). Other markets default to a single locale

@@ -6,6 +6,7 @@ import { SwitchContextAction } from '@plugins/appium/actions/SwitchContext';
 import { HideKeyboardAction } from '@plugins/appium/actions/HideKeyboard';
 import { ClickAction } from '@plugins/appium/actions/Click';
 import { TypeAction } from '@plugins/appium/actions/Type';
+import { SelectOptionAction } from '@plugins/appium/actions/SelectOption';
 import { ClearTextAction } from '@plugins/appium/actions/ClearText';
 import { ReadTextAction } from '@plugins/appium/actions/ReadText';
 import { WaitForElementAction } from '@plugins/appium/actions/WaitForElement';
@@ -26,6 +27,7 @@ export function getAppiumActionRegistry(): ActionRegistry<AppiumActionContext> {
         .register(HideKeyboardAction)
         .register(ClickAction)
         .register(TypeAction)
+        .register(SelectOptionAction)
         .register(ClearTextAction)
         .register(ReadTextAction)
         .register(WaitForElementAction)

@@ -69,7 +69,12 @@ const child = spawn(
     {
         stdio: 'inherit',
         shell: false,
-        env: { ...process.env, PLUGIN_PIXELMATCH: 'false' },
+        env: {
+            ...process.env,
+            DRIVER: 'playwright',
+            PLATFORM: 'web',
+            PLUGIN_PIXELMATCH: 'false',
+        },
     }
 );
 

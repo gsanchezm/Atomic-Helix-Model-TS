@@ -63,6 +63,12 @@ const ORDER_FIXTURES: Record<CountryCode, OrderFixture> = {
         name: '田中 健太',           phone: '+81 3 1234 5678',
         card: '4242 4242 4242 4242', exp: '12/28', cvv: '123',
     },
+    SA: {
+        item: 'Pepperoni', size: 'Large', qty: 1,
+        street: '123 شارع الفخامة', zip: '', suburb: 'العليا',
+        name: 'محمد العتيبي', phone: '+966 50 123 4567',
+        card: '4242 4242 4242 4242', exp: '12/28', cvv: '123',
+    },
 };
 
 export class OrderSuccessRoute {
@@ -214,6 +220,7 @@ export class OrderSuccessRoute {
             else if (field === 'prefectura') body.prefectura = fixture.suburb ?? fixture.zip;
             else if (field === 'plz')        body.plz        = fixture.zip;
             else if (field === 'zip_code')   body.zip_code   = fixture.zip;
+            else if (field === 'district')   body.district   = fixture.suburb ?? fixture.zip;
         }
 
         body.card_number = fixture.card;

@@ -46,7 +46,7 @@ import { http } from '@gatling.io/http';
 // ---------------------------------------------------------------------------
 
 interface OrderSuccessRow {
-    market: 'US' | 'MX' | 'CH' | 'JP';
+    market: 'US' | 'MX' | 'CH' | 'JP' | 'SA';
     item: string;
     size: string;
     qty: number;
@@ -69,6 +69,7 @@ const ORDER_SUCCESS_ROWS: OrderSuccessRow[] = [
     { market: 'MX', item: 'Margherita', size: 'Medium', qty: 1, street: 'Av. Carranza 123',  zip: '78230',    suburb: 'Polanco', name: 'Guillermo Alcantara', phone: '+52 55 1234 5678', card: '4242 4242 4242 4242', exp: '12/28', cvv: '123' },
     { market: 'CH', item: 'Marinara',   size: 'Small',  qty: 1, street: 'Bahnhofstrasse 12', zip: '8001',     name: 'Lukas Baumgartner',   phone: '+41 44 668 18 00', card: '4242 4242 4242 4242', exp: '12/28', cvv: '123' },
     { market: 'JP', item: 'Pepperoni',  size: 'Family', qty: 1, street: '1-2-3 Shibuya',     zip: '150-0002', suburb: 'Tokyo',   name: '田中 健太',           phone: '+81 3 1234 5678',  card: '4242 4242 4242 4242', exp: '12/28', cvv: '123' },
+    { market: 'SA', item: 'Pepperoni',  size: 'Large',  qty: 1, street: '123 شارع الفخامة',  zip: '',         suburb: 'العليا',  name: 'محمد العتيبي',      phone: '+966 50 123 4567', card: '4242 4242 4242 4242', exp: '12/28', cvv: '123' },
 ];
 
 const orderSuccessFeeder = arrayFeeder(ORDER_SUCCESS_ROWS).circular();
@@ -190,6 +191,7 @@ export default simulation((setUp) => {
             };
 
             if (market === 'CH')                payload['plz']        = zip;
+            else if (market === 'SA')           payload['district']   = suburb;
             else                                payload['zip_code']   = zip;
             if (market === 'MX' && suburb)      payload['colonia']    = suburb;
             if (market === 'JP' && suburb)      payload['prefectura'] = suburb;

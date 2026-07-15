@@ -228,7 +228,7 @@
           <header class="section-heading" data-reveal>
             <div class="eyebrow"><span></span>Technical Depth</div>
             <h2>Protocol-first. Mathematically grounded.</h2>
-            <p>Every intent flows through a versioned proto contract. Every locator resolves from a declarative JSON artifact at runtime.</p>
+            <p>Every intent flows through a versioned proto contract. Locators, API assertions, visual snapshots, and accessibility audits each resolve from their own declarative JSON contract at runtime — same shape, same loader pattern, one per concern.</p>
           </header>
           <div class="code-grid">
             <article class="code-panel" data-reveal>
@@ -271,6 +271,62 @@
     }
   }
 }</pre>
+            </article>
+            <article class="code-panel" data-reveal data-rdelay="150">
+              <header><span>catalog.api.contract.json</span><code>endpoint assertion contract</code></header>
+              <pre>{
+  <span class="type">"feature"</span>: <span class="str">"catalog"</span>,
+  <span class="type">"endpoints"</span>: [{
+    <span class="type">"id"</span>: <span class="str">"catalog.getPizzas"</span>,
+    <span class="type">"method"</span>: <span class="str">"GET"</span>,
+    <span class="type">"path"</span>: <span class="str">"/api/pizzas"</span>,
+    <span class="type">"expect"</span>: {
+      <span class="type">"status"</span>: [200],
+      <span class="type">"jsonPathAssertions"</span>: [
+        { <span class="type">"path"</span>: <span class="str">"$.country_code"</span>,
+          <span class="type">"matches"</span>: <span class="str">"^(US|MX|CH|JP)$"</span> }
+      ]
+    },
+    <span class="type">"tags"</span>: [<span class="str">"@api"</span>, <span class="str">"@catalog"</span>]
+  }]
+}</pre>
+            </article>
+            <article class="code-panel" data-reveal data-rdelay="210">
+              <header><span>catalog.visual.json</span><code>pixelmatch snapshot contract</code></header>
+              <pre>{
+  <span class="type">"feature"</span>: <span class="str">"catalog"</span>,
+  <span class="type">"snapshots"</span>: [{
+    <span class="type">"id"</span>: <span class="str">"catalog_screen"</span>,
+    <span class="type">"regionRef"</span>: <span class="str">"catalogScreen"</span>,
+    <span class="type">"maskRefs"</span>: [<span class="str">"searchInput"</span>],
+    <span class="type">"thresholds"</span>: { <span class="type">"pixelRatio"</span>: 0.01 },
+    <span class="type">"tags"</span>: [<span class="str">"@visual"</span>, <span class="str">"@catalog"</span>]
+  }]
+}</pre>
+            </article>
+            <article class="code-panel" data-reveal data-rdelay="270">
+              <header><span>catalog.a11y.json</span><code>axe-core audit contract</code></header>
+              <pre>{
+  <span class="type">"feature"</span>: <span class="str">"catalog"</span>,
+  <span class="type">"defaults"</span>: {
+    <span class="type">"ruleTags"</span>: [<span class="str">"wcag2a"</span>, <span class="str">"wcag2aa"</span>, <span class="str">"wcag21aa"</span>, <span class="str">"wcag22aa"</span>],
+    <span class="type">"thresholds"</span>: { <span class="type">"impacts"</span>: [<span class="str">"critical"</span>, <span class="str">"serious"</span>], <span class="type">"maxViolations"</span>: 0 }
+  },
+  <span class="type">"audits"</span>: [{ <span class="type">"id"</span>: <span class="str">"catalog_screen"</span> }]
+}</pre>
+            </article>
+            <article class="code-panel code-panel-note" data-reveal data-rdelay="330">
+              <header><span>security contract</span><code>proposed · under analysis</code></header>
+              <pre><span class="comment">// Unlike locators/api/visual/a11y, security checks don't</span>
+<span class="comment">// split cleanly into one contract shape yet:</span>
+<span class="comment">//</span>
+<span class="comment">// per-domain, contract-shaped   → RUN_ZAP_API_SCAN,</span>
+<span class="comment">//   RUN_SCHEMA_FUZZ (ties to an existing api.contract.json)</span>
+<span class="comment">//</span>
+<span class="comment">// whole-app, infra-shaped       → RUN_ZAP_BASELINE_SCAN,</span>
+<span class="comment">//   RUN_TLS_CHECK, RUN_MOBSF_APK_SCAN (no single owning domain)</span>
+<span class="comment">//</span>
+<span class="comment">// Proposed split, not yet implemented — see CLAUDE.md.</span></pre>
             </article>
           </div>
           <div class="law-grid">

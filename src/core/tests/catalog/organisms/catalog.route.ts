@@ -23,6 +23,9 @@ import {
     openPizzaCard,
 } from '@core/tests/catalog/molecules/catalog-card.molecule';
 import type { CheckoutWorld } from '@core/tests/support/world';
+import { sendIntent } from '@kernel/client';
+import { INTENT } from '@kernel/intents';
+import { AccessibilityContractLoader } from '@core/contracts/accessibility-contract-loader';
 
 const log = logger.child({ layer: 'route', domain: 'catalog' });
 
@@ -103,6 +106,43 @@ export class CatalogRoute {
             return;
         }
         await assertCatalogDisplayed();
+    }
+
+    /**
+     * Runs the catalog's `*.a11y.json` contract audits against the live
+     * page. An explicit step (not an After hook, unlike the @visual
+     * pattern) so it fires in-sequence, before any teardown hook can
+     * navigate away — catalog is the one domain that sorts alphabetically
+     * before checkout, so an After hook here would race the global
+     * session-reset hook in checkout.steps.ts and could easily lose.
+     * Safe to call from any tag-filtered run: no-ops unless PLUGIN_AXE is
+     * enabled and the driver is playwright (axe-core/playwright has no
+     * Appium/mobilewright/api equivalent).
+     */
+    async verifyAccessibilityGate(): Promise<void> {
+        if (!this.axePluginEnabled || this.driver !== 'playwright') {
+            log.info({ driver: this.driver }, 'verifyAccessibilityGate skipped (PLUGIN_AXE off or non-web driver)');
+            return;
+        }
+        const contract = AccessibilityContractLoader.load('catalog');
+        const market = this.world.locale?.market ?? 'unknown';
+        const language = this.world.locale?.language ?? 'unknown';
+
+        for (const audit of contract.audits) {
+            const ruleTags = audit.ruleTags?.length ? audit.ruleTags : contract.defaults?.ruleTags;
+            const auditOptions: Record<string, unknown> = {};
+            if (ruleTags?.length) auditOptions.tags = ruleTags;
+            if (audit.include?.length) auditOptions.include = audit.include;
+            if (audit.exclude?.length) auditOptions.exclude = audit.exclude;
+
+            await sendIntent(
+                INTENT.RUN_ACCESSIBILITY_AUDIT,
+                `catalog||${audit.id}-${market}-${language}||${JSON.stringify(auditOptions)}`,
+            );
+
+            const thresholds = audit.thresholds ?? contract.defaults?.thresholds ?? {};
+            await sendIntent(INTENT.VALIDATE_ACCESSIBILITY_THRESHOLDS, JSON.stringify(thresholds));
+        }
     }
 
     async verifyAddToCartLabel(label: string): Promise<void> {
@@ -329,6 +369,10 @@ export class CatalogRoute {
 
     private get driver(): Driver {
         return (process.env.DRIVER ?? 'playwright') as Driver;
+    }
+
+    private get axePluginEnabled(): boolean {
+        return (process.env.PLUGIN_AXE ?? 'false').toLowerCase() === 'true';
     }
 
     private requireAuthAndMarket(stage: string): { token: string; market: CountryCode } {

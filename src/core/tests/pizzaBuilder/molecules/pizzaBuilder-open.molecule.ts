@@ -26,7 +26,7 @@ const WAIT_TARGET_WEB = 'confirmAddToCartButton';
 const WAIT_TARGET_MOBILE = '~btn-add-to-cart';
 const WAIT_TIMEOUT_MS = 30_000;
 
-export type LanguageCode = 'en' | 'es' | 'de' | 'fr' | 'ja';
+export type LanguageCode = 'en' | 'es' | 'de' | 'fr' | 'ja' | 'ar';
 
 interface OpenBuilderArgs {
     market: CountryCode;

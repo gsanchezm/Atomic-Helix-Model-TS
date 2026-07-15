@@ -35,6 +35,7 @@ function localeFor(market: string, language: string): string {
         US: { default: 'en-US' },
         MX: { default: 'es-MX' },
         JP: { default: 'ja-JP' },
+        SA: { default: 'ar-SA' },
     };
     return locales[market]?.[language] ?? locales[market]?.default ?? 'en-US';
 }
@@ -45,6 +46,7 @@ function currencyFor(market: string): string {
         MX: 'MXN',
         CH: 'CHF',
         JP: 'JPY',
+        SA: 'SAR',
     };
     return currencies[market] ?? 'USD';
 }

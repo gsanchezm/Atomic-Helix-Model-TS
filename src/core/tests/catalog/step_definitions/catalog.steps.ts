@@ -26,6 +26,10 @@ Then('the catalog screen is fully displayed', async function () {
     await route(this).verifyCatalogDisplayed();
 });
 
+Then('the current page passes the automated accessibility gate', async function () {
+    await route(this).verifyAccessibilityGate();
+});
+
 Then(
     'the add-to-cart label {string} is visible on a pizza card',
     async function (label: string) {

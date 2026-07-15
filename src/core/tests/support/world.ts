@@ -63,6 +63,5 @@ export interface CheckoutWorld {
     // can rehydrate the success-screen via deep link (mobile) or query param
     // (web) without re-running the placement flow.
     placedOrderId?: string;
-    languageOverride?: 'en' | 'es' | 'de' | 'fr' | 'ja';
+    languageOverride?: 'en' | 'es' | 'de' | 'fr' | 'ja' | 'ar';
 }
-

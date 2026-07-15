@@ -3,11 +3,12 @@
 const { spawn } = require('node:child_process');
 const net = require('node:net');
 const path = require('node:path');
+const { selectedBrowsers } = require('./browser-selection');
 
 const ROOT = process.cwd();
-const STARTUP_TIMEOUT_MS = 30_000;
+const STARTUP_TIMEOUT_MS = Number(process.env.PLUGIN_STARTUP_TIMEOUT_MS || 180_000);
 const STOP_TIMEOUT_MS = 5_000;
-const BROWSERS = ['chromium', 'firefox', 'webkit'];
+const BROWSERS = selectedBrowsers();
 const VIEWPORTS = ['desktop', 'responsive'];
 const runningProcesses = new Set();
 
@@ -134,6 +135,8 @@ async function runBrowser(viewport, browser, extraArgs) {
         [path.join(ROOT, 'scripts/run-web-suite.js'), viewport, ...extraArgs],
         {
             BROWSER: browser,
+            DRIVER: 'playwright',
+            PLATFORM: 'web',
             VIEWPORT: viewport,
             CUCUMBER_PARALLEL: process.env.CUCUMBER_PARALLEL || '4',
             PLUGIN_PIXELMATCH: 'false',

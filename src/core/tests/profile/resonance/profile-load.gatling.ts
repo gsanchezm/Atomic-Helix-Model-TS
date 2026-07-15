@@ -45,8 +45,8 @@ import { http } from '@gatling.io/http';
 // ---------------------------------------------------------------------------
 
 interface ProfileRow {
-    market: 'US' | 'MX' | 'CH' | 'JP';
-    language: 'en' | 'es' | 'de' | 'fr' | 'ja';
+    market: 'US' | 'MX' | 'CH' | 'JP' | 'SA';
+    language: 'en' | 'es' | 'de' | 'fr' | 'ja' | 'ar';
     fullName: string;
     phone: string;
     address: string;
@@ -63,6 +63,7 @@ const PROFILE_ROWS: ProfileRow[] = [
     { market: 'CH', language: 'de', fullName: 'Anna Keller',        phone: '+41 44 668 19 00', address: 'Bahnhofstrasse 12', notes: 'An der Tür abgeben' },
     { market: 'CH', language: 'fr', fullName: 'Anna Keller',        phone: '+41 44 668 19 00', address: 'Bahnhofstrasse 12', notes: 'Laisser à la porte' },
     { market: 'JP', language: 'ja', fullName: '佐藤 明美',           phone: '+81 3 9876 5432',  address: '1-2-3 Shibuya',     notes: 'ドアに置いてください' },
+    { market: 'SA', language: 'ar', fullName: 'محمد العتيبي',        phone: '+966 50 123 4567', address: '123 شارع الفخامة',  notes: 'اترك الطلب عند الباب' },
 ];
 
 const profileFeeder = arrayFeeder(PROFILE_ROWS).circular();

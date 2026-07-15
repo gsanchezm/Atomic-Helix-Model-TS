@@ -23,6 +23,7 @@ Feature: Navbar shell — links, branding, and language switching per market
       | CH     | de       |
       | CH     | fr       |
       | JP     | ja       |
+      | SA     | ar       |
 
   @responsive @android @ios @visual @ui-only
   Scenario Outline: Mobile navbar exposes the same links in <market>
@@ -37,6 +38,7 @@ Feature: Navbar shell — links, branding, and language switching per market
       | CH     | de       |
       | CH     | fr       |
       | JP     | ja       |
+      | SA     | ar       |
 
   @desktop @visual
   Scenario Outline: Header language switcher updates the locale in CH (<sourceLanguage> → <targetLanguage>)

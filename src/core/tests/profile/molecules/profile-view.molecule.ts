@@ -10,7 +10,7 @@ const log = logger.child({ layer: 'molecule', domain: 'profile', action: 'view' 
 const PROFILE_SCREEN_WAIT_MS = 20_000;
 const PRESENCE_WAIT_MS = 8_000;
 
-export type LanguageCode = 'en' | 'es' | 'de' | 'fr' | 'ja';
+export type LanguageCode = 'en' | 'es' | 'de' | 'fr' | 'ja' | 'ar';
 
 interface OpenProfileArgs {
     market: CountryCode;

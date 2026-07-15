@@ -40,6 +40,10 @@
       "ios": "~input-zipcode"
     }
   },
+  "districtInput": {
+    "web": "[data-testid='district']",
+    "mobile": "~input-district"
+  },
   "fullNameInput": {
     "web": {
       "responsive": "[data-testid='full-name-responsive']",
@@ -58,22 +62,23 @@
     }
   },
   "paymentMethodList": {
-    "web": "button[data-testid^='payment-']",
+    "web": "[role='radiogroup'] [role='radio']",
     "mobile": {
       "android": "android=new UiSelector().descriptionStartsWith(\"btn-payment-\")",
       "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'btn-payment-'`]"
     }
   },
   "paymentCardButton": {
-    "web": {
-      "responsive": "button[data-testid='payment-card-responsive']",
-      "desktop": "button[data-testid='payment-card-desktop']"
-    },
+    "web": "[data-testid='payment-method-card']",
     "mobile": "~btn-payment-card"
   },
   "paymentCashButton": {
-    "web": "button[data-testid='payment-cash']",
+    "web": "[data-testid='payment-method-cash']",
     "mobile": "~btn-payment-cash"
+  },
+  "paymentPaypalButton": {
+    "web": "[data-testid='payment-method-paypal']",
+    "mobile": "~btn-payment-paypal"
   },
   "cardHolderNameInput": {
     "web": "[data-testid='card-holder']",
@@ -86,9 +91,13 @@
       "ios": "-ios predicate string:type == 'XCUIElementTypeTextField' AND name == 'input-card-number'"
     }
   },
-  "expiryDateInput": {
-    "web": "[data-testid='card-expiry']",
-    "mobile": "~input-card-expiry"
+  "expiryMonthInput": {
+    "web": "[data-testid='card-expiry-month']",
+    "mobile": "~input-card-expiry-month"
+  },
+  "expiryYearInput": {
+    "web": "[data-testid='card-expiry-year']",
+    "mobile": "~input-card-expiry-year"
   },
   "cvvInput": {
     "web": "[data-testid='card-cvv']",
@@ -121,6 +130,18 @@
       "desktop": "[data-testid='place-order-btn-desktop']"
     },
     "mobile": "~btn-place-order"
+  },
+  "confirmOrderModal": {
+    "web": "[data-testid='confirm-order-modal']",
+    "mobile": "~modal-confirm-order"
+  },
+  "confirmOrderYesButton": {
+    "web": "[data-testid='confirm-order-yes']",
+    "mobile": "~btn-confirm-order-yes"
+  },
+  "confirmOrderCancelButton": {
+    "web": "[data-testid='confirm-order-cancel']",
+    "mobile": "~btn-confirm-order-cancel"
   },
   "orderSummaryTitle": {
     "web": "[data-testid='order-summary-title']",

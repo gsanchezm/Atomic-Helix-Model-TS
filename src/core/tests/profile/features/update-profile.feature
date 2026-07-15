@@ -24,6 +24,7 @@ Feature: View and update the OmniPizza user profile across markets
       | CH     | de       | standard_user  |
       | CH     | fr       | standard_user  |
       | JP     | ja       | standard_user  |
+      | SA     | ar       | standard_user  |
 
   @android @ios @visual @ui-only
   Scenario Outline: Profile form labels are translated in <market>/<language>
@@ -42,6 +43,7 @@ Feature: View and update the OmniPizza user profile across markets
       | CH     | de       | VOLLSTÄNDIGER NAME | TELEFON    | ADRESSE      | LIEFERHINWEISE     |
       | CH     | fr       | NOM COMPLET        | TÉLÉPHONE  | ADRESSE      | NOTES DE LIVRAISON |
       | JP     | ja       | 氏名               | 電話番号   | 住所         | 配送メモ           |
+      | SA     | ar       | الاسم الكامل       | الهاتف     | العنوان      | ملاحظات التوصيل   |
 
   # OmniPizza is a non-persistent demo app: the profile screen re-syncs the form to
   # the backend's stored value on load (which races/overwrites a fresh fill), shows
@@ -64,6 +66,7 @@ Feature: View and update the OmniPizza user profile across markets
       | CH     | de       | Lukas Baumgartner   | +41 44 668 18 00 | Bahnhofstrasse 12 | An der Tür abgeben   |
       | CH     | fr       | Lukas Baumgartner   | +41 44 668 18 00 | Bahnhofstrasse 12 | Laisser à la porte   |
       | JP     | ja       | 田中 健太           | +81 3 1234 5678  | 1-2-3 Shibuya     | ドアに置いてください |
+      | SA     | ar       | محمد العتيبي       | +966 50 123 4567 | 123 شارع الفخامة | اترك الطلب عند الباب |
 
   # API-only: this checks the PATCH /api/users/me/profile contract under the api driver
   # (no UI reload race). Not run in UI/mobile suites, where the demo app's lack of
@@ -82,3 +85,4 @@ Feature: View and update the OmniPizza user profile across markets
       | CH     | de       | Anna Keller         | +41 44 668 19 00 | Bahnhofstrasse 12 | An der Tür abgeben   |
       | CH     | fr       | Anna Keller         | +41 44 668 19 00 | Bahnhofstrasse 12 | Laisser à la porte   |
       | JP     | ja       | 佐藤 明美           | +81 3 9876 5432  | 1-2-3 Shibuya     | ドアに置いてください |
+      | SA     | ar       | سارة القحطاني      | +966 55 987 6543 | 123 شارع الفخامة | اترك الطلب عند الباب |

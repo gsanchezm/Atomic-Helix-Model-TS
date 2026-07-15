@@ -7,6 +7,8 @@ const log = logger.child({ layer: 'molecule', action: 'order' });
 
 export async function placeOrder(): Promise<void> {
     await sendIntent(INTENT.CLICK, 'placeOrderButton');
+    await sendIntent(INTENT.WAIT_FOR_ELEMENT, 'confirmOrderModal||10000');
+    await sendIntent(INTENT.CLICK, 'confirmOrderYesButton');
 }
 
 export async function verifyOrderAccepted(

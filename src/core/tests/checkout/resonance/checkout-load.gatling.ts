@@ -150,6 +150,8 @@ export default simulation((setUp) => {
             // Market-specific zip / suburb fields
             if (market === 'CH') {
                 payload['plz'] = zip;
+            } else if (market === 'SA') {
+                payload['district'] = suburb;
             } else {
                 payload['zip_code'] = zip;
             }

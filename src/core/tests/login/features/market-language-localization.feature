@@ -20,3 +20,4 @@ Feature: Market-driven language localization across login + post-login UI
       | CH     | German   | Abmelden    |
       | CH     | French   | Déconnexion |
       | JP     | Japanese | ログアウト    |
+      | SA     | Arabic   | تسجيل الخروج |

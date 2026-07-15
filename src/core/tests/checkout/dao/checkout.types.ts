@@ -79,6 +79,7 @@ export interface CheckoutRequest {
     plz?: string;
     colonia?: string;
     prefectura?: string;
+    district?: string;
     card_number?: string;
     card_expiry?: string;
     card_cvv?: string;

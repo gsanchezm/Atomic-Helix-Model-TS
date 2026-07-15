@@ -23,7 +23,7 @@ const CATALOG_WAIT_TARGET = 'catalogScreen';
 // catalog-browse cold-start flake on 2026-05-27.
 const CATALOG_WAIT_TIMEOUT_MS = 90_000;
 
-export type LanguageCode = 'en' | 'es' | 'de' | 'fr' | 'ja';
+export type LanguageCode = 'en' | 'es' | 'de' | 'fr' | 'ja' | 'ar';
 
 interface OpenCatalogArgs {
     market: CountryCode;

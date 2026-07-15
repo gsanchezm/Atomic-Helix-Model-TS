@@ -98,8 +98,12 @@
     "web": "[data-testid='order-total']"
   },
   "viewOrderDetailsButton": {
-    "web": "[data-testid='view-order-details']",
+    "web": "[data-testid='order-details-toggle']",
     "mobile": "~btn-order-details"
+  },
+  "orderDetailsPanel": {
+    "web": "[data-testid='order-details-panel']",
+    "mobile": "~view-order-details-panel"
   },
   "orderDetailsLabel": {
     "web": "[data-testid='order-details-label']",

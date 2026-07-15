@@ -52,10 +52,9 @@ export interface ContactDetails {
 
 // -- form-field routing tables --
 //
-// On any market the mobile UI renders a single TextInput (testID `input-zipcode`)
-// for the market-specific address field, regardless of backend name (zip_code /
-// plz / prefectura). We pick which feature-file column fills that slot based on
-// the country's required_fields.
+// Most markets reuse the zipcode slot for their country-specific primary field.
+// SA is deliberately different: district has its own control and must never be
+// routed through input-zipcode.
 const ZIP_SLOT_PRIMARY_BY_FIELD: Record<string, 'zip' | 'suburb'> = {
     prefectura: 'suburb',
 };
@@ -63,14 +62,15 @@ const ZIP_SLOT_PRIMARY_BY_FIELD: Record<string, 'zip' | 'suburb'> = {
 // Fields that are rendered alongside the zipcode slot in the checkout form.
 // Today only MX's `colonia` lives there. JP's `prefectura` is NOT a secondary
 // — it replaces the zip in the single market-specific address slot.
-const SECONDARY_ADDRESS_FIELDS = new Set(['colonia']);
+const SECONDARY_ADDRESS_FIELDS = new Set(['colonia', 'district']);
 
-// Backend accepts only the literals 'card' / 'cash' for payment_method;
+// Backend accepts the literals 'card' / 'cash' / 'paypal' for payment_method;
 // features carry the UI label so the same matrix can drive both UI clicks
 // and API submissions. This map is the single translation point used by
 // the api branch of the route.
-function toApiPaymentMethod(uiLabel: string): string {
+export function toApiPaymentMethod(uiLabel: string): 'card' | 'cash' | 'paypal' {
     const v = (uiLabel || '').toLowerCase();
+    if (v.includes('paypal')) return 'paypal';
     if (v.includes('cash')) return 'cash';
     return 'card';
 }
@@ -223,7 +223,7 @@ export class CheckoutRoute {
         await navigateToCheckout(market, token);
 
         const zipSlot = this.pickZipSlot(ctx.countryInfo, address);
-        const secondary = this.pickSecondaryAddressField(ctx.countryInfo, address.suburb);
+        const secondary = this.pickSecondaryAddressField(ctx.countryInfo, address);
 
         await fillDeliveryAddress(address.street, zipSlot, secondary);
         await fillContactInfo(contact.name, contact.phone);
@@ -318,7 +318,7 @@ export class CheckoutRoute {
         if (!contact)  throw new Error('Missing contact info — run the fill-delivery step first.');
         if (!payment?.method) throw new Error('Missing payment method — run the payment step first.');
 
-        // Backend uses a Pydantic Literal["card","cash"] for payment_method,
+        // Backend uses a Pydantic Literal["card","cash","paypal"] for payment_method,
         // but features carry the UI label ("Credit Card" / "Cash") since
         // that's what the user sees and clicks. The web frontend translates
         // before POSTing; the API path bypasses the UI, so we replicate
@@ -339,6 +339,7 @@ export class CheckoutRoute {
             else if (field === 'prefectura') body.prefectura = address.suburb ?? address.zip;
             else if (field === 'plz')        body.plz        = address.zip;
             else if (field === 'zip_code')   body.zip_code   = address.zip;
+            else if (field === 'district')   body.district   = address.suburb ?? address.zip;
         }
 
         const isCard = payment.method.toLowerCase().includes('card');
@@ -366,6 +367,7 @@ export class CheckoutRoute {
     }
 
     private pickZipSlot(country: CountryInfo, address: DeliveryAddress): string | undefined {
+        if (country.required_fields.includes('district')) return undefined;
         for (const field of country.required_fields ?? []) {
             const source = ZIP_SLOT_PRIMARY_BY_FIELD[field];
             if (source) return address[source] || undefined;
@@ -375,11 +377,12 @@ export class CheckoutRoute {
 
     private pickSecondaryAddressField(
         country: CountryInfo,
-        value?: string,
+        address: DeliveryAddress,
     ): SecondaryAddressField | undefined {
-        if (!value) return undefined;
         const field = country.required_fields.find((f) => SECONDARY_ADDRESS_FIELDS.has(f));
         if (!field) return undefined;
+        const value = address.suburb || (field === 'district' ? address.zip : undefined);
+        if (!value) return undefined;
         return { locatorKey: `${field}Input`, value };
     }
 }

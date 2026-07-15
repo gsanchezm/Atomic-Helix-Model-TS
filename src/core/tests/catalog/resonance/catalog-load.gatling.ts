@@ -47,7 +47,7 @@ import { http } from '@gatling.io/http';
 // ---------------------------------------------------------------------------
 
 interface CatalogRow {
-    market: 'US' | 'MX' | 'CH' | 'JP';
+    market: 'US' | 'MX' | 'CH' | 'JP' | 'SA';
     language: string;
     // arrayFeeder() expects Record<string, unknown>[]; the index signature
     // satisfies that constraint without weakening the declared keys.
@@ -59,6 +59,7 @@ const CATALOG_ROWS: CatalogRow[] = [
     { market: 'MX', language: 'es' },
     { market: 'CH', language: 'de' },
     { market: 'JP', language: 'ja' },
+    { market: 'SA', language: 'ar' },
 ];
 
 const catalogFeeder = arrayFeeder(CATALOG_ROWS).circular();

@@ -38,12 +38,14 @@ const writeLock = new WriteLock();
 // Plugin identity = the tool under the hood, so legacy and new tools can coexist
 // (e.g. an `appium` plugin and a `mobilewright` plugin both serve mobile tests).
 const PLUGIN_ADDRESSES: Readonly<Record<string, string>> = {
-    'playwright':   process.env.PLAYWRIGHT_ADDRESS   || 'localhost:50052',
-    'appium':       process.env.APPIUM_ADDRESS       || 'localhost:50053',
-    'gatling':      process.env.GATLING_ADDRESS      || 'localhost:50054',
-    'api':          process.env.API_ADAPTER_ADDRESS  || 'localhost:50055',
-    'pixelmatch':   process.env.PIXELMATCH_ADDRESS   || 'localhost:50056',
-    'mobilewright': process.env.MOBILEWRIGHT_ADDRESS || 'localhost:50057',
+    'playwright':   process.env.PLAYWRIGHT_ADDRESS   || '127.0.0.1:50052',
+    'appium':       process.env.APPIUM_ADDRESS       || '127.0.0.1:50053',
+    'gatling':      process.env.GATLING_ADDRESS      || '127.0.0.1:50054',
+    'api':          process.env.API_ADAPTER_ADDRESS  || '127.0.0.1:50055',
+    'pixelmatch':   process.env.PIXELMATCH_ADDRESS   || '127.0.0.1:50056',
+    'mobilewright': process.env.MOBILEWRIGHT_ADDRESS || '127.0.0.1:50057',
+    'zap':          process.env.ZAP_ADDRESS          || '127.0.0.1:50058',
+    'mobsf':        process.env.MOBSF_ADDRESS        || '127.0.0.1:50059',
 };
 
 // --- Types ---
@@ -227,6 +229,12 @@ const PASSTHROUGH_ACTIONS = new Set<string>([
     // internally via VisualContractLoader + locator-resolver. The proxy
     // must not touch them.
     INTENT.CAPTURE_SNAPSHOT, INTENT.COMPARE_SNAPSHOT, INTENT.VALIDATE_VISUAL_CONTRACT, INTENT.UPDATE_BASELINE,
+    // Axe targets carry JSON configuration and run against the active
+    // Playwright page, so logical locator resolution does not apply.
+    INTENT.RUN_ACCESSIBILITY_AUDIT, INTENT.VALIDATE_ACCESSIBILITY_THRESHOLDS,
+    INTENT.RUN_ZAP_BASELINE_SCAN, INTENT.RUN_ZAP_API_SCAN, INTENT.PARSE_ZAP_REPORT,
+    INTENT.VALIDATE_ZAP_THRESHOLDS, INTENT.RUN_MOBSF_APK_SCAN, INTENT.PARSE_MOBSF_REPORT,
+    INTENT.RUN_SCHEMA_FUZZ, INTENT.RUN_TLS_CHECK,
     // API contract execution uses `feature||endpointId||{json}` for the
     // same reason and must also bypass logical-key resolution.
     INTENT.EXECUTE_CONTRACT_ENDPOINT, INTENT.VALIDATE_CONTRACT_ENDPOINT,
@@ -240,7 +248,12 @@ const PASSTHROUGH_ACTIONS = new Set<string>([
 // TYPE:             logicalKey||text
 // WAIT_FOR_ELEMENT: logicalKey||timeoutMs
 // ASSERT_TEXT:      logicalKey||expectedText
-const COMPOSITE_ACTIONS = new Set<string>([INTENT.TYPE, INTENT.WAIT_FOR_ELEMENT, INTENT.ASSERT_TEXT]);
+const COMPOSITE_ACTIONS = new Set<string>([
+    INTENT.TYPE,
+    INTENT.SELECT_OPTION,
+    INTENT.WAIT_FOR_ELEMENT,
+    INTENT.ASSERT_TEXT,
+]);
 
 function isMobilewrightPlatform(platform: string): boolean {
     return platform.split(':')[0].toLowerCase() === 'mobilewright';

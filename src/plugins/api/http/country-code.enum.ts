@@ -3,4 +3,5 @@ export enum CountryCode {
     MX = 'MX',
     CH = 'CH',
     JP = 'JP',
+    SA = 'SA',
 }

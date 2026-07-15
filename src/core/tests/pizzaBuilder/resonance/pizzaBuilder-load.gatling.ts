@@ -46,8 +46,8 @@ import { http } from '@gatling.io/http';
 // ---------------------------------------------------------------------------
 
 interface PizzaBuilderRow {
-    market: 'US' | 'MX' | 'CH' | 'JP';
-    language: 'en' | 'es' | 'de' | 'fr' | 'ja';
+    market: 'US' | 'MX' | 'CH' | 'JP' | 'SA';
+    language: 'en' | 'es' | 'de' | 'fr' | 'ja' | 'ar';
     item: string;
     size: 'Small' | 'Medium' | 'Large' | 'Family';
     toppings: string[];
@@ -62,6 +62,7 @@ const PIZZA_BUILDER_ROWS: PizzaBuilderRow[] = [
     { market: 'CH', language: 'de', item: 'Marinara',   size: 'Small',  toppings: ['extra-cheese'] },
     { market: 'CH', language: 'fr', item: 'Marinara',   size: 'Small',  toppings: ['mushrooms'] },
     { market: 'JP', language: 'ja', item: 'Pepperoni',  size: 'Family', toppings: ['extra-cheese', 'jalapeno'] },
+    { market: 'SA', language: 'ar', item: 'Margherita', size: 'Large',  toppings: ['mushrooms'] },
 ];
 
 const pizzaBuilderFeeder = arrayFeeder(PIZZA_BUILDER_ROWS).circular();

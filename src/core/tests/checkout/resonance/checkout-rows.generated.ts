@@ -65,6 +65,21 @@ export const checkoutRows: CheckoutRow[] = [
         "cvv": "123"
     },
     {
+        "market": "SA",
+        "item": "Pepperoni",
+        "size": "Large",
+        "qty": 1,
+        "street": "123 شارع الفخامة",
+        "zip": "",
+        "suburb": "العليا",
+        "name": "محمد العتيبي",
+        "phone": "+966 50 123 4567",
+        "payment": "Credit Card",
+        "card": "4242 4242 4242 4242",
+        "exp": "12/28",
+        "cvv": "123"
+    },
+    {
         "market": "US",
         "item": "Pepperoni",
         "size": "Large",
@@ -119,6 +134,21 @@ export const checkoutRows: CheckoutRow[] = [
         "suburb": "Tokyo",
         "name": "佐藤 明美",
         "phone": "+81 3 9876 5432",
+        "payment": "Cash",
+        "card": "",
+        "exp": "",
+        "cvv": ""
+    },
+    {
+        "market": "SA",
+        "item": "Pepperoni",
+        "size": "Large",
+        "qty": 1,
+        "street": "123 شارع الفخامة",
+        "zip": "",
+        "suburb": "العليا",
+        "name": "سارة القحطاني",
+        "phone": "+966 55 987 6543",
         "payment": "Cash",
         "card": "",
         "exp": "",

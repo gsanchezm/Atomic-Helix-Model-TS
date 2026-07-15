@@ -83,7 +83,13 @@ const cmd = `"${cucumberBin}" --tags "@${viewport} and @visual" --format json:re
 const child = spawn(cmd, {
     stdio: 'inherit',
     cwd: ROOT,
-    env: { ...process.env, VISUAL_UPDATE_BASELINE: 'true', PLUGIN_PIXELMATCH: 'true' },
+    env: {
+        ...process.env,
+        DRIVER: 'playwright',
+        PLATFORM: 'web',
+        VISUAL_UPDATE_BASELINE: 'true',
+        PLUGIN_PIXELMATCH: 'true',
+    },
     shell: true,
 });
 

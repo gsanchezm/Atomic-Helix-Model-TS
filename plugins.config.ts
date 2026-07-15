@@ -60,10 +60,30 @@ const plugins: PluginDefinition[] = [
     // Playwright session in-memory. Toggle via PLUGIN_PIXELMATCH=true — the
     // launcher does NOT spawn a separate Pixelmatch process to avoid port
     // collision on 50056.
+    //
+    // Axe follows the identical co-located pattern: its actions are only
+    // registered into the Playwright action registry when PLUGIN_AXE=true
+    // at PLUGIN PROCESS startup (see registerPlaywrightActions.ts) — setting
+    // PLUGIN_AXE=true on the cucumber-js process alone (e.g. the `test:a11y`
+    // script) does NOT reach the already-running plugin process. Set
+    // PLUGIN_AXE=true in `.env` before/while `pnpm run plugins` is running
+    // (the watcher hot-reloads the Playwright plugin on `.env` changes).
     {
         name: 'Mobilewright',
         script: 'plugin:mobilewright',
         envVar: 'PLUGIN_MOBILEWRIGHT',
+        get enabled() { return isEnabled(this.envVar); },
+    },
+    {
+        name: 'ZAP',
+        script: 'plugin:zap',
+        envVar: 'PLUGIN_ZAP',
+        get enabled() { return isEnabled(this.envVar); },
+    },
+    {
+        name: 'MobSF',
+        script: 'plugin:mobsf',
+        envVar: 'PLUGIN_MOBSF',
         get enabled() { return isEnabled(this.envVar); },
     },
 ];

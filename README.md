@@ -102,6 +102,8 @@ Toggle plugins with `PLUGIN_<TOOL>=true|false` in `.env` and they hot-reload.
 | Resonance        | `[domain]/resonance/`                                 | Gatling simulations co-located with the feature, driven by the same Examples table                    |
 | Execution Helix  | `.github/workflows/`                                  | CI/CD uniting every layer into parallel, isolated orbits (`ahm-execution-helix.yml`)                  |
 
+This table is the five *execution* layers, one per domain. Cross-cutting quality attributes (visual, accessibility, and — proposed — parts of security) are a separate axis: **contracts**, not layers — see "Adapting other test categories" in the Appendix.
+
 Steps look like this:
 
 ```ts
@@ -149,7 +151,7 @@ src/
         step_definitions/          # *.steps.ts + visual.hooks.ts — thin Gherkin bindings (Eco-Systems)
         features/                  # *.feature            (Eco-Systems)
         dao/                       # *.dao.ts + *.types.ts — Given $S_0$ state injection
-        contracts/                 # *.locators.json, api/visual contracts
+        contracts/                 # *.locators.json, api/visual/a11y contracts (security: TBD, see Appendix)
         resonance/                 # *.gatling.ts (JVM bundle, isolated) (Resonance)
   telemetry/                       # JSONL → MinIO
   utils/                           # pino logger
@@ -425,8 +427,11 @@ AHM defines *how tests execute* through formal constraints rather than prescribi
 
 ### Adapting other test categories
 
-- **Visual / accessibility** — map onto Molecules: a snapshot check is a `COMPARE_SNAPSHOT` intent. The `pixelmatch` plugin owns the oracle. Visual snapshots are **a dimension of the web Eco-System**, not a separate pipeline: the same Cucumber scenarios that drive functional checks fire visual hooks when tagged `@visual` and `PLUGIN_PIXELMATCH=true`. The CI gate (`scripts/visual-gate.js`) surfaces drift as an independent failure so functional and visual regressions remain separately diagnosable.
-- **DAST** — fits into Resonance. Same feeder mechanics as load tests, payload becomes the attack surface.
+- **Visual, accessibility, API — all cross-cutting quality attributes are contracts, never a new domain.** There is no `visual/` or `accessibility/` folder under `src/core/tests/`. Each domain's `contracts/` holds one declarative JSON artifact per concern (`*.locators.json`, `*.api.contract.json`, `*.visual.json`, `*.a11y.json`), consumed by *existing* scenarios via a tag — no duplicate feature files, no pseudo-domain.
+  - **Visual** — `COMPARE_SNAPSHOT` intent, owned by the `pixelmatch` plugin, driven by `*.visual.json`. Wired as an `After({tags: '@visual'})` hook: fires post-scenario, diff failures are logged (not thrown) since the real gate is CI's baseline workflow.
+  - **Accessibility** — `RUN_ACCESSIBILITY_AUDIT` / `VALIDATE_ACCESSIBILITY_THRESHOLDS` intents, owned by the `axe` action set co-located in the Playwright plugin (`PLUGIN_AXE=true`), driven by `*.a11y.json`. Wired as an explicit `Then` step (not an After hook, unlike visual) — see `catalog/step_definitions/catalog.steps.ts` + `CatalogRoute.verifyAccessibilityGate()`. The reason it differs from visual: `catalog` is the one domain that loads alphabetically before `checkout` in cucumber's `require` glob, so an After hook there would race `checkout.steps.ts`'s global session-reset hook and could audit an already-navigated-away page. An explicit step runs in-sequence, before any After hook, so it's immune to that race. Real violations throw (unlike visual) — axe *is* the gate, not just a report signal.
+  - **Security — placement proposed, not yet implemented.** ZAP and MobSF don't split as cleanly: some checks are per-domain/contract-shaped (`RUN_ZAP_API_SCAN`, `RUN_SCHEMA_FUZZ` — tie to an existing `*.api.contract.json`), others are whole-app/infra-shaped (`RUN_ZAP_BASELINE_SCAN`, `RUN_TLS_CHECK`, `RUN_MOBSF_APK_SCAN` — no single owning domain, closer to `support/`). See `CLAUDE.md`'s "Security placement — proposed split" for the current analysis.
+- **DAST (load-shaped)** — a security check that specifically probes behavior under *concurrent adversarial traffic* (not a one-shot crawl) is the one genuinely Resonance-shaped security citizen — same feeder mechanics as load tests, payload becomes the attack surface.
 - **SAST** — outside the AHM kernel. Static analysis doesn't carry stochastic noise, so $\lambda < 0$ doesn't apply. Runs as a regular CI job.
 - **Unit tests** — outside the kernel. They evaluate code locally, no network jitter; should live alongside source code.
 

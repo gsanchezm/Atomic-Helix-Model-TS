@@ -23,6 +23,7 @@ Feature: Place a delivery order across markets
       | MX     | Margherita | Medium |   3 | Av. Carranza 123  |    78230 | Polanco | Guillermo Alcantara | +52 55 1234 5678 | 4242 4242 4242 4242 | 12/28 | 123 |
       | CH     | Marinara   | Small  |   1 | Bahnhofstrasse 12 |     8001 |         | Lukas Baumgartner   | +41 44 668 18 00 | 4242 4242 4242 4242 | 12/28 | 123 |
       | JP     | Pepperoni  | Family |   2 |     1-2-3 Shibuya | 150-0002 | Tokyo   | 田中 健太           |  +81 3 1234 5678 | 4242 4242 4242 4242 | 12/28 | 123 |
+      | SA     | Pepperoni  | Large  |   1 | 123 شارع الفخامة  |          | العليا  | محمد العتيبي        | +966 50 123 4567 | 4242 4242 4242 4242 | 12/28 | 123 |
 
   @desktop @responsive @android @ios @performance @visual @api @writes-shared-state
   Scenario Outline: Place a delivery order in <market> paying with cash
@@ -38,3 +39,12 @@ Feature: Place a delivery order across markets
       | MX     | Margherita | Medium |   3 | Av. Carranza 123  |    78230 | Polanco | Valentina Herrera | +52 55 9876 5432 |
       | CH     | Marinara   | Small  |   1 | Bahnhofstrasse 12 |     8001 |         | Anna Keller       | +41 44 668 19 00 |
       | JP     | Pepperoni  | Family |   2 |     1-2-3 Shibuya | 150-0002 | Tokyo   | 佐藤 明美         |  +81 3 9876 5432 |
+      | SA     | Pepperoni  | Large  |   1 | 123 شارع الفخامة  |          | العليا  | سارة القحطاني     | +966 55 987 6543 |
+
+  @api @writes-shared-state
+  Scenario: Place an API order using the PayPal payment literal
+    Given they are ordering in market "US"
+    And they have an order with "Pepperoni" size "Large" quantity 1
+    When they provide delivery details "123 Luxury Avenue" "90210", "" for "Ada Lovelace" "+1 415 555 0110"
+    And they choose payment method "PayPal"
+    Then the order is accepted

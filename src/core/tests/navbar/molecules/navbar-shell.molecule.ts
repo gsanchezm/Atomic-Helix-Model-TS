@@ -25,8 +25,8 @@ const CATALOG_PATH = '/catalog';
 const NAVBAR_READY_WAIT_MS = 20_000;
 const PRESENCE_WAIT_MS = 8_000;
 
-export type LanguageCode = 'en' | 'es' | 'de' | 'fr' | 'ja';
-export type MarketCode = 'US' | 'MX' | 'CH' | 'JP';
+export type LanguageCode = 'en' | 'es' | 'de' | 'fr' | 'ja' | 'ar';
+export type MarketCode = 'US' | 'MX' | 'CH' | 'JP' | 'SA';
 
 interface OpenCatalogArgs {
     market: MarketCode;

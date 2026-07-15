@@ -6,7 +6,7 @@ import { seedWebPersistedStores as seedPersistedStores } from '@core/tests/suppo
 
 const log = logger.child({ layer: 'molecule', domain: 'order_success' });
 
-export type LanguageCode = 'en' | 'es' | 'de' | 'fr' | 'ja';
+export type LanguageCode = 'en' | 'es' | 'de' | 'fr' | 'ja' | 'ar';
 
 const SUCCESS_SCREEN_WAIT_MS = 90_000;
 const PRESENCE_WAIT_MS = 8_000;
@@ -141,6 +141,8 @@ export async function assertOrderDetailsLabelContains(expected: string): Promise
     // affordance once useDeepLinkParams resolves the orderId fetch). Wait
     // for the element before reading so we don't race the hydration.
     await sendIntent(INTENT.WAIT_FOR_ELEMENT, `orderDetailsLabel||${PRESENCE_WAIT_MS}`);
+    await sendIntent(INTENT.CLICK, 'viewOrderDetailsButton');
+    await sendIntent(INTENT.WAIT_FOR_ELEMENT, `orderDetailsPanel||${PRESENCE_WAIT_MS}`);
     const result = await sendIntent(INTENT.READ_TEXT, 'orderDetailsLabel');
     assertContainsCaseInsensitive('orderDetailsLabel', (result.payload ?? '').trim(), expected);
 }
