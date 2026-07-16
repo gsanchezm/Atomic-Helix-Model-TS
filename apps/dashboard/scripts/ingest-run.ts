@@ -31,17 +31,26 @@ import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 
 import type {
+  A11yAudit,
+  A11yViolation,
+  AccessibilityTool,
   ApiTool,
   BrowserBlock,
   ManifestEntry,
+  MobileSecurityTool,
   MobileUiTool,
+  MobsfFinding,
+  MobsfPlatformBlock,
   PlatformBlock,
   RunInfo,
+  SecurityGate,
   Status,
   TestCase,
   TestStep,
   ViewportBlock,
+  WebSecurityTool,
   WebUiTool,
+  ZapScanBlock,
 } from '../src/shared/types.js';
 import { ingestGatling } from './ingest-gatling.js';
 import { ingestPixelmatch } from './ingest-pixelmatch.js';
@@ -560,7 +569,178 @@ async function buildAppiumTool(dir: string = reportsDir): Promise<MobileUiTool |
   };
 }
 
-export { buildPlaywrightTool, buildAppiumTool, materializeScreenshots };
+// ---------- axe / zap / mobsf scratch inputs -----------------------------
+// These are NOT cucumber JSON — they are written by the a11y/security plugins
+// into the flat reports/ dir. Mirrors how gatling/pixelmatch inputs work.
+
+/** Generic "read a JSON object, null when absent/empty" reader. */
+async function readJsonObject<T>(file: string): Promise<T | null> {
+  try {
+    const text = await fs.readFile(file, 'utf8');
+    if (!text.trim()) return null;
+    return JSON.parse(text) as T;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw err;
+  }
+}
+
+interface AxeScratchRecord {
+  feature: string;
+  auditId: string;
+  url: string;
+  timestamp: string;
+  violations?: A11yViolation[];
+  /** Count of passed rules (axe reports numbers here, not arrays). */
+  passes?: number;
+  /** Count of rules axe could not conclusively evaluate. */
+  incomplete?: number;
+}
+
+interface AxeScratch {
+  records?: AxeScratchRecord[];
+}
+
+/**
+ * Build the axe (accessibility) tool from reports/axe.json.
+ * Counts: failed = critical+serious violations, skipped = moderate+minor
+ * violations, passed = sum of per-record `passes` counts. No timing data.
+ */
+async function buildAxeTool(dir: string = reportsDir): Promise<AccessibilityTool | null> {
+  const scratch = await readJsonObject<AxeScratch>(path.join(dir, 'axe.json'));
+  if (!scratch || !Array.isArray(scratch.records)) return null;
+
+  const audits: A11yAudit[] = scratch.records.map((r) => ({
+    feature: r.feature ?? '(unknown feature)',
+    auditId: r.auditId ?? '(unknown audit)',
+    url: r.url ?? '',
+    timestamp: r.timestamp ?? '',
+    violations: r.violations ?? [],
+    passes: r.passes ?? 0,
+    incomplete: r.incomplete ?? 0,
+  }));
+
+  const allViolations = audits.flatMap((a) => a.violations);
+  const failed  = allViolations.filter((v) => v.impact === 'critical' || v.impact === 'serious').length;
+  const skipped = allViolations.filter((v) => v.impact === 'moderate' || v.impact === 'minor').length;
+  const passed  = audits.reduce((a, r) => a + r.passes, 0);
+
+  return {
+    kind: 'accessibility',
+    id: 'axe',
+    name: 'axe-core',
+    description: 'WCAG 2.x accessibility audit',
+    passed, failed, skipped,
+    duration: '0s',
+    suites: [...new Set(audits.map((a) => a.feature))],
+    audits,
+  };
+}
+
+interface ZapScratch {
+  targetUrl?: string;
+  baseline?: ZapScanBlock | null;
+  apiScan?: ZapScanBlock | null;
+  tls?: SecurityGate | null;
+  schemaFuzz?: SecurityGate | null;
+}
+
+/**
+ * Build the ZAP (web security) tool from reports/zap.json.
+ * Counts: failed = High+Medium alerts across both scans, +1 per failing
+ * TLS / schema-fuzz gate; passed = Low+Informational alerts. No timing data.
+ */
+async function buildZapTool(dir: string = reportsDir): Promise<WebSecurityTool | null> {
+  const scratch = await readJsonObject<ZapScratch>(path.join(dir, 'zap.json'));
+  if (!scratch) return null;
+
+  const baseline   = scratch.baseline ?? null;
+  const apiScan    = scratch.apiScan ?? null;
+  const tls        = scratch.tls ?? null;
+  const schemaFuzz = scratch.schemaFuzz ?? null;
+
+  const risk = (block: ZapScanBlock | null, key: string): number => block?.byRisk?.[key] ?? 0;
+
+  const failed =
+    risk(baseline, 'High') + risk(baseline, 'Medium') +
+    risk(apiScan, 'High')  + risk(apiScan, 'Medium') +
+    (tls && tls.pass === false ? 1 : 0) +
+    (schemaFuzz && schemaFuzz.pass === false ? 1 : 0);
+  const passed =
+    risk(baseline, 'Low') + risk(baseline, 'Informational') +
+    risk(apiScan, 'Low')  + risk(apiScan, 'Informational');
+
+  return {
+    kind: 'security',
+    scope: 'web',
+    id: 'zap',
+    name: 'OWASP ZAP',
+    description: 'Web application security scan',
+    passed, failed, skipped: 0,
+    duration: '0s',
+    targetUrl: scratch.targetUrl ?? '',
+    baseline, apiScan, tls, schemaFuzz,
+  };
+}
+
+interface MobsfScratch {
+  platform?: 'android' | 'ios';
+  appFile?: string;
+  securityScore?: number | null;
+  high?: number;
+  warning?: number;
+  info?: number;
+  findings?: MobsfFinding[];
+  raw?: object;
+}
+
+function mobsfPlatformBlock(s: MobsfScratch): MobsfPlatformBlock {
+  const findings = s.findings ?? [];
+  return {
+    appFile: s.appFile ?? '(unknown binary)',
+    securityScore: s.securityScore ?? null,
+    high: s.high ?? 0,
+    warning: s.warning ?? 0,
+    info: s.info ?? findings.filter((f) => f.severity === 'info').length,
+    findings,
+  };
+}
+
+/**
+ * Build ONE MobSF (mobile security) tool from whichever of
+ * reports/mobsf-android.json / reports/mobsf-ios.json exist. An absent
+ * platform stays null (the detail view renders it as "not scanned").
+ * Counts: failed = sum of `high` across present platforms; passed = count of
+ * non-high findings. No timing data. Returns null when NEITHER file exists.
+ */
+async function buildMobsfTool(dir: string = reportsDir): Promise<MobileSecurityTool | null> {
+  const androidRaw = await readJsonObject<MobsfScratch>(path.join(dir, 'mobsf-android.json'));
+  const iosRaw     = await readJsonObject<MobsfScratch>(path.join(dir, 'mobsf-ios.json'));
+  if (!androidRaw && !iosRaw) return null;
+
+  const android = androidRaw ? mobsfPlatformBlock(androidRaw) : null;
+  const ios     = iosRaw ? mobsfPlatformBlock(iosRaw) : null;
+
+  const present = [android, ios].filter((b): b is MobsfPlatformBlock => b !== null);
+  const failed = present.reduce((a, b) => a + b.high, 0);
+  const passed = present.reduce(
+    (a, b) => a + b.findings.filter((f) => f.severity !== 'high').length,
+    0,
+  );
+
+  return {
+    kind: 'security',
+    scope: 'mobile',
+    id: 'mobsf',
+    name: 'MobSF',
+    description: 'Mobile app static security analysis',
+    passed, failed, skipped: 0,
+    duration: '0s',
+    platforms: { android, ios },
+  };
+}
+
+export { buildPlaywrightTool, buildAppiumTool, buildAxeTool, buildZapTool, buildMobsfTool, materializeScreenshots };
 
 async function main(): Promise<void> {
   const { runId: argRunId } = parseArgs();
@@ -639,6 +819,33 @@ async function main(): Promise<void> {
   if (pixelmatch) {
     await writeJson(path.join(runDir, 'pixelmatch.json'), pixelmatch);
     wroteTools.push(`pixelmatch (${pixelmatch.passed}P/${pixelmatch.failed}F across ${pixelmatch.diffs.length} snapshots)`);
+  }
+
+  // ---- axe (accessibility) ------------------------------------------------
+  const axeTool = await buildAxeTool();
+  if (axeTool) {
+    await writeJson(path.join(runDir, 'axe.json'), axeTool);
+    wroteTools.push(
+      `axe (${axeTool.failed} blocking / ${axeTool.skipped} advisory violations across ${axeTool.audits.length} audit${axeTool.audits.length === 1 ? '' : 's'})`,
+    );
+  }
+
+  // ---- zap (web security) -------------------------------------------------
+  const zapTool = await buildZapTool();
+  if (zapTool) {
+    await writeJson(path.join(runDir, 'zap.json'), zapTool);
+    wroteTools.push(`zap (${zapTool.failed} High+Medium alerts+gates, ${zapTool.passed} Low+Info)`);
+  }
+
+  // ---- mobsf (mobile security) ---------------------------------------------
+  const mobsfTool = await buildMobsfTool();
+  if (mobsfTool) {
+    await writeJson(path.join(runDir, 'mobsf.json'), mobsfTool);
+    const platforms = [
+      mobsfTool.platforms.android ? 'android' : null,
+      mobsfTool.platforms.ios ? 'ios' : null,
+    ].filter(Boolean).join('+');
+    wroteTools.push(`mobsf (${mobsfTool.failed} high findings, platforms: ${platforms})`);
   }
 
   if (wroteTools.length === 0) {

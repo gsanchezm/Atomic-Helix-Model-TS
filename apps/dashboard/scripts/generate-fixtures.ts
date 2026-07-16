@@ -12,15 +12,18 @@ import { fileURLToPath } from 'node:url';
 import { PNG } from 'pngjs';
 
 import type {
+  AccessibilityTool,
   ApiTool,
   BrowserBlock,
   ManifestEntry,
+  MobileSecurityTool,
   MobileUiTool,
   PerformanceTool,
   RunInfo,
   TestCase,
   VisualDiff,
   VisualTool,
+  WebSecurityTool,
   WebUiTool,
 } from '../src/shared/types.js';
 
@@ -275,6 +278,183 @@ const pixelmatch1: FixtureVisualTool = {
   ],
 };
 
+// axe counts: failed = critical+serious violations, skipped = moderate+minor,
+// passed = sum of per-audit `passes` counts, duration = 0 (no timing).
+const axe1: AccessibilityTool = {
+  kind: 'accessibility',
+  id: 'axe',
+  name: 'axe-core',
+  description: 'WCAG 2.x accessibility audit',
+  passed: 80, failed: 2, skipped: 2, duration: '0s',
+  suites: ['Catalog', 'Checkout'],
+  audits: [
+    {
+      feature: 'Catalog',
+      auditId: 'catalog_grid',
+      url: 'https://staging.acme-storefront.example/catalog',
+      timestamp: '2026-05-24T09:48:02Z',
+      passes: 42,
+      incomplete: 2,
+      violations: [
+        {
+          id: 'color-contrast',
+          impact: 'serious',
+          help: 'Elements must meet minimum color contrast ratio thresholds',
+          description: 'Ensures the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds',
+          helpUrl: 'https://dequeuniversity.com/rules/axe/4.9/color-contrast',
+          tags: ['wcag2aa', 'wcag143'],
+          nodes: [
+            {
+              target: ['.product-card > .price-strike'],
+              html: '<span class="price-strike">$24.99</span>',
+              failureSummary: 'Fix any of the following:\n  Element has insufficient color contrast of 2.61 (foreground: #9a8fb0, background: #2a2140, font size: 12.0pt, font weight: normal). Expected contrast ratio of 4.5:1',
+            },
+            {
+              target: ['.pagination > .page-hint'],
+              html: '<span class="page-hint">Page 1 of 12</span>',
+              failureSummary: 'Fix any of the following:\n  Element has insufficient color contrast of 3.12 (foreground: #8d82a6, background: #241c38). Expected contrast ratio of 4.5:1',
+            },
+          ],
+        },
+        {
+          id: 'landmark-one-main',
+          impact: 'moderate',
+          help: 'Document should have one main landmark',
+          description: 'Ensures the document has a main landmark',
+          helpUrl: 'https://dequeuniversity.com/rules/axe/4.9/landmark-one-main',
+          tags: ['best-practice'],
+          nodes: [
+            {
+              target: ['html'],
+              html: '<html lang="en">',
+              failureSummary: 'Fix all of the following:\n  Document does not have a main landmark',
+            },
+          ],
+        },
+      ],
+    },
+    {
+      feature: 'Checkout',
+      auditId: 'checkout_summary',
+      url: 'https://staging.acme-storefront.example/checkout',
+      timestamp: '2026-05-24T09:52:18Z',
+      passes: 38,
+      incomplete: 1,
+      violations: [
+        {
+          id: 'image-alt',
+          impact: 'critical',
+          help: 'Images must have alternate text',
+          description: 'Ensures <img> elements have alternate text or a role of none or presentation',
+          helpUrl: 'https://dequeuniversity.com/rules/axe/4.9/image-alt',
+          tags: ['wcag2a', 'wcag111'],
+          nodes: [
+            {
+              target: ['.order-summary img.product-thumb'],
+              html: '<img class="product-thumb" src="/img/pizza-margherita.png">',
+              failureSummary: 'Fix any of the following:\n  Element does not have an alt attribute',
+            },
+            {
+              target: ['.payment-methods img[src$="visa.svg"]'],
+              html: '<img src="/img/visa.svg">',
+              failureSummary: 'Fix any of the following:\n  Element does not have an alt attribute',
+            },
+          ],
+        },
+        {
+          id: 'region',
+          impact: 'minor',
+          help: 'All page content should be contained by landmarks',
+          description: 'Ensures all page content is contained by landmarks',
+          helpUrl: 'https://dequeuniversity.com/rules/axe/4.9/region',
+          tags: ['best-practice'],
+          nodes: [
+            {
+              target: ['.promo-ribbon'],
+              html: '<div class="promo-ribbon">Free delivery over $30</div>',
+              failureSummary: 'Fix any of the following:\n  Some page content is not contained by landmarks',
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+// zap counts: failed = High+Medium alerts across both scans (+1 per failing
+// gate), passed = Low+Informational alerts, duration = 0 (no timing).
+const zap1: WebSecurityTool = {
+  kind: 'security',
+  scope: 'web',
+  id: 'zap',
+  name: 'OWASP ZAP',
+  description: 'Web application security scan',
+  passed: 7, failed: 5, skipped: 0, duration: '0s',
+  targetUrl: 'https://staging.acme-storefront.example',
+  baseline: {
+    byRisk: { High: 0, Medium: 2, Low: 3, Informational: 2 },
+    findings: [
+      { name: 'Content Security Policy (CSP) Header Not Set', risk: 'Medium', confidence: 'High',   instances: 12 },
+      { name: 'Missing Anti-clickjacking Header',             risk: 'Medium', confidence: 'Medium', instances: 8 },
+      { name: 'X-Content-Type-Options Header Missing',        risk: 'Low',    confidence: 'Medium', instances: 14 },
+      { name: 'Cookie Without Secure Flag',                   risk: 'Low',    confidence: 'Medium', instances: 3 },
+      { name: 'Server Leaks Version Information',             risk: 'Low',    confidence: 'High',   instances: 22 },
+      { name: 'Re-examine Cache-control Directives',          risk: 'Informational', confidence: 'Low', instances: 31 },
+      { name: 'Modern Web Application',                       risk: 'Informational', confidence: 'Medium', instances: 2 },
+    ],
+  },
+  apiScan: {
+    byRisk: { High: 1, Medium: 1, Low: 1, Informational: 1 },
+    findings: [
+      { name: 'SQL Injection',                                       risk: 'High',   confidence: 'Medium', instances: 2 },
+      { name: 'Application Error Disclosure',                        risk: 'Medium', confidence: 'Medium', instances: 4 },
+      { name: 'Strict-Transport-Security Header Not Set',            risk: 'Low',    confidence: 'High',   instances: 9 },
+      { name: 'A Client Error response code was returned by server', risk: 'Informational', confidence: 'High', instances: 17 },
+    ],
+  },
+  tls:        { pass: true,  reportPath: 'reports/security/tls-check.json', findingsCount: 0 },
+  schemaFuzz: { pass: false, reportPath: 'reports/security/schema-fuzz.json' },
+};
+
+// mobsf counts: failed = sum of `high` across present platforms, passed =
+// count of non-high findings, duration = 0 (no timing).
+const mobsf1: MobileSecurityTool = {
+  kind: 'security',
+  scope: 'mobile',
+  id: 'mobsf',
+  name: 'MobSF',
+  description: 'Mobile app static security analysis',
+  passed: 9, failed: 3, skipped: 0, duration: '0s',
+  platforms: {
+    android: {
+      appFile: 'acme-storefront-release.apk',
+      securityScore: 64,
+      high: 2, warning: 3, info: 2,
+      findings: [
+        { severity: 'high',    title: 'Debug Enabled For App', description: '[android:debuggable=true] Debugging was enabled on the app which makes it easier for reverse engineers to hook a debugger to it.' },
+        { severity: 'high',    title: 'Clear text traffic is Enabled For App', description: '[android:usesCleartextTraffic=true] The app intends to use cleartext network traffic such as HTTP.' },
+        { severity: 'warning', title: 'App can be installed on a vulnerable Android version', description: 'Android 7.0, minSdk=24. Older devices miss recent security patches.' },
+        { severity: 'warning', title: 'Application Data can be Backed up', description: '[android:allowBackup=true] This flag allows anyone to backup your application data via adb.' },
+        { severity: 'warning', title: 'Insecure Random Number Generator', description: 'The app uses java.util.Random, an insecure PRNG, in a security-sensitive context.' },
+        { severity: 'info',    title: 'App uses SQLite Database', description: 'The app uses a local SQLite database and executes raw SQL queries.' },
+        { severity: 'info',    title: 'Firebase URL detected', description: 'A Firebase realtime database endpoint was found in string resources.' },
+        { severity: 'secure',  title: 'This application has no privacy trackers', description: 'No known advertising or analytics trackers were detected in the binary.' },
+      ],
+    },
+    ios: {
+      appFile: 'AcmeStorefront.ipa',
+      securityScore: 71,
+      high: 1, warning: 2, info: 1,
+      findings: [
+        { severity: 'high',    title: 'App Transport Security AllowsArbitraryLoads is allowed', description: 'NSAllowsArbitraryLoads set to true disables ATS restrictions for all network connections.' },
+        { severity: 'warning', title: 'Binary makes use of insecure API(s)', description: 'The binary may contain the following insecure API(s): _memcpy, _strlen.' },
+        { severity: 'warning', title: 'Binary does not have Restricted segment', description: 'Missing __RESTRICT segment makes DYLD environment-variable injection easier.' },
+        { severity: 'info',    title: 'Binary makes use of malloc function', description: 'The binary may use the _malloc function instead of calloc.' },
+      ],
+    },
+  },
+};
+
 // ---------- Run 2: 2026-05-23-build-4571 ---------------------------------
 // A few more failures and slightly different counts to make the run-picker
 // dropdown feel like it actually shows different data.
@@ -336,6 +516,69 @@ const pixelmatch2: FixtureVisualTool = {
   ),
 };
 
+// One extra serious violation on the catalog audit (failed 2 → 3).
+const axe2: AccessibilityTool = {
+  ...axe1,
+  passed: 78, failed: 3, skipped: 2,
+  audits: axe1.audits.map((a) =>
+    a.auditId === 'catalog_grid'
+      ? {
+          ...a,
+          passes: 40,
+          violations: [
+            ...a.violations,
+            {
+              id: 'link-name',
+              impact: 'serious' as const,
+              help: 'Links must have discernible text',
+              description: 'Ensures links have discernible text',
+              helpUrl: 'https://dequeuniversity.com/rules/axe/4.9/link-name',
+              tags: ['wcag2a', 'wcag244'],
+              nodes: [
+                {
+                  target: ['.cart-mini > a.icon-only'],
+                  html: '<a class="icon-only" href="/cart"><svg aria-hidden="true">…</svg></a>',
+                  failureSummary: 'Fix all of the following:\n  Element is in tab order and does not have accessible text',
+                },
+              ],
+            },
+          ],
+        }
+      : a,
+  ),
+};
+
+// The cart-redesign branch introduces a CORS misconfiguration (Medium).
+const zap2: WebSecurityTool = {
+  ...zap1,
+  passed: 7, failed: 6,
+  baseline: {
+    byRisk: { High: 0, Medium: 3, Low: 3, Informational: 2 },
+    findings: [
+      { name: 'CORS Misconfiguration', risk: 'Medium', confidence: 'Medium', instances: 5 },
+      ...zap1.baseline!.findings,
+    ],
+  },
+};
+
+// Android score drops after enabling a debug flag in the redesign build.
+const mobsf2: MobileSecurityTool = {
+  ...mobsf1,
+  passed: 9, failed: 4,
+  platforms: {
+    android: {
+      ...mobsf1.platforms.android!,
+      securityScore: 58,
+      high: 3,
+      findings: [
+        { severity: 'high', title: 'Janus Vulnerability', description: 'The APK is signed with v1 signature scheme only, making it vulnerable to the Janus vulnerability on Android 5.0-8.0.' },
+        ...mobsf1.platforms.android!.findings,
+      ],
+    },
+    ios: mobsf1.platforms.ios,
+  },
+};
+
 // -------------------------------------------------------------------------
 
 const manifest: ManifestEntry[] = [
@@ -351,11 +594,14 @@ interface RunBundle {
   api: ApiTool;
   gatling: PerformanceTool;
   pixelmatch: FixtureVisualTool;
+  axe: AccessibilityTool;
+  zap: WebSecurityTool;
+  mobsf: MobileSecurityTool;
 }
 
 const runs: RunBundle[] = [
-  { runId: manifest[0].runId, run: run1Info, playwright: playwright1, appium: appium1, api: api1, gatling: gatling1, pixelmatch: pixelmatch1 },
-  { runId: manifest[1].runId, run: run2Info, playwright: playwright2, appium: appium2, api: api2, gatling: gatling2, pixelmatch: pixelmatch2 },
+  { runId: manifest[0].runId, run: run1Info, playwright: playwright1, appium: appium1, api: api1, gatling: gatling1, pixelmatch: pixelmatch1, axe: axe1, zap: zap1, mobsf: mobsf1 },
+  { runId: manifest[1].runId, run: run2Info, playwright: playwright2, appium: appium2, api: api2, gatling: gatling2, pixelmatch: pixelmatch2, axe: axe2, zap: zap2, mobsf: mobsf2 },
 ];
 
 // ---------- PNG generation ------------------------------------------------
@@ -479,6 +725,9 @@ async function main(): Promise<void> {
     await writeJson(path.join(runDir, 'api.json'),        bundle.api);
     await writeJson(path.join(runDir, 'gatling.json'),    bundle.gatling);
     await writeJson(path.join(runDir, 'pixelmatch.json'), bundle.pixelmatch);
+    await writeJson(path.join(runDir, 'axe.json'),        bundle.axe);
+    await writeJson(path.join(runDir, 'zap.json'),        bundle.zap);
+    await writeJson(path.join(runDir, 'mobsf.json'),      bundle.mobsf);
     await generateDiffPngs(bundle.runId, bundle.pixelmatch.diffs);
     console.log(`[fixtures] wrote ${bundle.runId}`);
   }

@@ -21,8 +21,15 @@ import {
 import type { CheckoutWorld } from '@core/tests/support/world';
 import { BROWSER_COMMAND } from '@kernel/browser-command';
 import { sendBrowserCommand } from '@core/tests/support/browser-command';
+import { SecurityContractLoader } from '@core/contracts/security-contract-loader';
+import { writeWebSecuritySection } from '@core/tests/support/security-report-writer';
 
 const log = logger.child({ layer: 'route', domain: 'login' });
+
+interface ZapSummary {
+    findings: Array<{ name: string; risk: string; confidence: string; instances: number }>;
+    byRisk: Record<string, number>;
+}
 
 type Driver = 'playwright' | 'appium' | 'mobilewright' | 'api';
 
@@ -208,6 +215,73 @@ export class LoginRoute {
         await assertSubtitle(expected);
     }
 
+    /**
+     * Contract-shaped security gate on the API front door. Runs the login
+     * domain's `login.security.json` — the ZAP active API scan (the hard
+     * gate: fails the step when a risk bucket exceeds its threshold) plus a
+     * schema-fuzz signal (recorded, non-fatal — like the @visual hook, a
+     * report signal rather than a gate, so a noisy third-party fuzz run does
+     * not block an otherwise-green suite). Results are persisted to
+     * reports/zap.json for the dashboard. Platform is passed EXPLICITLY
+     * ('zap' / 'api') because these live in their own plugins — omitting it
+     * would misroute the intent to the ambient DRIVER. No-ops the ZAP half
+     * when PLUGIN_ZAP is off so a stray @security run without the plugin
+     * degrades gracefully instead of hard-failing on a missing route.
+     */
+    async verifySecurityGate(): Promise<void> {
+        const contract = SecurityContractLoader.load('login');
+        const token = this.world.auth?.token;
+
+        const apiScan = contract.web?.zapApiScan;
+        if (apiScan?.enabled !== false && apiScan?.targetUrl) {
+            if (!this.zapPluginEnabled) {
+                log.warn('verifySecurityGate: PLUGIN_ZAP is off — skipping ZAP API scan');
+            } else {
+                log.info({ targetUrl: apiScan.targetUrl }, 'Running ZAP active API scan');
+                await sendIntent(
+                    INTENT.RUN_ZAP_API_SCAN,
+                    JSON.stringify({
+                        targetUrl: apiScan.targetUrl,
+                        openApiUrl: apiScan.openApiUrl,
+                        authToken: token,
+                        timeoutMs: apiScan.timeoutMs,
+                    }),
+                    'zap',
+                );
+                const parsed = await sendIntent(INTENT.PARSE_ZAP_REPORT, '', 'zap');
+                const summary = JSON.parse(parsed.payload) as ZapSummary;
+                writeWebSecuritySection({
+                    targetUrl: apiScan.targetUrl,
+                    apiScan: { byRisk: summary.byRisk, findings: summary.findings },
+                });
+                log.info({ byRisk: summary.byRisk }, 'ZAP API scan complete');
+                // Hard gate — throws when a risk bucket exceeds its ceiling.
+                await sendIntent(
+                    INTENT.VALIDATE_ZAP_THRESHOLDS,
+                    JSON.stringify(apiScan.thresholds ?? { High: 0 }),
+                    'zap',
+                );
+            }
+        }
+
+        const fuzz = contract.web?.schemaFuzz;
+        if (fuzz?.enabled !== false) {
+            try {
+                const result = await sendIntent(
+                    INTENT.RUN_SCHEMA_FUZZ,
+                    JSON.stringify({ specUrl: fuzz?.specUrl, authToken: token, timeoutMs: fuzz?.timeoutMs }),
+                    'api',
+                );
+                const { reportPath } = JSON.parse(result.payload) as { reportPath: string };
+                writeWebSecuritySection({ schemaFuzz: { pass: true, reportPath } });
+                log.info({ reportPath }, 'Schema fuzz passed');
+            } catch (err) {
+                writeWebSecuritySection({ schemaFuzz: { pass: false, reportPath: 'reports/security/schemathesis-junit.xml' } });
+                log.warn({ err: (err as Error).message }, 'Schema fuzz reported findings (recorded, non-fatal)');
+            }
+        }
+    }
+
     async verifyLogoutLabel(expected: string): Promise<void> {
         log.info({ expected, driver: this.driver }, 'Asserting logout label');
         if (this.driver === 'api') {
@@ -248,6 +322,10 @@ export class LoginRoute {
 
     private get driver(): Driver {
         return (process.env.DRIVER ?? 'playwright') as Driver;
+    }
+
+    private get zapPluginEnabled(): boolean {
+        return (process.env.PLUGIN_ZAP ?? 'false').toLowerCase() === 'true';
     }
 
     private rememberMarket(market: string, language?: string): void {

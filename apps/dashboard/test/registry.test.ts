@@ -36,6 +36,9 @@ describe('tool registry', () => {
     gatling:    'gatling.png',
     pixelmatch: 'pixelmatch-logo.png',
     api:        'api.svg',
+    axe:        'aXe-logo.png',
+    zap:        'zap.png',
+    mobsf:      'mobsf.png',
   };
 
   it('every toolId resolves to an existing logo file in public/assets/logos/', () => {

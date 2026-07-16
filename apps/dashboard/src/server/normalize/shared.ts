@@ -50,6 +50,30 @@ const SUMMARY_HANDLERS: Readonly<Record<ToolKind, SummaryHandler>> = {
     void _diffs;
     return rest;
   },
+  accessibility: (tool) => {
+    const { audits: _audits, ...rest } = tool as Extract<Tool, { kind: 'accessibility' }>;
+    void _audits;
+    return rest;
+  },
+  security: (tool) => {
+    const sec = tool as Extract<Tool, { kind: 'security' }>;
+    if (sec.scope === 'mobile') {
+      const { platforms, ...rest } = sec;
+      return {
+        ...rest,
+        platforms: {
+          android: platforms.android ? stripFindings(platforms.android) : null,
+          ios: platforms.ios ? stripFindings(platforms.ios) : null,
+        },
+      };
+    }
+    const { baseline, apiScan, ...rest } = sec;
+    return {
+      ...rest,
+      baseline: baseline ? { byRisk: baseline.byRisk } : null,
+      apiScan: apiScan ? { byRisk: apiScan.byRisk } : null,
+    };
+  },
 };
 
 /**
@@ -66,6 +90,14 @@ function stripTests<T extends { tests: unknown }>(
 ): Omit<T, 'tests'> {
   const { tests: _tests, ...rest } = block;
   void _tests;
+  return rest;
+}
+
+function stripFindings<T extends { findings: unknown }>(
+  block: T,
+): Omit<T, 'findings'> {
+  const { findings: _findings, ...rest } = block;
+  void _findings;
   return rest;
 }
 

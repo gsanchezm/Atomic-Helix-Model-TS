@@ -51,6 +51,14 @@ Then('the login error message contains {string}', async function (expected: stri
     await route(this).verifyLoginErrorContains(expected);
 });
 
+// Contract-shaped security gate (login.security.json). An explicit in-sequence
+// step, not an After hook — same rationale as the accessibility gate. The
+// explicit timeout overrides this file's 120s default: a ZAP active scan +
+// schema fuzz against the live API runs for minutes, not seconds.
+Then('the API surface passes the automated security gate', { timeout: 30 * 60_000 }, async function () {
+    await route(this).verifySecurityGate();
+});
+
 After(async function () {
     try {
         await route(this).resetClientState();

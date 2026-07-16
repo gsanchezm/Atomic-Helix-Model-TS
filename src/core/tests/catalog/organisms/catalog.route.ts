@@ -26,6 +26,7 @@ import type { CheckoutWorld } from '@core/tests/support/world';
 import { sendIntent } from '@kernel/client';
 import { INTENT } from '@kernel/intents';
 import { AccessibilityContractLoader } from '@core/contracts/accessibility-contract-loader';
+import { appendAxeRecord, type AxeRecord } from '@core/tests/support/security-report-writer';
 
 const log = logger.child({ layer: 'route', domain: 'catalog' });
 
@@ -135,10 +136,18 @@ export class CatalogRoute {
             if (audit.include?.length) auditOptions.include = audit.include;
             if (audit.exclude?.length) auditOptions.exclude = audit.exclude;
 
-            await sendIntent(
+            const auditResult = await sendIntent(
                 INTENT.RUN_ACCESSIBILITY_AUDIT,
                 `catalog||${audit.id}-${market}-${language}||${JSON.stringify(auditOptions)}`,
             );
+
+            // Persist the audit record for the dashboard (reports/axe.json).
+            // Best-effort: a report-write hiccup must never fail the gate.
+            try {
+                appendAxeRecord(JSON.parse(auditResult.payload) as AxeRecord);
+            } catch (err) {
+                log.warn({ err: (err as Error).message }, 'Failed to persist axe audit record');
+            }
 
             const thresholds = audit.thresholds ?? contract.defaults?.thresholds ?? {};
             await sendIntent(INTENT.VALIDATE_ACCESSIBILITY_THRESHOLDS, JSON.stringify(thresholds));

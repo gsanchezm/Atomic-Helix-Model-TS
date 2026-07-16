@@ -2,9 +2,11 @@ import type { ComponentType } from 'react';
 
 import type { ToolKind } from '@shared/kinds';
 import type { Tool } from '@shared/types';
+import { AccessibilityDetail } from '../views/detail/AccessibilityDetail';
 import { GenericDetail } from '../views/detail/GenericDetail';
 import { MobileDetail } from '../views/detail/MobileDetail';
 import { PerformanceDetail } from '../views/detail/PerformanceDetail';
+import { SecurityDetail } from '../views/detail/SecurityDetail';
 import { VisualDetail } from '../views/detail/VisualDetail';
 import { WebUiDetail } from '../views/detail/WebUiDetail';
 
@@ -15,11 +17,13 @@ export type DetailComponent = ComponentType<{ runId: string; tool: Tool }>;
  * adapter ships on the server and the matching detail view is implemented.
  */
 export const DETAIL_BY_KIND: Record<ToolKind, DetailComponent> = {
-  web_ui:      WebUiDetail,
-  api:         GenericDetail,
-  mobile_ui:   MobileDetail,
-  performance: PerformanceDetail,
-  visual:      VisualDetail,
+  web_ui:        WebUiDetail,
+  api:           GenericDetail,
+  mobile_ui:     MobileDetail,
+  performance:   PerformanceDetail,
+  visual:        VisualDetail,
+  accessibility: AccessibilityDetail,
+  security:      SecurityDetail,
 };
 
 export function logoUrl(toolId: string): string {

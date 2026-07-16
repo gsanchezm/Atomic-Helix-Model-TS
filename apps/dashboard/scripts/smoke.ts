@@ -25,6 +25,9 @@ const ROUTES = [
   { name: '04-appium',     path: `/runs/${RUN_ID}/appium` },
   { name: '05-gatling',    path: `/runs/${RUN_ID}/gatling` },
   { name: '06-pixelmatch', path: `/runs/${RUN_ID}/pixelmatch` },
+  { name: '07-axe',        path: `/runs/${RUN_ID}/axe` },
+  { name: '08-zap',        path: `/runs/${RUN_ID}/zap` },
+  { name: '09-mobsf',      path: `/runs/${RUN_ID}/mobsf` },
 ];
 
 async function main(): Promise<void> {

@@ -2,9 +2,12 @@ import type { Tool } from '../../shared/types.js';
 import type { ToolKind } from '../../shared/kinds.js';
 import { apiAdapter } from './api.js';
 import { appiumAdapter } from './appium.js';
+import { axeAdapter } from './axe.js';
 import { gatlingAdapter } from './gatling.js';
+import { mobsfAdapter } from './mobsf.js';
 import { pixelmatchAdapter } from './pixelmatch.js';
 import { playwrightAdapter } from './playwright.js';
+import { zapAdapter } from './zap.js';
 import type { Adapter, AdapterContext } from './shared.js';
 
 export type { Adapter, AdapterContext };
@@ -21,6 +24,9 @@ export const ADAPTERS: Record<string, AdapterEntry> = {
   api:        { id: 'api',        kind: 'api',         adapter: apiAdapter        },
   gatling:    { id: 'gatling',    kind: 'performance', adapter: gatlingAdapter    },
   pixelmatch: { id: 'pixelmatch', kind: 'visual',      adapter: pixelmatchAdapter },
+  axe:        { id: 'axe',        kind: 'accessibility', adapter: axeAdapter      },
+  zap:        { id: 'zap',        kind: 'security',    adapter: zapAdapter        },
+  mobsf:      { id: 'mobsf',      kind: 'security',    adapter: mobsfAdapter      },
 };
 
 /**
@@ -48,6 +54,18 @@ export const TOOL_META: Record<string, { name: string; description: string }> = 
   pixelmatch: {
     name: 'PixelMatch',
     description: 'Pixel-by-pixel comparison of UI screens vs baselines.',
+  },
+  axe: {
+    name: 'axe-core',
+    description: 'WCAG 2.x accessibility audit',
+  },
+  zap: {
+    name: 'OWASP ZAP',
+    description: 'Web application security scan',
+  },
+  mobsf: {
+    name: 'MobSF',
+    description: 'Mobile app static security analysis',
   },
 };
 
@@ -87,6 +105,12 @@ export function makeMissingTool(toolId: string): Tool {
       perf: { rps: 0, avgMs: 0, p95Ms: 0, p99Ms: 0, errorRate: 0, requests: 0, maxRps: 0, distribution: [], scenarios: [] },
     }),
     visual: () => ({ ...base, kind: 'visual', diffs: [] }),
+    accessibility: () => ({ ...base, kind: 'accessibility', audits: [] }),
+    // Two tools share the 'security' kind; the id picks the concrete shape.
+    security: () =>
+      toolId === 'mobsf'
+        ? { ...base, kind: 'security', scope: 'mobile', platforms: { android: null, ios: null } }
+        : { ...base, kind: 'security', scope: 'web', targetUrl: '—', baseline: null, apiScan: null, tls: null, schemaFuzz: null },
   };
   return factories[entry?.kind ?? 'web_ui']();
 }

@@ -15,6 +15,9 @@ const TOOL_LOGO_FILES: Record<string, string> = {
   gatling:    'gatling.png',
   pixelmatch: 'pixelmatch-logo.png',
   api:        'api.svg',
+  axe:        'aXe-logo.png',
+  zap:        'zap.png',
+  mobsf:      'mobsf.png',
 };
 
 const PLATFORM_LOGO_FILES: Record<'android' | 'ios', string> = {

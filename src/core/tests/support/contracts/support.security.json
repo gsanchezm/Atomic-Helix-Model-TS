@@ -1,0 +1,20 @@
+{
+  "feature": "support",
+  "version": "1.0.0",
+  "web": {
+    "zapBaselineScan": {
+      "enabled": true,
+      "targetUrl": "${BASE_URL}"
+    },
+    "tls": {
+      "enabled": true,
+      "targetUrl": "${API_BASE_URL}"
+    }
+  },
+  "mobile": {
+    "mobsf": [
+      { "enabled": true, "platform": "android", "filePath": "assets/apps/android/omnipizza-release.apk" },
+      { "enabled": true, "platform": "ios", "filePath": "assets/apps/ios/OmniPizza.app" }
+    ]
+  }
+}

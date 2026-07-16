@@ -11,11 +11,13 @@ interface DetailHeadProps {
 }
 
 const KIND_LABEL: Record<Tool['kind'], string> = {
-  web_ui:      'Web UI',
-  mobile_ui:   'Mobile UI',
-  api:         'API · Contract',
-  performance: 'Performance · Load',
-  visual:      'Visual · Regression',
+  web_ui:        'Web UI',
+  mobile_ui:     'Mobile UI',
+  api:           'API · Contract',
+  performance:   'Performance · Load',
+  visual:        'Visual · Regression',
+  accessibility: 'Accessibility',
+  security:      'Security',
 };
 
 export function DetailHead({ runId, tool, right }: DetailHeadProps) {

@@ -33,6 +33,8 @@
     "test:json:visual:compare:responsive": "cross-env PLUGIN_PIXELMATCH=true cucumber-js --tags \"@responsive and @visual\" --format json:reports/playwright-visual-responsive.json",
     "test:json:android": "cucumber-js --tags \"@android\" --format json:reports/android.json",
     "test:json:ios": "cucumber-js --tags \"@ios\" --format json:reports/ios.json",
+    "test:json:security": "cross-env DRIVER=api PLATFORM=api cucumber-js --tags \"@security\" --format json:reports/security-web.json",
+    "test:json:security:infra": "cross-env DRIVER=api PLATFORM=api cucumber-js --tags \"@security-infra\" --format json:reports/security-infra.json",
     "test:report:verify": "node scripts/report/verify-report.js",
     "visual:refresh": "node scripts/visual-refresh.js",
     "perf:generate": "node -r tsconfig-paths/register node_modules/ts-node/dist/bin.js scripts/generate-checkout-feeder.ts",

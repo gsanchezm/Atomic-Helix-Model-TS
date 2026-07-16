@@ -189,12 +189,126 @@ export interface VisualTool extends BaseTool {
   diffs: VisualDiff[];
 }
 
+// ---------- Accessibility (axe-core) --------------------------------------
+
+export type A11yImpact = 'critical' | 'serious' | 'moderate' | 'minor';
+
+export interface A11yNode {
+  /** CSS selector path(s) identifying the offending element. */
+  target: string[];
+  /** Outer HTML snippet of the offending element. */
+  html: string;
+  /** axe's human-readable explanation of why the node failed. */
+  failureSummary: string;
+}
+
+export interface A11yViolation {
+  /** axe rule id, e.g. "color-contrast". */
+  id: string;
+  impact: A11yImpact | null;
+  help: string;
+  description: string;
+  helpUrl?: string;
+  tags?: string[];
+  nodes: A11yNode[];
+}
+
+/** One axe audit of one page state (one record in the scratch axe.json). */
+export interface A11yAudit {
+  feature: string;
+  auditId: string;
+  url: string;
+  timestamp: string;
+  violations: A11yViolation[];
+  /** Number of rules that passed (axe reports a count, not an array). */
+  passes: number;
+  /** Number of rules axe could not conclusively evaluate. */
+  incomplete: number;
+}
+
+export interface AccessibilityTool extends BaseTool {
+  kind: 'accessibility';
+  audits: A11yAudit[];
+}
+
+// ---------- Security — web (OWASP ZAP) ------------------------------------
+
+/** Canonical ZAP risk buckets, highest first. */
+export type ZapRisk = 'High' | 'Medium' | 'Low' | 'Informational';
+
+export interface ZapFinding {
+  name: string;
+  /** One of the ZapRisk words (kept as string to survive unknown inputs). */
+  risk: string;
+  confidence: string;
+  instances: number;
+}
+
+export interface ZapScanBlock {
+  /** Alert counts keyed by risk word (High/Medium/Low/Informational). */
+  byRisk: Record<string, number>;
+  findings: ZapFinding[];
+}
+
+/** A boolean infra gate (TLS config check, schema fuzz) with its report artifact. */
+export interface SecurityGate {
+  pass: boolean;
+  reportPath: string;
+  findingsCount?: number;
+}
+
+export interface WebSecurityTool extends BaseTool {
+  kind: 'security';
+  scope: 'web';
+  targetUrl: string;
+  baseline: ZapScanBlock | null;
+  apiScan: ZapScanBlock | null;
+  tls: SecurityGate | null;
+  schemaFuzz: SecurityGate | null;
+}
+
+// ---------- Security — mobile (MobSF) -------------------------------------
+
+export type MobsfSeverity = 'high' | 'warning' | 'info' | 'secure';
+
+export interface MobsfFinding {
+  severity: MobsfSeverity;
+  title: string;
+  description?: string;
+}
+
+export interface MobsfPlatformBlock {
+  /** Scanned binary, e.g. "app-release.apk" / "OmniPizza.ipa". */
+  appFile: string;
+  /** MobSF security score 0–100, or null when the scan didn't produce one. */
+  securityScore: number | null;
+  high: number;
+  warning: number;
+  info: number;
+  findings: MobsfFinding[];
+}
+
+export interface MobileSecurityTool extends BaseTool {
+  kind: 'security';
+  scope: 'mobile';
+  /** Either platform may be null when that binary wasn't scanned this run. */
+  platforms: {
+    android: MobsfPlatformBlock | null;
+    ios: MobsfPlatformBlock | null;
+  };
+}
+
+/** Both security scopes share kind 'security'; discriminate on `scope`. */
+export type SecurityTool = WebSecurityTool | MobileSecurityTool;
+
 export type Tool =
   | WebUiTool
   | ApiTool
   | MobileUiTool
   | PerformanceTool
-  | VisualTool;
+  | VisualTool
+  | AccessibilityTool
+  | SecurityTool;
 
 /**
  * Summary shape returned by GET /api/runs/:runId. Drops the heavy detail arrays
@@ -213,7 +327,18 @@ export type ToolSummary =
   | (Omit<PerformanceTool, 'perf'> & {
       perf: Omit<PerfBlock, 'distribution' | 'scenarios'>;
     })
-  | Omit<VisualTool, 'diffs'>;
+  | Omit<VisualTool, 'diffs'>
+  | Omit<AccessibilityTool, 'audits'>
+  | (Omit<WebSecurityTool, 'baseline' | 'apiScan'> & {
+      baseline: Omit<ZapScanBlock, 'findings'> | null;
+      apiScan: Omit<ZapScanBlock, 'findings'> | null;
+    })
+  | (Omit<MobileSecurityTool, 'platforms'> & {
+      platforms: {
+        android: Omit<MobsfPlatformBlock, 'findings'> | null;
+        ios: Omit<MobsfPlatformBlock, 'findings'> | null;
+      };
+    });
 
 export interface RunPayload {
   run: RunInfo;

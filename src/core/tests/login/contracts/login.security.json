@@ -1,0 +1,16 @@
+{
+  "feature": "login",
+  "version": "1.0.0",
+  "web": {
+    "zapApiScan": {
+      "enabled": true,
+      "targetUrl": "${API_BASE_URL}",
+      "openApiUrl": "${API_BASE_URL}/api/openapi.json",
+      "thresholds": { "High": 0, "Medium": 1 }
+    },
+    "schemaFuzz": {
+      "enabled": true,
+      "specUrl": "${API_BASE_URL}/api/openapi.json"
+    }
+  }
+}
