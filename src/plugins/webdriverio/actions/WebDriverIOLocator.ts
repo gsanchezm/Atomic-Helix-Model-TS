@@ -40,20 +40,29 @@ export function parseLocator(target: string): WebdriverioLocatorStrategy {
     return { kind: 'css', value: target };
 }
 
-/** Apply a parsed strategy against the session, returning a WebdriverIO
- *  element. `css`/`xpath` pass the value straight to `driver.$()` — WebdriverIO's
- *  own selector engine already understands both natively. The remaining
- *  kinds translate into WebdriverIO's documented selector-string
- *  conventions (https://webdriver.io/docs/selectors) so each is dispatched
- *  explicitly rather than relying on driver.$() to re-guess the intent. */
-export function locate(driver: Browser, strategy: WebdriverioLocatorStrategy): ChainablePromiseElement {
+/** Translate a parsed strategy into WebdriverIO's documented selector-string
+ *  conventions (https://webdriver.io/docs/selectors). `css`/`xpath` pass the
+ *  value straight through — WebdriverIO's own selector engine already
+ *  understands both natively. The remaining kinds are dispatched explicitly
+ *  rather than relying on driver.$()/$$() to re-guess the intent. Exported
+ *  (rather than inlined in `locate`) so single-element and multi-element
+ *  lookups (e.g. ReadText's `driver.$$()` fan-out) share one mapping. */
+export function toSelector(strategy: WebdriverioLocatorStrategy): string {
     switch (strategy.kind) {
-        case 'css': return driver.$(strategy.value);
-        case 'xpath': return driver.$(strategy.value);
-        case 'id': return driver.$(`#${strategy.value}`);
-        case 'name': return driver.$(`[name="${strategy.value}"]`);
-        case 'linkText': return driver.$(`=${strategy.value}`);
-        case 'partialLinkText': return driver.$(`*=${strategy.value}`);
-        case 'tagName': return driver.$(`<${strategy.value} />`);
+        case 'css': return strategy.value;
+        case 'xpath': return strategy.value;
+        case 'id': return `#${strategy.value}`;
+        case 'name': return `[name="${strategy.value}"]`;
+        case 'linkText': return `=${strategy.value}`;
+        case 'partialLinkText': return `*=${strategy.value}`;
+        case 'tagName': return `<${strategy.value} />`;
     }
+}
+
+/** Apply a parsed strategy against the session, returning a single
+ *  WebdriverIO element (first match only) via `driver.$()`. Used by every
+ *  action handler except ReadText, which fans out over *all* matches via
+ *  `driver.$$()` instead — see WebDriverIOLocator's `toSelector` above. */
+export function locate(driver: Browser, strategy: WebdriverioLocatorStrategy): ChainablePromiseElement {
+    return driver.$(toSelector(strategy));
 }
