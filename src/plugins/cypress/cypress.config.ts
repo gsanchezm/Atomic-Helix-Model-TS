@@ -90,6 +90,24 @@ export default defineConfig({
         async setupNodeEvents(on, config) {
             await addCucumberPreprocessorPlugin(on, config);
             on('file:preprocessor', createBundler({ plugins: [createEsbuildPlugin(config)] }));
+
+            // The `@plugins/*` path alias DOES resolve here, verified
+            // empirically (this task): `cypress run --config-file
+            // src/plugins/cypress/cypress.config.ts --spec
+            // src/core/tests/login/features/api-security.feature` with a
+            // temporary console.log inside this import showed the module
+            // loaded and `resolveCypressLocator('loginScreen')` correctly
+            // returned "body" before the debug line was removed. Cypress's
+            // own bundling of this config file evidently still honors the
+            // repo's tsconfig `paths` map (unlike, e.g., specPattern/
+            // supportFile above, which are NOT alias-resolved and must be
+            // built from __dirname) — so no relative-import fallback is
+            // needed for this particular import.
+            const { resolveCypressLocator } = await import('@plugins/cypress/locators/resolveCypressLocator');
+            on('task', {
+                resolveCypressLocator: ({ key }: { key: string }) => resolveCypressLocator(key),
+            });
+
             return config;
         },
     },
