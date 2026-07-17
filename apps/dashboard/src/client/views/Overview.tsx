@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 
 import type { RunPayload } from '@shared/types';
+import { TOOL_KINDS, type ToolKind } from '@shared/kinds';
 import { ApiError, fetchRun } from '../api';
 import { HeroStrip } from '../components/HeroStrip';
-import { ToolCard } from '../components/ToolCard';
+import { HeroCategoryChips } from '../components/HeroCategoryChips';
+import { SideNav, type ActiveCategory } from '../components/SideNav';
+import { CategorySection } from '../components/CategorySection';
+import { toolsByKind } from '../categories';
 
 type State =
   | { kind: 'loading' }
@@ -14,6 +18,7 @@ type State =
 export function Overview() {
   const { runId } = useParams();
   const [state, setState] = useState<State>({ kind: 'loading' });
+  const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => {
     if (!runId) return;
@@ -42,12 +47,25 @@ export function Overview() {
   }
 
   const { tools } = state.payload;
+  const rawCat = searchParams.get('cat');
+  const populatedActiveKind: ToolKind | null =
+    rawCat !== null && (TOOL_KINDS as readonly string[]).includes(rawCat) && toolsByKind(tools, rawCat as ToolKind).length > 0
+      ? (rawCat as ToolKind)
+      : null;
+  const populatedKinds = TOOL_KINDS.filter((k) => toolsByKind(tools, k).length > 0);
+
+  const pick = (id: ActiveCategory) => {
+    if (id === 'all') setSearchParams({});
+    else setSearchParams({ cat: id });
+  };
+
   return (
     <div className="fade-in">
       <HeroStrip tools={tools} />
+      <HeroCategoryChips tools={tools} onPick={pick} />
       <div className="section-head">
         <h2>
-          Tools <small>{tools.length} testing tools · click a card to drill in</small>
+          Tools <small>{tools.length} testing tools · {populatedKinds.length} test types · click a card to drill in</small>
         </h2>
         <div className="legend">
           <span>
@@ -61,10 +79,13 @@ export function Overview() {
           </span>
         </div>
       </div>
-      <div className="tool-grid">
-        {tools.map((t) => (
-          <ToolCard key={t.id} runId={runId!} tool={t} />
-        ))}
+      <div className="sidebar-layout">
+        <SideNav tools={tools} active={populatedActiveKind ?? 'all'} onPick={pick} />
+        <div>
+          {populatedActiveKind
+            ? <CategorySection kind={populatedActiveKind} tools={tools} runId={runId!} />
+            : populatedKinds.map((k) => <CategorySection key={k} kind={k} tools={tools} runId={runId!} />)}
+        </div>
       </div>
     </div>
   );
