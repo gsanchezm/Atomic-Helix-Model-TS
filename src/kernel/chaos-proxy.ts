@@ -2,7 +2,7 @@ import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
 import * as path from 'path';
 import { logger } from '@utils/logger';
-import { resolveLocator } from '@kernel/locator-resolver';
+import { resolveSelector } from '@kernel/selector-resolution';
 import { ensurePortFree } from '@kernel/port-guard';
 import { INTENT, LEGACY_INTENT_ALIASES } from '@kernel/intents';
 import { WriteLock } from '@kernel/write-lock';
@@ -29,7 +29,6 @@ const DEFAULT_MAX_RETRIES = 3;
 const BASE_BACKOFF_MS = 100;
 const MAX_BACKOFF_JITTER_MS = 100;
 const SERVER_PORT_NUMBER = 50051;
-const ACTION_TYPE_SEPARATOR = '||';
 const writeLock = new WriteLock();
 
 // --- Plugin Address Configuration (Environment-driven) ---
@@ -220,75 +219,7 @@ async function suppressChaos(
     return { status: 'FAIL', error: 'Chaos suppression threshold exceeded.' };
 }
 
-// --- 7. TYPE-Aware Locator Resolution ---
-
-const PASSTHROUGH_ACTIONS = new Set<string>([
-    INTENT.NAVIGATE, INTENT.TEARDOWN, INTENT.BROWSER_COMMAND, INTENT.HIDE_KEYBOARD,
-    INTENT.ACQUIRE_WRITE_LOCK, INTENT.RELEASE_WRITE_LOCK,
-    // Failure screenshot: carries no logical target — passes empty string directly.
-    INTENT.SCREENSHOT,
-    // Visual oracle: targets are `feature||snapshotId||{json}`, resolved
-    // internally via VisualContractLoader + locator-resolver. The proxy
-    // must not touch them.
-    INTENT.CAPTURE_SNAPSHOT, INTENT.COMPARE_SNAPSHOT, INTENT.VALIDATE_VISUAL_CONTRACT, INTENT.UPDATE_BASELINE,
-    // Axe targets carry JSON configuration and run against the active
-    // Playwright page, so logical locator resolution does not apply.
-    INTENT.RUN_ACCESSIBILITY_AUDIT, INTENT.VALIDATE_ACCESSIBILITY_THRESHOLDS,
-    INTENT.RUN_ZAP_BASELINE_SCAN, INTENT.RUN_ZAP_API_SCAN, INTENT.PARSE_ZAP_REPORT,
-    INTENT.VALIDATE_ZAP_THRESHOLDS, INTENT.RUN_MOBSF_APK_SCAN, INTENT.PARSE_MOBSF_REPORT,
-    INTENT.RUN_SCHEMA_FUZZ, INTENT.RUN_TLS_CHECK,
-    // API contract execution uses `feature||endpointId||{json}` for the
-    // same reason and must also bypass logical-key resolution.
-    INTENT.EXECUTE_CONTRACT_ENDPOINT, INTENT.VALIDATE_CONTRACT_ENDPOINT,
-    // Performance simulations use simulationName||{json}.
-    INTENT.RUN_SIMULATION, INTENT.RUN_CHECKOUT_LOAD, INTENT.PARSE_GATLING_STATS, INTENT.VALIDATE_THRESHOLDS,
-    // Legacy aliases the proxy still recognizes for external callers.
-    ...LEGACY_INTENT_ALIASES,
-]);
-
-// Actions that utilize the "logicalKey||payload" format.
-// TYPE:             logicalKey||text
-// WAIT_FOR_ELEMENT: logicalKey||timeoutMs
-// ASSERT_TEXT:      logicalKey||expectedText
-const COMPOSITE_ACTIONS = new Set<string>([
-    INTENT.TYPE,
-    INTENT.SELECT_OPTION,
-    INTENT.WAIT_FOR_ELEMENT,
-    INTENT.ASSERT_TEXT,
-]);
-
-function isMobilewrightPlatform(platform: string): boolean {
-    return platform.split(':')[0].toLowerCase() === 'mobilewright';
-}
-
-function resolveSelector(actionId: string, rawSelector: string, platform: string): string {
-    const normalized = actionId.toUpperCase();
-
-    // NAVIGATE, TEARDOWN and BROWSER_COMMAND pass structured/raw values without locator resolution.
-    if (PASSTHROUGH_ACTIONS.has(normalized)) {
-        return rawSelector;
-    }
-
-    // Mobilewright resolves locators inside its own plugin (parseLocator +
-    // Locator.root().getByTestId()/getByLabel()/...). The proxy must pass
-    // through both halves of composite targets unchanged so the plugin sees
-    // the logical key (treated as testId by default) plus the payload.
-    if (isMobilewrightPlatform(platform)) {
-        return rawSelector;
-    }
-
-    // Composite actions: resolve solely the key portion; preserve the payload succeeding the || separator.
-    if (COMPOSITE_ACTIONS.has(normalized) && rawSelector.includes(ACTION_TYPE_SEPARATOR)) {
-        const sepIndex = rawSelector.indexOf(ACTION_TYPE_SEPARATOR);
-        const logicalKey = rawSelector.slice(0, sepIndex);
-        const textPayload = rawSelector.slice(sepIndex);
-        return resolveLocator(logicalKey) + textPayload;
-    }
-
-    return resolveLocator(rawSelector);
-}
-
-// --- 8. Telemetry Emission ---
+// --- 7. Telemetry Emission ---
 
 function emitTelemetry(
     actionId: string,
@@ -312,7 +243,7 @@ function emitTelemetry(
     process.stdout.write(JSON.stringify(record) + '\n');
 }
 
-// --- 9. gRPC Handler ---
+// --- 8. gRPC Handler ---
 
 async function handleExecuteIntent(call: any, callback: any): Promise<void> {
     const startMark = performance.now(); // High-resolution mark for duration calculation
@@ -366,7 +297,7 @@ async function handleExecuteIntent(call: any, callback: any): Promise<void> {
     });
 }
 
-// --- 10. Server Bootstrap ---
+// --- 9. Server Bootstrap ---
 
 async function main(): Promise<void> {
     validateInProcessPlugins();
