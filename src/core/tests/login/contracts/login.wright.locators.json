@@ -1,0 +1,54 @@
+{
+  "loginScreen": {
+    "playwright": { "kind": "css", "value": "body" },
+    "mobilewright": { "kind": "testId", "value": "screen-login" }
+  },
+  "appLogo": { "mobilewright": { "kind": "testId", "value": "img-logo" } },
+  "appNameText": { "mobilewright": { "kind": "testId", "value": "text-app-name" } },
+  "welcomeTitleText": {
+    "playwright": { "kind": "css", "value": "h2.text-3xl" },
+    "mobilewright": { "kind": "testId", "value": "text-welcome-title" }
+  },
+  "subtitleText": {
+    "playwright": { "kind": "css", "value": "p.text-gray-400" },
+    "mobilewright": { "kind": "testId", "value": "text-login-subtitle" }
+  },
+  "marketButtonList": { "playwright": { "kind": "css", "value": "[data-testid^='market-']" } },
+  "switzerlandLanguageList": { "playwright": { "kind": "css", "value": "[data-testid^='lang-']" } },
+  "logoutButton": {
+    "playwright": {
+      "desktop": { "kind": "testId", "value": "logout-btn" },
+      "responsive": { "kind": "testId", "value": "mobile-logout-btn" }
+    },
+    "mobilewright": { "kind": "testId", "value": "btn-logout" }
+  },
+  "usernameInput": {
+    "playwright": {
+      "responsive": { "kind": "testId", "value": "username-responsive" },
+      "desktop": { "kind": "testId", "value": "username-desktop" }
+    },
+    "mobilewright": { "kind": "testId", "value": "input-username" }
+  },
+  "passwordInput": {
+    "playwright": {
+      "responsive": { "kind": "testId", "value": "password-responsive" },
+      "desktop": { "kind": "testId", "value": "password-desktop" }
+    },
+    "mobilewright": { "kind": "testId", "value": "input-password" }
+  },
+  "togglePasswordButton": { "playwright": { "kind": "testId", "value": "toggle-password" } },
+  "marketSelectionContainer": { "mobilewright": { "kind": "testId", "value": "view-market-selection" } },
+  "loginButton": {
+    "playwright": {
+      "responsive": { "kind": "testId", "value": "login-button-responsive" },
+      "desktop": { "kind": "testId", "value": "login-button-desktop" }
+    },
+    "mobilewright": { "kind": "testId", "value": "btn-login" }
+  },
+  "loginError": {
+    "playwright": { "kind": "testId", "value": "login-error" },
+    "mobilewright": { "kind": "testId", "value": "text-login-error" }
+  },
+  "quickLoginLabel": { "mobilewright": { "kind": "testId", "value": "text-quick-login-label" } },
+  "quickLoginUserList": { "playwright": { "kind": "css", "value": "[data-testid^='user-']" } }
+}
