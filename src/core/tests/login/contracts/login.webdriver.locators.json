@@ -1,92 +1,70 @@
 {
-  "loginScreen": {
-    "web": "body",
-    "mobile": "~screen-login"
-  },
-  "appLogo": {
-    "mobile": "~img-logo"
-  },
-  "appNameText": {
-    "mobile": "~text-app-name"
-  },
-  "welcomeTitleText": {
-    "web": "h2.text-3xl",
-    "mobile": "~text-welcome-title"
-  },
-  "subtitleText": {
-    "web": "p.text-gray-400",
-    "mobile": "~text-login-subtitle"
-  },
+  "loginScreen": { "webdriverio": "body", "appium": "~screen-login" },
+  "appLogo": { "appium": "~img-logo" },
+  "appNameText": { "appium": "~text-app-name" },
+  "welcomeTitleText": { "webdriverio": "h2.text-3xl", "appium": "~text-welcome-title" },
+  "subtitleText": { "webdriverio": "p.text-gray-400", "appium": "~text-login-subtitle" },
   "marketButtonList": {
-    "web": "[data-testid^='market-']",
-    "mobile": {
+    "webdriverio": "[data-testid^='market-']",
+    "appium": {
       "android": "android=new UiSelector().descriptionStartsWith(\"btn-market-\")",
       "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'btn-market-'`]"
     }
   },
   "switzerlandLanguageList": {
-    "web": "[data-testid^='lang-']",
-    "mobile": {
+    "webdriverio": "[data-testid^='lang-']",
+    "appium": {
       "android": "android=new UiSelector().descriptionStartsWith(\"btn-lang-\")",
       "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'btn-lang-'`]"
     }
   },
   "logoutButton": {
-    "web": {
+    "webdriverio": {
       "desktop": "[data-testid='logout-btn']",
       "responsive": "[data-testid='mobile-logout-btn']"
     },
-    "mobile": "~btn-logout"
+    "appium": "~btn-logout"
   },
   "usernameInput": {
-    "web": {
+    "webdriverio": {
       "responsive": "[data-testid='username-responsive']",
       "desktop": "[data-testid='username-desktop']"
     },
-    "mobile": "~input-username"
+    "appium": "~input-username"
   },
   "passwordInput": {
-    "web": {
+    "webdriverio": {
       "responsive": "[data-testid='password-responsive']",
       "desktop": "[data-testid='password-desktop']"
     },
-    "mobile": "~input-password"
+    "appium": "~input-password"
   },
-  "togglePasswordButton": {
-    "web": "[data-testid='toggle-password']"
-  },
-  "marketSelectionContainer": {
-    "mobile": "~view-market-selection"
-  },
+  "togglePasswordButton": { "webdriverio": "[data-testid='toggle-password']" },
+  "marketSelectionContainer": { "appium": "~view-market-selection" },
   "marketFlag": {
-    "mobile": {
+    "appium": {
       "android": "android=new UiSelector().descriptionStartsWith(\"text-flag-\")",
       "ios": "-ios class chain:**/XCUIElementTypeStaticText[`name BEGINSWITH 'text-flag-'`]"
     }
   },
   "loginButton": {
-    "web": {
+    "webdriverio": {
       "responsive": "[data-testid='login-button-responsive']",
       "desktop": "[data-testid='login-button-desktop']"
     },
-    "mobile": "~btn-login"
+    "appium": "~btn-login"
   },
-  "loginError": {
-    "web": "[data-testid='login-error']",
-    "mobile": "~text-login-error"
-  },
-  "quickLoginLabel": {
-    "mobile": "~text-quick-login-label"
-  },
+  "loginError": { "webdriverio": "[data-testid='login-error']", "appium": "~text-login-error" },
+  "quickLoginLabel": { "appium": "~text-quick-login-label" },
   "quickLoginUserList": {
-    "web": "[data-testid^='user-']",
-    "mobile": {
+    "webdriverio": "[data-testid^='user-']",
+    "appium": {
       "android": "android=new UiSelector().descriptionStartsWith(\"btn-user-\")",
       "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'btn-user-'`]"
     }
   },
   "quickLoginUserLabel": {
-    "mobile": {
+    "appium": {
       "android": "android=new UiSelector().descriptionStartsWith(\"text-user-label-\")",
       "ios": "-ios class chain:**/XCUIElementTypeStaticText[`name BEGINSWITH 'text-user-label-'`]"
     }
