@@ -96,6 +96,10 @@ metrics/figures/**
 
 reports/
 
+# Cypress's own output (screenshots/videos from plugin:cypress runs)
+src/plugins/cypress/screenshots/
+src/plugins/cypress/videos/
+
 # Locally generated gRPC certificate material. Only the directory marker is tracked.
 certs/grpc/*
 !certs/grpc/.gitkeep
