@@ -52,8 +52,12 @@ export const RunMobSfApkScanAction: ActionHandler<MobSfActionContext> = {
         while (Date.now() < deadline) {
             try {
                 const report = await checkedJson(
-                    `${baseUrl}/api/v1/report_json?hash=${encodeURIComponent(hash)}`,
-                    { method: 'GET', headers },
+                    `${baseUrl}/api/v1/report_json`,
+                    {
+                        method: 'POST',
+                        headers: { ...headers, 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: new URLSearchParams({ hash }),
+                    },
                     'report_json',
                 );
                 setMobSfReport(sessionId, report);

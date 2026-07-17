@@ -11,6 +11,7 @@ import {
     bindAddress,
     createClientCredentials,
     createServerCredentials,
+    GRPC_CHANNEL_OPTIONS,
     tlsEnabled,
 } from '@kernel/grpc-security';
 import {
@@ -114,6 +115,7 @@ function getPluginClient(platform: string): any {
     const client = new ptomProto.ActionService(
         address,
         createClientCredentials(),
+        GRPC_CHANNEL_OPTIONS,
     );
     pluginClients.set(key, client);
     return client;
@@ -372,7 +374,7 @@ async function main(): Promise<void> {
     const serverCredentials = createServerCredentials();
     await ensurePortFree(SERVER_PORT_NUMBER);
 
-    const server = new grpc.Server();
+    const server = new grpc.Server(GRPC_CHANNEL_OPTIONS);
 
     server.addService(ptomProto.ActionService.service, {
         ExecuteIntent: handleExecuteIntent,

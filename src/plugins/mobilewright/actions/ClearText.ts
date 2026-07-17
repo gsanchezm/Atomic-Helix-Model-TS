@@ -11,8 +11,10 @@ export const ClearTextAction: ActionHandler<MobilewrightActionContext> = {
         const strategy = parseLocator(target);
         const locator = await locate(driver, strategy);
         await locator.scrollIntoViewIfNeeded();
-        await locator.tap();
-        await locator.fill('');
+        // .clear() taps + selects-all + backspaces without a trailing
+        // typeText(''), which the mobilecli backend rejects ("text is
+        // required"). fill('') hit that exact rejection on every call.
+        await locator.clear();
         return `Cleared text in mobilewright element: ${strategy.kind}=${strategy.value}`;
     },
 };

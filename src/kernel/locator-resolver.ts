@@ -99,6 +99,20 @@ export function hasLocatorKey(logicalKey: string): boolean {
     return Object.prototype.hasOwnProperty.call(loadLocators(), logicalKey);
 }
 
+// Mobilewright bypasses `resolveLocator` (chaos-proxy passes its logical key
+// through unchanged — see chaos-proxy.ts's `isMobilewrightPlatform` branch)
+// because its own parseLocator() speaks testId/label/text/role/placeholder/
+// type, not the web CSS-selector strings `resolveLocator` returns for
+// PLATFORM=web. This gives the plugin the same mobile-side registry lookup
+// Appium gets implicitly through its `~foo` (accessibility id) WebdriverIO
+// convention, keyed off the session's actual device platform rather than
+// the process-wide PLATFORM env var.
+export function resolveMobileSelector(logicalKey: string, platform: 'android' | 'ios'): string | undefined {
+    const node = loadLocators()[logicalKey];
+    if (!node) return undefined;
+    return resolveMobile(node, platform);
+}
+
 export function resolveLocator(logicalKey: string): string {
     const platform = getPlatform();
 
