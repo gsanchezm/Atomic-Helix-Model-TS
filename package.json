@@ -15,6 +15,7 @@
     "plugin:mobilewright": "ts-node -r tsconfig-paths/register -r dotenv/config src/plugins/mobilewright/server.ts",
     "plugin:zap": "ts-node -r tsconfig-paths/register -r dotenv/config src/plugins/zap/server.ts",
     "plugin:mobsf": "ts-node -r tsconfig-paths/register -r dotenv/config src/plugins/mobsf/server.ts",
+    "plugin:webdriverio": "ts-node -r tsconfig-paths/register -r dotenv/config src/plugins/webdriverio/server.ts",
     "test": "cucumber-js",
     "test:unit": "node --test -r ts-node/register -r tsconfig-paths/register src/kernel/*.test.ts",
     "test:a11y": "cross-env DRIVER=playwright PLATFORM=web PLUGIN_AXE=true cucumber-js --tags \"@a11y\" --format json:reports/accessibility.json",
