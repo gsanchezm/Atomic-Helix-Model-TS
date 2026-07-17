@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 import type { Tool } from '@shared/types';
 import { ToolLogo } from './ToolLogo';
@@ -21,11 +21,23 @@ const KIND_LABEL: Record<Tool['kind'], string> = {
 };
 
 export function DetailHead({ runId, tool, right }: DetailHeadProps) {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const back = () => {
+    // location.key is 'default' only for the very first history entry in this
+    // tab (e.g. a direct link straight into a tool). Anywhere else, going back
+    // in history returns to the Overview URL exactly as it was — including
+    // its `?cat=` — with no need for DetailHead to know about categories.
+    if (location.key !== 'default') navigate(-1);
+    else navigate(`/runs/${runId}`);
+  };
+
   return (
     <div className="detail-head">
-      <Link to={`/runs/${runId}`} className="btn ghost" style={{ padding: '9px 12px' }}>
+      <button type="button" className="btn ghost" onClick={back} style={{ padding: '9px 12px' }}>
         <ChevronLeft /> Back
-      </Link>
+      </button>
       <div className="tool-logo">
         <ToolLogo toolId={tool.id} size={38} />
       </div>
