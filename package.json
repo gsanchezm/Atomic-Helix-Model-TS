@@ -77,7 +77,8 @@
     "dashboard": "pnpm --filter dashboard dev",
     "dashboard:build": "pnpm --filter dashboard build",
     "dashboard:fixtures": "pnpm --filter dashboard fixtures:generate",
-    "dashboard:ingest": "pnpm --filter dashboard ingest"
+    "dashboard:ingest": "pnpm --filter dashboard ingest",
+    "test:ci-steps": "bash ci/steps/test/run-all.sh"
   },
   "keywords": [],
   "author": "",

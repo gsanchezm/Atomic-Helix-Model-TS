@@ -279,15 +279,7 @@ jobs:
           sleep 5
 
       - name: Start proxy + API plugin
-        run: |
-          npx ts-node -r tsconfig-paths/register -r dotenv/config src/kernel/chaos-proxy.ts &
-          npx ts-node -r tsconfig-paths/register -r dotenv/config src/plugins/api/server.ts &
-          for port in 50051 50055; do
-            for i in $(seq 1 20); do
-              nc -z localhost $port 2>/dev/null && echo "port $port ready" && break
-              sleep 1
-            done
-          done
+        run: bash ci/steps/start-stack.sh api
         env:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           PLATFORM: api
@@ -306,7 +298,7 @@ jobs:
           else
             TAG_EXPRESSION="@api and @writes-shared-state"
           fi
-          pnpm test --tags "$TAG_EXPRESSION" --format json:reports/api-${{ matrix.suite }}.json
+          bash ci/steps/run-suite.sh "$TAG_EXPRESSION" api ${{ matrix.suite }}
         env:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           PLATFORM: api
@@ -320,43 +312,22 @@ jobs:
         if: always()
         run: echo "RUN_ENDED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
 
-      - name: Parse JSONL to CSV Artifacts (standard)
-        if: ${{ always() && inputs.architecture_type != 'TOM' }}
-        run: |
-          RESULTS_DIR=$(ls -d results/* 2>/dev/null | head -n 1)
-          if [ -z "$RESULTS_DIR" ]; then
-            echo "No results directory found. Telemetry is required for AHM runs."
-            exit 1
-          fi
-          npx ts-node -r tsconfig-paths/register src/telemetry/parse-telemetry.ts "$RESULTS_DIR"
+      - name: Collect artifacts
+        if: always()
+        run: bash ci/steps/collect-artifacts.sh api
 
-      - name: Upload Telemetry Artifacts (standard)
-        if: ${{ always() && inputs.architecture_type != 'TOM' }}
+      - name: Upload artifacts
+        if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ahm-telemetry-${{ github.job }}-${{ matrix.suite }}-${{ github.run_id }}
-          path: results/
-          retention-days: 30
-
-      - name: Generate run manifest (TOM)
-        if: ${{ always() && inputs.architecture_type == 'TOM' }}
-        run: pnpm run metrics:manifest
-
-      - name: Run metrics pipeline (TOM)
-        if: ${{ always() && inputs.architecture_type == 'TOM' }}
-        run: pnpm run metrics:all
-
-      - name: Upload TOM metrics
-        if: ${{ always() && inputs.architecture_type == 'TOM' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: tom-metrics-api-${{ matrix.suite }}-${{ github.run_id }}
-          path: |
-            metrics/
-            results/
-            logs/
+          name: ahm-artifacts-${{ github.job }}-${{ matrix.suite }}-${{ github.run_id }}
+          path: artifacts/api/
           if-no-files-found: ignore
           retention-days: 30
+
+      - name: Teardown
+        if: always()
+        run: bash ci/steps/teardown.sh
 
   # ---------------------------------------------------------------------------
   # Job 2: Web E2E — Desktop (reads/writes x browser)
@@ -428,36 +399,7 @@ jobs:
 
       - name: Start proxy + plugins
         shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p /tmp/ahm-ci-logs
-
-          npx ts-node -r tsconfig-paths/register -r dotenv/config src/kernel/chaos-proxy.ts > /tmp/ahm-ci-logs/proxy.log 2>&1 &
-          PROXY_PID=$!
-          npx ts-node -r tsconfig-paths/register -r dotenv/config src/plugins/playwright/server.ts > /tmp/ahm-ci-logs/playwright.log 2>&1 &
-          PLAYWRIGHT_PID=$!
-          npx ts-node -r tsconfig-paths/register -r dotenv/config src/plugins/api/server.ts > /tmp/ahm-ci-logs/api.log 2>&1 &
-          API_PID=$!
-
-          for port in 50051 50052 50055; do
-            ready=false
-            for i in $(seq 1 30); do
-              nc -z localhost $port 2>/dev/null && echo "port $port ready" && break
-              nc -z 127.0.0.1 $port 2>/dev/null && echo "port $port ready" && ready=true && break
-              sleep 1
-            done
-            if [ "$ready" != "true" ] && ! nc -z 127.0.0.1 "$port" 2>/dev/null; then
-              echo "Port $port did not become ready."
-              echo "Proxy log:" && cat /tmp/ahm-ci-logs/proxy.log || true
-              echo "Playwright log:" && cat /tmp/ahm-ci-logs/playwright.log || true
-              echo "API log:" && cat /tmp/ahm-ci-logs/api.log || true
-              exit 1
-            fi
-          done
-
-          kill -0 "$PROXY_PID"
-          kill -0 "$PLAYWRIGHT_PID"
-          kill -0 "$API_PID"
+        run: bash ci/steps/start-stack.sh web
         env:
           BASE_URL: ${{ secrets.BASE_URL }}
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
@@ -484,11 +426,11 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.suite }}" = "reads" ]; then
-            TAG_EXPRESSION="not @writes-shared-state"
+            TAG_EXPRESSION="@desktop and not @writes-shared-state"
           else
-            TAG_EXPRESSION="@writes-shared-state"
+            TAG_EXPRESSION="@desktop and @writes-shared-state"
           fi
-          pnpm test:json:web:desktop -- --tags "$TAG_EXPRESSION"
+          bash ci/steps/run-suite.sh "$TAG_EXPRESSION" playwright-desktop ${{ matrix.browser }}
         env:
           BASE_URL: ${{ secrets.BASE_URL }}
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
@@ -518,49 +460,22 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Parse JSONL to CSV Artifacts (standard)
-        if: ${{ always() && inputs.architecture_type != 'TOM' }}
-        run: |
-          RESULTS_DIR=$(ls -d results/* 2>/dev/null | head -n 1)
-          if [ -z "$RESULTS_DIR" ]; then
-            echo "No results directory found. Telemetry is required for AHM runs."
-            exit 0
-          fi
-          npx ts-node -r tsconfig-paths/register src/telemetry/parse-telemetry.ts "$RESULTS_DIR"
+      - name: Collect artifacts
+        if: always()
+        run: bash ci/steps/collect-artifacts.sh playwright-desktop
 
-      - name: Upload Telemetry Artifacts (standard)
-        if: ${{ always() && inputs.architecture_type != 'TOM' }}
+      - name: Upload artifacts
+        if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ahm-telemetry-${{ github.job }}-${{ matrix.suite }}-${{ matrix.browser }}-${{ github.run_id }}
-          path: results/
+          name: ahm-artifacts-${{ github.job }}-${{ matrix.suite }}-${{ matrix.browser }}-${{ github.run_id }}
+          path: artifacts/playwright-desktop/
           if-no-files-found: ignore
           retention-days: 30
 
-      - name: Generate run manifest (TOM)
-        if: ${{ always() && inputs.architecture_type == 'TOM' }}
-        run: pnpm run metrics:manifest
-
-      - name: Run metrics pipeline (TOM)
-        if: ${{ always() && inputs.architecture_type == 'TOM' }}
-        run: pnpm run metrics:all
-
-      - name: Upload TOM metrics
-        if: ${{ always() && inputs.architecture_type == 'TOM' }}
-        uses: actions/upload-artifact@v7
-        with:
-          # matrix.browser is appended here (TOM's original playwright-desktop
-          # job had no browser matrix, so its artifact name didn't need it —
-          # this consolidated job always runs chromium/firefox/webkit, so the
-          # browser must be part of the name or three parallel TOM-mode jobs
-          # would collide on the same upload-artifact name).
-          name: tom-metrics-playwright-desktop-${{ matrix.suite }}-${{ matrix.browser }}-${{ github.run_id }}
-          path: |
-            metrics/
-            results/
-            logs/
-          if-no-files-found: ignore
-          retention-days: 30
+      - name: Teardown
+        if: always()
+        run: bash ci/steps/teardown.sh
 
   # ---------------------------------------------------------------------------
   # Job 3: Web E2E — Responsive (reads/writes x browser)
@@ -614,36 +529,7 @@ jobs:
 
       - name: Start proxy + plugins
         shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p /tmp/ahm-ci-logs
-
-          npx ts-node -r tsconfig-paths/register -r dotenv/config src/kernel/chaos-proxy.ts > /tmp/ahm-ci-logs/proxy.log 2>&1 &
-          PROXY_PID=$!
-          npx ts-node -r tsconfig-paths/register -r dotenv/config src/plugins/playwright/server.ts > /tmp/ahm-ci-logs/playwright.log 2>&1 &
-          PLAYWRIGHT_PID=$!
-          npx ts-node -r tsconfig-paths/register -r dotenv/config src/plugins/api/server.ts > /tmp/ahm-ci-logs/api.log 2>&1 &
-          API_PID=$!
-
-          for port in 50051 50052 50055; do
-            ready=false
-            for i in $(seq 1 30); do
-              nc -z localhost $port 2>/dev/null && echo "port $port ready" && break
-              nc -z 127.0.0.1 $port 2>/dev/null && echo "port $port ready" && ready=true && break
-              sleep 1
-            done
-            if [ "$ready" != "true" ] && ! nc -z 127.0.0.1 "$port" 2>/dev/null; then
-              echo "Port $port did not become ready."
-              echo "Proxy log:" && cat /tmp/ahm-ci-logs/proxy.log || true
-              echo "Playwright log:" && cat /tmp/ahm-ci-logs/playwright.log || true
-              echo "API log:" && cat /tmp/ahm-ci-logs/api.log || true
-              exit 1
-            fi
-          done
-
-          kill -0 "$PROXY_PID"
-          kill -0 "$PLAYWRIGHT_PID"
-          kill -0 "$API_PID"
+        run: bash ci/steps/start-stack.sh web
         env:
           BASE_URL: ${{ secrets.BASE_URL }}
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
@@ -667,11 +553,11 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.suite }}" = "reads" ]; then
-            TAG_EXPRESSION="not @writes-shared-state"
+            TAG_EXPRESSION="@responsive and not @writes-shared-state"
           else
-            TAG_EXPRESSION="@writes-shared-state"
+            TAG_EXPRESSION="@responsive and @writes-shared-state"
           fi
-          pnpm test:json:web:responsive -- --tags "$TAG_EXPRESSION"
+          bash ci/steps/run-suite.sh "$TAG_EXPRESSION" playwright-responsive ${{ matrix.browser }}
         env:
           BASE_URL: ${{ secrets.BASE_URL }}
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
@@ -697,45 +583,22 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Parse JSONL to CSV Artifacts (standard)
-        if: ${{ always() && inputs.architecture_type != 'TOM' }}
-        run: |
-          RESULTS_DIR=$(ls -d results/* 2>/dev/null | head -n 1)
-          if [ -z "$RESULTS_DIR" ]; then
-            echo "No results directory found. Telemetry is required for AHM runs."
-            exit 0
-          fi
-          npx ts-node -r tsconfig-paths/register src/telemetry/parse-telemetry.ts "$RESULTS_DIR"
+      - name: Collect artifacts
+        if: always()
+        run: bash ci/steps/collect-artifacts.sh playwright-responsive
 
-      - name: Upload Telemetry Artifacts (standard)
-        if: ${{ always() && inputs.architecture_type != 'TOM' }}
+      - name: Upload artifacts
+        if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ahm-telemetry-${{ github.job }}-${{ matrix.suite }}-${{ matrix.browser }}-${{ github.run_id }}
-          path: results/
+          name: ahm-artifacts-${{ github.job }}-${{ matrix.suite }}-${{ matrix.browser }}-${{ github.run_id }}
+          path: artifacts/playwright-responsive/
           if-no-files-found: ignore
           retention-days: 30
 
-      - name: Generate run manifest (TOM)
-        if: ${{ always() && inputs.architecture_type == 'TOM' }}
-        run: pnpm run metrics:manifest
-
-      - name: Run metrics pipeline (TOM)
-        if: ${{ always() && inputs.architecture_type == 'TOM' }}
-        run: pnpm run metrics:all
-
-      - name: Upload TOM metrics
-        if: ${{ always() && inputs.architecture_type == 'TOM' }}
-        uses: actions/upload-artifact@v7
-        with:
-          # matrix.browser appended — see e2e-web's identical note above.
-          name: tom-metrics-playwright-responsive-${{ matrix.suite }}-${{ matrix.browser }}-${{ github.run_id }}
-          path: |
-            metrics/
-            results/
-            logs/
-          if-no-files-found: ignore
-          retention-days: 30
+      - name: Teardown
+        if: always()
+        run: bash ci/steps/teardown.sh
 
   # ---------------------------------------------------------------------------
   # Job 2b: Visual — Playwright Desktop (Pixelmatch capture + gate)
@@ -802,36 +665,7 @@ jobs:
 
       - name: Start proxy + plugins
         shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p /tmp/ahm-ci-logs
-
-          npx ts-node -r tsconfig-paths/register -r dotenv/config src/kernel/chaos-proxy.ts > /tmp/ahm-ci-logs/proxy.log 2>&1 &
-          PROXY_PID=$!
-          npx ts-node -r tsconfig-paths/register -r dotenv/config src/plugins/playwright/server.ts > /tmp/ahm-ci-logs/playwright.log 2>&1 &
-          PLAYWRIGHT_PID=$!
-          npx ts-node -r tsconfig-paths/register -r dotenv/config src/plugins/api/server.ts > /tmp/ahm-ci-logs/api.log 2>&1 &
-          API_PID=$!
-
-          for port in 50051 50052 50055; do
-            ready=false
-            for i in $(seq 1 30); do
-              nc -z localhost $port 2>/dev/null && echo "port $port ready" && break
-              nc -z 127.0.0.1 $port 2>/dev/null && echo "port $port ready" && ready=true && break
-              sleep 1
-            done
-            if [ "$ready" != "true" ] && ! nc -z 127.0.0.1 "$port" 2>/dev/null; then
-              echo "Port $port did not become ready."
-              echo "Proxy log:" && cat /tmp/ahm-ci-logs/proxy.log || true
-              echo "Playwright log:" && cat /tmp/ahm-ci-logs/playwright.log || true
-              echo "API log:" && cat /tmp/ahm-ci-logs/api.log || true
-              exit 1
-            fi
-          done
-
-          kill -0 "$PROXY_PID"
-          kill -0 "$PLAYWRIGHT_PID"
-          kill -0 "$API_PID"
+        run: bash ci/steps/start-stack.sh web
         env:
           BASE_URL: ${{ secrets.BASE_URL }}
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
@@ -916,45 +750,22 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: Parse JSONL to CSV Artifacts (standard)
-        if: ${{ always() && inputs.architecture_type != 'TOM' }}
-        run: |
-          RESULTS_DIR=$(ls -d results/* 2>/dev/null | head -n 1)
-          if [ -z "$RESULTS_DIR" ]; then
-            echo "No results directory found. Telemetry is required for AHM runs."
-            exit 0
-          fi
-          npx ts-node -r tsconfig-paths/register src/telemetry/parse-telemetry.ts "$RESULTS_DIR"
+      - name: Collect artifacts
+        if: always()
+        run: bash ci/steps/collect-artifacts.sh playwright-visual-desktop
 
-      - name: Upload Telemetry Artifacts (standard)
-        if: ${{ always() && inputs.architecture_type != 'TOM' }}
+      - name: Upload artifacts
+        if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ahm-telemetry-${{ github.job }}-${{ github.run_id }}
-          path: results/
+          name: ahm-artifacts-${{ github.job }}-${{ github.run_id }}
+          path: artifacts/playwright-visual-desktop/
           if-no-files-found: ignore
           retention-days: 30
 
-      - name: Generate run manifest (TOM)
-        if: ${{ always() && inputs.architecture_type == 'TOM' }}
-        run: pnpm run metrics:manifest
-
-      - name: Run metrics pipeline (TOM)
-        if: ${{ always() && inputs.architecture_type == 'TOM' }}
-        run: pnpm run metrics:all
-
-      - name: Upload TOM metrics
-        if: ${{ always() && inputs.architecture_type == 'TOM' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: tom-metrics-pixelmatch-desktop-${{ github.run_id }}
-          path: |
-            metrics/
-            results/
-            logs/
-            visual-results/
-          if-no-files-found: ignore
-          retention-days: 30
+      - name: Teardown
+        if: always()
+        run: bash ci/steps/teardown.sh
 
   # ---------------------------------------------------------------------------
   # Job 3b: Visual — Playwright Responsive (Pixelmatch capture + gate)
@@ -1004,36 +815,7 @@ jobs:
 
       - name: Start proxy + plugins
         shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p /tmp/ahm-ci-logs
-
-          npx ts-node -r tsconfig-paths/register -r dotenv/config src/kernel/chaos-proxy.ts > /tmp/ahm-ci-logs/proxy.log 2>&1 &
-          PROXY_PID=$!
-          npx ts-node -r tsconfig-paths/register -r dotenv/config src/plugins/playwright/server.ts > /tmp/ahm-ci-logs/playwright.log 2>&1 &
-          PLAYWRIGHT_PID=$!
-          npx ts-node -r tsconfig-paths/register -r dotenv/config src/plugins/api/server.ts > /tmp/ahm-ci-logs/api.log 2>&1 &
-          API_PID=$!
-
-          for port in 50051 50052 50055; do
-            ready=false
-            for i in $(seq 1 30); do
-              nc -z localhost $port 2>/dev/null && echo "port $port ready" && break
-              nc -z 127.0.0.1 $port 2>/dev/null && echo "port $port ready" && ready=true && break
-              sleep 1
-            done
-            if [ "$ready" != "true" ] && ! nc -z 127.0.0.1 "$port" 2>/dev/null; then
-              echo "Port $port did not become ready."
-              echo "Proxy log:" && cat /tmp/ahm-ci-logs/proxy.log || true
-              echo "Playwright log:" && cat /tmp/ahm-ci-logs/playwright.log || true
-              echo "API log:" && cat /tmp/ahm-ci-logs/api.log || true
-              exit 1
-            fi
-          done
-
-          kill -0 "$PROXY_PID"
-          kill -0 "$PLAYWRIGHT_PID"
-          kill -0 "$API_PID"
+        run: bash ci/steps/start-stack.sh web
         env:
           BASE_URL: ${{ secrets.BASE_URL }}
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
@@ -1106,45 +888,22 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: Parse JSONL to CSV Artifacts (standard)
-        if: ${{ always() && inputs.architecture_type != 'TOM' }}
-        run: |
-          RESULTS_DIR=$(ls -d results/* 2>/dev/null | head -n 1)
-          if [ -z "$RESULTS_DIR" ]; then
-            echo "No results directory found. Telemetry is required for AHM runs."
-            exit 0
-          fi
-          npx ts-node -r tsconfig-paths/register src/telemetry/parse-telemetry.ts "$RESULTS_DIR"
+      - name: Collect artifacts
+        if: always()
+        run: bash ci/steps/collect-artifacts.sh playwright-visual-responsive
 
-      - name: Upload Telemetry Artifacts (standard)
-        if: ${{ always() && inputs.architecture_type != 'TOM' }}
+      - name: Upload artifacts
+        if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ahm-telemetry-${{ github.job }}-${{ github.run_id }}
-          path: results/
+          name: ahm-artifacts-${{ github.job }}-${{ github.run_id }}
+          path: artifacts/playwright-visual-responsive/
           if-no-files-found: ignore
           retention-days: 30
 
-      - name: Generate run manifest (TOM)
-        if: ${{ always() && inputs.architecture_type == 'TOM' }}
-        run: pnpm run metrics:manifest
-
-      - name: Run metrics pipeline (TOM)
-        if: ${{ always() && inputs.architecture_type == 'TOM' }}
-        run: pnpm run metrics:all
-
-      - name: Upload TOM metrics
-        if: ${{ always() && inputs.architecture_type == 'TOM' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: tom-metrics-pixelmatch-responsive-${{ github.run_id }}
-          path: |
-            metrics/
-            results/
-            logs/
-            visual-results/
-          if-no-files-found: ignore
-          retention-days: 30
+      - name: Teardown
+        if: always()
+        run: bash ci/steps/teardown.sh
 
   # ---------------------------------------------------------------------------
   # Job 4: Android E2E
@@ -1260,16 +1019,7 @@ jobs:
           adb devices
 
       - name: Start proxy + Appium plugin
-        run: |
-          npx ts-node -r tsconfig-paths/register -r dotenv/config src/kernel/chaos-proxy.ts &
-          npx ts-node -r tsconfig-paths/register -r dotenv/config src/plugins/appium/server.ts &
-          npx ts-node -r tsconfig-paths/register -r dotenv/config src/plugins/api/server.ts &
-          for port in 50051 50053 50055; do
-            for i in $(seq 1 20); do
-              nc -z localhost $port 2>/dev/null && echo "port $port ready" && break
-              sleep 1
-            done
-          done
+        run: bash ci/steps/start-stack.sh android
         env:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           PLATFORM: android
@@ -1295,7 +1045,7 @@ jobs:
           else
             TAG_EXPRESSION="@android and @writes-shared-state"
           fi
-          pnpm test --tags "$TAG_EXPRESSION"
+          bash ci/steps/run-suite.sh "$TAG_EXPRESSION" android ${{ matrix.suite }}
         env:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           PLATFORM: android
@@ -1324,47 +1074,26 @@ jobs:
             echo "android-emulator container was not created."
           fi
 
-      - name: Parse JSONL to CSV Artifacts (standard)
-        if: ${{ always() && steps.android_tests.outcome != 'skipped' && inputs.architecture_type != 'TOM' }}
-        run: |
-          RESULTS_DIR=$(ls -d results/* 2>/dev/null | head -n 1)
-          if [ -z "$RESULTS_DIR" ]; then
-            echo "No results directory found. Telemetry is required for AHM runs."
-            exit 1
-          fi
-          npx ts-node -r tsconfig-paths/register src/telemetry/parse-telemetry.ts "$RESULTS_DIR"
+      - name: Collect artifacts
+        if: always()
+        run: bash ci/steps/collect-artifacts.sh android
 
-      - name: Upload Telemetry Artifacts (standard)
-        if: ${{ always() && inputs.architecture_type != 'TOM' }}
+      - name: Upload artifacts
+        if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ahm-telemetry-${{ github.job }}-${{ matrix.suite }}-${{ github.run_id }}
-          path: results/
-          retention-days: 30
-
-      - name: Generate run manifest (TOM)
-        if: ${{ always() && inputs.architecture_type == 'TOM' }}
-        run: pnpm run metrics:manifest
-
-      - name: Run metrics pipeline (TOM)
-        if: ${{ always() && inputs.architecture_type == 'TOM' }}
-        run: pnpm run metrics:all
-
-      - name: Upload TOM metrics
-        if: ${{ always() && inputs.architecture_type == 'TOM' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: tom-metrics-appium-android-${{ matrix.suite }}-${{ github.run_id }}
-          path: |
-            metrics/
-            results/
-            logs/
+          name: ahm-artifacts-${{ github.job }}-${{ matrix.suite }}-${{ github.run_id }}
+          path: artifacts/android/
           if-no-files-found: ignore
           retention-days: 30
 
       - name: Stop emulator
         if: always()
         run: docker rm -f android-emulator || true
+
+      - name: Teardown
+        if: always()
+        run: bash ci/steps/teardown.sh
 
   # ---------------------------------------------------------------------------
   # Job 5: iOS E2E
@@ -1473,16 +1202,7 @@ jobs:
           sleep 5
 
       - name: Start proxy + Appium plugin
-        run: |
-          npx ts-node -r tsconfig-paths/register -r dotenv/config src/kernel/chaos-proxy.ts &
-          npx ts-node -r tsconfig-paths/register -r dotenv/config src/plugins/appium/server.ts &
-          npx ts-node -r tsconfig-paths/register -r dotenv/config src/plugins/api/server.ts &
-          for port in 50051 50053 50055; do
-            for i in $(seq 1 20); do
-              nc -z localhost $port 2>/dev/null && echo "port $port ready" && break
-              sleep 1
-            done
-          done
+        run: bash ci/steps/start-stack.sh ios
         env:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           PLATFORM: ios
@@ -1512,7 +1232,7 @@ jobs:
           else
             TAG_EXPRESSION="@ios and @writes-shared-state"
           fi
-          pnpm test --tags "$TAG_EXPRESSION"
+          bash ci/steps/run-suite.sh "$TAG_EXPRESSION" ios ${{ matrix.suite }}
         env:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           PLATFORM: ios
@@ -1533,43 +1253,22 @@ jobs:
         if: always()
         run: echo "RUN_ENDED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
 
-      - name: Parse JSONL to CSV Artifacts (standard)
-        if: ${{ always() && inputs.architecture_type != 'TOM' }}
-        run: |
-          RESULTS_DIR=$(ls -d results/* 2>/dev/null | head -n 1)
-          if [ -z "$RESULTS_DIR" ]; then
-            echo "No results directory found. Telemetry is required for AHM runs."
-            exit 1
-          fi
-          npx ts-node -r tsconfig-paths/register src/telemetry/parse-telemetry.ts "$RESULTS_DIR"
+      - name: Collect artifacts
+        if: always()
+        run: bash ci/steps/collect-artifacts.sh ios
 
-      - name: Upload Telemetry Artifacts (standard)
-        if: ${{ always() && inputs.architecture_type != 'TOM' }}
+      - name: Upload artifacts
+        if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ahm-telemetry-${{ github.job }}-${{ matrix.suite }}-${{ github.run_id }}
-          path: results/
-          retention-days: 30
-
-      - name: Generate run manifest (TOM)
-        if: ${{ always() && inputs.architecture_type == 'TOM' }}
-        run: pnpm run metrics:manifest
-
-      - name: Run metrics pipeline (TOM)
-        if: ${{ always() && inputs.architecture_type == 'TOM' }}
-        run: pnpm run metrics:all
-
-      - name: Upload TOM metrics
-        if: ${{ always() && inputs.architecture_type == 'TOM' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: tom-metrics-appium-ios-${{ matrix.suite }}-${{ github.run_id }}
-          path: |
-            metrics/
-            results/
-            logs/
+          name: ahm-artifacts-${{ github.job }}-${{ matrix.suite }}-${{ github.run_id }}
+          path: artifacts/ios/
           if-no-files-found: ignore
           retention-days: 30
+
+      - name: Teardown
+        if: always()
+        run: bash ci/steps/teardown.sh
 
   # ---------------------------------------------------------------------------
   # Job 6: Perf — Gatling Simulation
@@ -1613,6 +1312,12 @@ jobs:
         if: always()
         run: echo "RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
 
+      - name: Start stack
+        # Gatling has no proxy/plugin stack of its own — start-stack.sh's
+        # `gatling)` arm is a documented no-op, kept only for Template Method
+        # symmetry with the other jobs (see ci/steps/start-stack.sh).
+        run: bash ci/steps/start-stack.sh gatling
+
       - name: Run simulation
         run: pnpm perf:${{ inputs.perf_profile || 'smoke' }}
         env:
@@ -1625,6 +1330,19 @@ jobs:
         if: always()
         run: echo "RUN_ENDED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
 
+      - name: Collect artifacts
+        if: always()
+        run: bash ci/steps/collect-artifacts.sh gatling
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ahm-artifacts-${{ github.job }}-${{ inputs.perf_profile || 'smoke' }}-${{ github.run_id }}
+          path: artifacts/gatling/
+          if-no-files-found: ignore
+          retention-days: 30
+
       - name: Upload Gatling HTML report (standard)
         if: ${{ always() && inputs.architecture_type != 'TOM' }}
         uses: actions/upload-artifact@v7
@@ -1634,26 +1352,9 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
-      - name: Generate run manifest (TOM)
-        if: ${{ always() && inputs.architecture_type == 'TOM' }}
-        run: pnpm run metrics:manifest
-
-      - name: Run metrics pipeline (TOM)
-        if: ${{ always() && inputs.architecture_type == 'TOM' }}
-        run: pnpm run metrics:all
-
-      - name: Upload TOM metrics
-        if: ${{ always() && inputs.architecture_type == 'TOM' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: tom-metrics-gatling-${{ github.run_id }}
-          path: |
-            metrics/
-            results/
-            logs/
-            target/gatling/
-          if-no-files-found: ignore
-          retention-days: 30
+      - name: Teardown
+        if: always()
+        run: bash ci/steps/teardown.sh
 
   # ---------------------------------------------------------------------------
   # Job 7: Consolidate — merge every per-tool TOM metrics artifact and run the
