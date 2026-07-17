@@ -16,7 +16,7 @@ export function HeroCategoryChips({ tools, onPick }: HeroCategoryChipsProps) {
         if (!ts.length) return null;
         const stats = catStats(ts);
         return (
-          <button key={kind} className="hero-chip" onClick={() => onPick(kind)}>
+          <button key={kind} type="button" className="hero-chip" onClick={() => onPick(kind)}>
             <HealthDot tone={stats.tone} />
             {CATEGORY_META[kind].name}
             <b>{stats.pct.toFixed(0)}%</b>
