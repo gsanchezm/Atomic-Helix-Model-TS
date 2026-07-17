@@ -1,0 +1,13 @@
+{
+  "$schema": "./pipeline.config.schema.json",
+  "jobs": [
+    { "profile": "api", "requiredSecrets": ["API_BASE_URL"], "requiredVars": [], "artifacts": ["artifacts/api/**"], "matrix": { "suite": ["reads", "writes"] } },
+    { "profile": "playwright-desktop", "requiredSecrets": ["API_BASE_URL", "BASE_URL"], "requiredVars": [], "artifacts": ["artifacts/playwright-desktop/**"], "matrix": { "suite": ["reads", "writes"], "browser": ["chromium", "firefox", "webkit"] } },
+    { "profile": "playwright-responsive", "requiredSecrets": ["API_BASE_URL", "BASE_URL"], "requiredVars": [], "artifacts": ["artifacts/playwright-responsive/**"], "matrix": { "suite": ["reads", "writes"], "browser": ["chromium", "firefox", "webkit"] } },
+    { "profile": "playwright-visual-desktop", "requiredSecrets": ["API_BASE_URL", "BASE_URL"], "requiredVars": [], "artifacts": ["artifacts/playwright-visual-desktop/**"], "matrix": {} },
+    { "profile": "playwright-visual-responsive", "requiredSecrets": ["API_BASE_URL", "BASE_URL"], "requiredVars": [], "artifacts": ["artifacts/playwright-visual-responsive/**"], "matrix": {} },
+    { "profile": "android", "requiredSecrets": ["API_BASE_URL"], "requiredVars": [], "artifacts": ["artifacts/android/**"], "matrix": { "suite": ["reads", "writes"] } },
+    { "profile": "ios", "requiredSecrets": ["API_BASE_URL"], "requiredVars": ["IOS_APP_PATH"], "artifacts": ["artifacts/ios/**"], "matrix": { "suite": ["reads", "writes"] } },
+    { "profile": "gatling", "requiredSecrets": ["API_BASE_URL"], "requiredVars": [], "artifacts": ["artifacts/gatling/**"], "matrix": {} }
+  ]
+}
