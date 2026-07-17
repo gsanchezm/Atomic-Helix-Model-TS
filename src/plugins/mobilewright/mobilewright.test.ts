@@ -27,3 +27,15 @@ test('resolveMobilewrightTarget throws a clear error for an Appium-only borrow i
 test('resolveMobilewrightTarget passes an unregistered raw target through unchanged', () => {
     assert.equal(resolveMobilewrightTarget('~already-raw-target', 'android'), '~already-raw-target');
 });
+
+test('resolveMobilewrightTarget throws for a migrated domain key with no mobilewright override (§6 gap)', () => {
+    // marketButtonList (login.webdriver.locators.json) has no node.mobile —
+    // Task 5 renamed it to node.appium — and no mobilewright override. This
+    // reproduces a live E2E finding: without borrowing from node.appium, the
+    // hardened-prefix check never runs and the raw key silently gets used
+    // as a literal testId instead of throwing.
+    assert.throws(
+        () => resolveMobilewrightTarget('marketButtonList', 'android'),
+        /marketButtonList.*Appium-only selector/,
+    );
+});

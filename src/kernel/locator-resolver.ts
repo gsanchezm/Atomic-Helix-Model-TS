@@ -94,14 +94,25 @@ export function resolveDriverValue(rawValue: any, driver: string): string | unde
 }
 
 /** mobilewright-specific priority: an explicit `node.mobilewright` branch
- *  (flat or {android,ios}-axis) wins; otherwise fall back to the shared
- *  `node.mobile.*` value appium also reads (unchanged legacy behavior). */
+ *  (flat or {android,ios}-axis) wins; otherwise fall back to whatever
+ *  Appium-oriented value is available to borrow from — the new `node.appium`
+ *  branch (webdriver-family, migrated domains) if present, else the legacy
+ *  `node.mobile.*` shape appium also reads (unmigrated domains). Without the
+ *  `node.appium` branch, a migrated domain's key with no mobilewright
+ *  override would resolve to undefined here (node.mobile no longer exists
+ *  post-migration) and skip the hardened-borrow error entirely instead of
+ *  triggering it — silently searching for the raw logical key as a literal
+ *  testId. */
 export function resolveMobilewrightValue(node: any, platform: 'android' | 'ios'): string | undefined {
     if (node.mobilewright !== undefined) {
         const value = resolveAxis(node.mobilewright, platform);
         if (value === undefined) return undefined;
         validateStructuredLocator(value);
         return JSON.stringify(value);
+    }
+    if (node.appium !== undefined) {
+        const value = resolveAxis(node.appium, platform);
+        return typeof value === 'string' ? value : undefined;
     }
     return resolveMobile(node, platform);
 }

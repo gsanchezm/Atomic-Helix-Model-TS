@@ -123,6 +123,19 @@ test('resolveMobilewrightValue falls back to node.mobile.* when node.mobilewrigh
     assert.equal(resolveMobilewrightValue(node, 'android'), '~a');
 });
 
+test('resolveMobilewrightValue falls back to node.appium.* for a migrated domain with no node.mobile', () => {
+    // Migrated (family-file) domains have `node.appium`, not `node.mobile` —
+    // the borrow must still find a value to feed the hardened-prefix check
+    // in resolveMobilewrightTarget, or that check never runs.
+    const node = { appium: { android: 'android=new UiSelector().text("x")', ios: '-ios predicate:x' } };
+    assert.equal(resolveMobilewrightValue(node, 'android'), 'android=new UiSelector().text("x")');
+});
+
+test('resolveMobilewrightValue prefers a flat node.appium string over node.mobile when both exist', () => {
+    const node = { appium: '~from-appium', mobile: '~from-mobile' };
+    assert.equal(resolveMobilewrightValue(node, 'android'), '~from-appium');
+});
+
 // --- resolveLocator / resolveMobileSelector integration (real files, untouched domain) ---
 // checkoutHeader / zipCodeInput live in checkout.locators.json, which this
 // plan never modifies — a stable regression fixture for the legacy path.
