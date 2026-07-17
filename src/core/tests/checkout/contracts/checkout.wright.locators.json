@@ -1,0 +1,124 @@
+{
+  "checkoutHeader": {
+    "playwright": { "kind": "css", "value": "h1:has-text(\"Checkout\")" },
+    "mobilewright": { "kind": "testId", "value": "text-section-address" }
+  },
+  "streetInput": {
+    "playwright": {
+      "responsive": { "kind": "testId", "value": "address-responsive" },
+      "desktop": { "kind": "testId", "value": "address-desktop" }
+    }
+  },
+  "zipCodeInput": {
+    "playwright": { "kind": "testId", "value": "zip-code" },
+    "mobilewright": { "kind": "testId", "value": "input-zipcode" }
+  },
+  "coloniaInput": {
+    "playwright": { "kind": "testId", "value": "colonia" },
+    "mobilewright": { "kind": "testId", "value": "input-colonia" }
+  },
+  "prefecturaInput": {
+    "playwright": { "kind": "testId", "value": "zip-code" },
+    "mobilewright": { "kind": "testId", "value": "input-zipcode" }
+  },
+  "districtInput": {
+    "playwright": { "kind": "testId", "value": "district" },
+    "mobilewright": { "kind": "testId", "value": "input-district" }
+  },
+  "fullNameInput": {
+    "playwright": {
+      "responsive": { "kind": "testId", "value": "full-name-responsive" },
+      "desktop": { "kind": "testId", "value": "full-name-desktop" }
+    },
+    "mobilewright": { "kind": "testId", "value": "input-fullname" }
+  },
+  "phoneNumberInput": {
+    "playwright": {
+      "responsive": { "kind": "testId", "value": "phone-responsive" },
+      "desktop": { "kind": "testId", "value": "phone-desktop" }
+    },
+    "mobilewright": { "kind": "testId", "value": "input-phone" }
+  },
+  "paymentMethodList": {
+    "playwright": { "kind": "css", "value": "[role='radiogroup'] [role='radio']" }
+  },
+  "paymentCardButton": {
+    "playwright": { "kind": "testId", "value": "payment-method-card" },
+    "mobilewright": { "kind": "testId", "value": "btn-payment-card" }
+  },
+  "paymentCashButton": {
+    "playwright": { "kind": "testId", "value": "payment-method-cash" },
+    "mobilewright": { "kind": "testId", "value": "btn-payment-cash" }
+  },
+  "paymentPaypalButton": {
+    "playwright": { "kind": "testId", "value": "payment-method-paypal" },
+    "mobilewright": { "kind": "testId", "value": "btn-payment-paypal" }
+  },
+  "cardHolderNameInput": {
+    "playwright": { "kind": "testId", "value": "card-holder" },
+    "mobilewright": { "kind": "testId", "value": "input-card-holder" }
+  },
+  "cardNumberInput": {
+    "playwright": { "kind": "testId", "value": "card-number" }
+  },
+  "expiryMonthInput": {
+    "playwright": { "kind": "testId", "value": "card-expiry-month" },
+    "mobilewright": { "kind": "testId", "value": "input-card-expiry-month" }
+  },
+  "expiryYearInput": {
+    "playwright": { "kind": "testId", "value": "card-expiry-year" },
+    "mobilewright": { "kind": "testId", "value": "input-card-expiry-year" }
+  },
+  "cvvInput": {
+    "playwright": { "kind": "testId", "value": "card-cvv" },
+    "mobilewright": { "kind": "testId", "value": "input-card-cvv" }
+  },
+  "actionItemsList": {
+    "playwright": { "kind": "css", "value": "button:has-text(\"Edit\"), button:has-text(\"Remove\")" }
+  },
+  "orderDetailsList": {
+    "playwright": { "kind": "css", "value": "div[data-testid^='order-']" }
+  },
+  "tipOptionsList": {
+    "playwright": { "kind": "css", "value": "[data-testid^='order-tip-']" }
+  },
+  "placeOrderButton": {
+    "playwright": {
+      "responsive": { "kind": "testId", "value": "place-order-btn-responsive" },
+      "desktop": { "kind": "testId", "value": "place-order-btn-desktop" }
+    },
+    "mobilewright": { "kind": "testId", "value": "btn-place-order" }
+  },
+  "confirmOrderModal": {
+    "playwright": { "kind": "testId", "value": "confirm-order-modal" },
+    "mobilewright": { "kind": "testId", "value": "modal-confirm-order" }
+  },
+  "confirmOrderYesButton": {
+    "playwright": { "kind": "testId", "value": "confirm-order-yes" },
+    "mobilewright": { "kind": "testId", "value": "btn-confirm-order-yes" }
+  },
+  "confirmOrderCancelButton": {
+    "playwright": { "kind": "testId", "value": "confirm-order-cancel" },
+    "mobilewright": { "kind": "testId", "value": "btn-confirm-order-cancel" }
+  },
+  "orderSummaryTitle": {
+    "playwright": { "kind": "testId", "value": "order-summary-title" },
+    "mobilewright": { "kind": "testId", "value": "text-section-summary" }
+  },
+  "orderTotalValue": {
+    "playwright": { "kind": "testId", "value": "order-total" },
+    "mobilewright": { "kind": "testId", "value": "text-total-value" }
+  },
+  "orderSubtotalValue": {
+    "playwright": { "kind": "testId", "value": "order-subtotal" },
+    "mobilewright": { "kind": "testId", "value": "text-subtotal-value" }
+  },
+  "orderTaxValue": {
+    "playwright": { "kind": "testId", "value": "order-tax" },
+    "mobilewright": { "kind": "testId", "value": "text-tax-value" }
+  },
+  "orderDeliveryValue": {
+    "playwright": { "kind": "testId", "value": "order-delivery" },
+    "mobilewright": { "kind": "testId", "value": "text-delivery-value" }
+  }
+}

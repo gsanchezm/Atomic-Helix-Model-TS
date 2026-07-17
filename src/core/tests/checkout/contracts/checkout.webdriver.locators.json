@@ -1,0 +1,166 @@
+{
+  "checkoutHeader": {
+    "webdriverio": "h1:has-text(\"Checkout\")",
+    "appium": "~text-section-address"
+  },
+  "checkoutScreenLanding": {
+    "appium": {
+      "android": "android=new UiSelector().resourceIdMatches(\"(text-cart-empty|text-section-address)\")",
+      "ios": "-ios predicate string:name == 'text-cart-empty' OR name == 'text-section-address'"
+    }
+  },
+  "streetInput": {
+    "webdriverio": {
+      "responsive": "[data-testid='address-responsive']",
+      "desktop": "[data-testid='address-desktop']"
+    },
+    "appium": {
+      "android": "android=new UiSelector().description(\"input-address\")",
+      "ios": "~input-address"
+    }
+  },
+  "zipCodeInput": {
+    "webdriverio": "[data-testid='zip-code']",
+    "appium": {
+      "android": "~input-zipcode",
+      "ios": "~input-zipcode"
+    }
+  },
+  "coloniaInput": {
+    "webdriverio": "[data-testid='colonia']",
+    "appium": {
+      "android": "~input-colonia",
+      "ios": "~input-colonia"
+    }
+  },
+  "prefecturaInput": {
+    "webdriverio": "[data-testid='zip-code']",
+    "appium": {
+      "android": "~input-zipcode",
+      "ios": "~input-zipcode"
+    }
+  },
+  "districtInput": {
+    "webdriverio": "[data-testid='district']",
+    "appium": "~input-district"
+  },
+  "fullNameInput": {
+    "webdriverio": {
+      "responsive": "[data-testid='full-name-responsive']",
+      "desktop": "[data-testid='full-name-desktop']"
+    },
+    "appium": "~input-fullname"
+  },
+  "phoneNumberInput": {
+    "webdriverio": {
+      "responsive": "[data-testid='phone-responsive']",
+      "desktop": "[data-testid='phone-desktop']"
+    },
+    "appium": {
+      "android": "~input-phone",
+      "ios": "~input-phone"
+    }
+  },
+  "paymentMethodList": {
+    "webdriverio": "[role='radiogroup'] [role='radio']",
+    "appium": {
+      "android": "android=new UiSelector().descriptionStartsWith(\"btn-payment-\")",
+      "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'btn-payment-'`]"
+    }
+  },
+  "paymentCardButton": {
+    "webdriverio": "[data-testid='payment-method-card']",
+    "appium": "~btn-payment-card"
+  },
+  "paymentCashButton": {
+    "webdriverio": "[data-testid='payment-method-cash']",
+    "appium": "~btn-payment-cash"
+  },
+  "paymentPaypalButton": {
+    "webdriverio": "[data-testid='payment-method-paypal']",
+    "appium": "~btn-payment-paypal"
+  },
+  "cardHolderNameInput": {
+    "webdriverio": "[data-testid='card-holder']",
+    "appium": "~input-card-holder"
+  },
+  "cardNumberInput": {
+    "webdriverio": "[data-testid='card-number']",
+    "appium": {
+      "android": "android=new UiSelector().className(\"android.widget.EditText\").description(\"input-card-number\")",
+      "ios": "-ios predicate string:type == 'XCUIElementTypeTextField' AND name == 'input-card-number'"
+    }
+  },
+  "expiryMonthInput": {
+    "webdriverio": "[data-testid='card-expiry-month']",
+    "appium": "~input-card-expiry-month"
+  },
+  "expiryYearInput": {
+    "webdriverio": "[data-testid='card-expiry-year']",
+    "appium": "~input-card-expiry-year"
+  },
+  "cvvInput": {
+    "webdriverio": "[data-testid='card-cvv']",
+    "appium": "~input-card-cvv"
+  },
+  "actionItemsList": {
+    "webdriverio": "button:has-text(\"Edit\"), button:has-text(\"Remove\")",
+    "appium": {
+      "android": "android=new UiSelector().descriptionMatches(\"text-(edit|remove)-item.*\")",
+      "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'btn-edit-item' OR name BEGINSWITH 'btn-remove-item'`]"
+    }
+  },
+  "orderDetailsList": {
+    "webdriverio": "div[data-testid^='order-']",
+    "appium": {
+      "android": "android=new UiSelector().resourceIdMatches(\"(text-subtotal-label|text-subtotal-value|text-tip-label|text-tax-label|text-tax-value|text-delivery-label|text-delivery-value|text-total-label|text-total-value|text-item-title-item_.*|text-item-size-item_.*|text-item-price-item_.*)\")",
+      "ios": "-ios class chain:**/XCUIElementTypeStaticText[`name IN {\"text-subtotal-label\",\"text-subtotal-value\",\"text-tip-label\",\"text-tax-label\",\"text-tax-value\",\"text-delivery-label\",\"text-delivery-value\",\"text-total-label\",\"text-total-value\"} OR name BEGINSWITH \"text-item-title-item_\"`]"
+    }
+  },
+  "tipOptionsList": {
+    "webdriverio": "[data-testid^='order-tip-']",
+    "appium": {
+      "android": "android=new UiSelector().descriptionMatches(\"btn-tip-(0|5|10|15)\")",
+      "ios": "-ios predicate string:name IN {'btn-tip-0','btn-tip-5','btn-tip-10','btn-tip-15'}"
+    }
+  },
+  "placeOrderButton": {
+    "webdriverio": {
+      "responsive": "[data-testid='place-order-btn-responsive']",
+      "desktop": "[data-testid='place-order-btn-desktop']"
+    },
+    "appium": "~btn-place-order"
+  },
+  "confirmOrderModal": {
+    "webdriverio": "[data-testid='confirm-order-modal']",
+    "appium": "~modal-confirm-order"
+  },
+  "confirmOrderYesButton": {
+    "webdriverio": "[data-testid='confirm-order-yes']",
+    "appium": "~btn-confirm-order-yes"
+  },
+  "confirmOrderCancelButton": {
+    "webdriverio": "[data-testid='confirm-order-cancel']",
+    "appium": "~btn-confirm-order-cancel"
+  },
+  "orderSummaryTitle": {
+    "webdriverio": "[data-testid='order-summary-title']",
+    "appium": "~text-section-summary"
+  },
+  "orderTotalValue": {
+    "webdriverio": "[data-testid='order-total']",
+    "appium": "~text-total-value"
+  },
+  "orderSubtotalValue": {
+    "webdriverio": "[data-testid='order-subtotal']",
+    "appium": "~text-subtotal-value"
+  },
+  "orderTaxValue": {
+    "webdriverio": "[data-testid='order-tax']",
+    "appium": "~text-tax-value"
+  },
+  "orderDeliveryValue": {
+    "webdriverio": "[data-testid='order-delivery']",
+    "appium": "~text-delivery-value"
+  }
+}
