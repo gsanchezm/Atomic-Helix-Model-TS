@@ -1,0 +1,92 @@
+{
+  "catalogScreen": {
+    "webdriverio": "[data-testid='screen-catalog']",
+    "appium": "~screen-catalog"
+  },
+  "catalogLoading": {
+    "webdriverio": "[data-testid='catalog-loading']"
+  },
+  "catalogError": {
+    "webdriverio": "[data-testid='catalog-error']",
+    "appium": "~text-catalog-error"
+  },
+  "emptyResultsText": {
+    "appium": "~text-empty-results"
+  },
+  "sectionHeader": {
+    "appium": "~view-section-header"
+  },
+  "sectionTitleText": {
+    "appium": "~text-section-title"
+  },
+  "searchInput": {
+    "webdriverio": {
+      "responsive": "[data-testid='search-pizza-responsive']",
+      "desktop": "[data-testid='search-pizza-desktop']"
+    },
+    "appium": "~input-search-pizza"
+  },
+  "clearFiltersButton": {
+    "webdriverio": {
+      "responsive": "[data-testid='clear-filters-responsive']",
+      "desktop": "[data-testid='clear-filters-desktop']"
+    }
+  },
+  "categoryList": {
+    "webdriverio": "[data-testid^='category-']",
+    "appium": {
+      "android": "android=new UiSelector().descriptionStartsWith(\"btn-category-\")",
+      "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'btn-category-'`]"
+    }
+  },
+  "categoryById": {
+    "webdriverio": "[data-testid='category-{id}']",
+    "appium": "~btn-category-{id}"
+  },
+  "categoryLabel": {
+    "appium": "~text-category-{id}"
+  },
+  "pizzaCardList": {
+    "webdriverio": "[data-testid^='pizza-card-']",
+    "appium": {
+      "android": "android=new UiSelector().descriptionStartsWith(\"card-pizza-\")",
+      "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'card-pizza-'`]"
+    }
+  },
+  "pizzaCard": {
+    "webdriverio": {
+      "responsive": "[data-testid='pizza-card-{id}-responsive']",
+      "desktop": "[data-testid='pizza-card-{id}-desktop']"
+    },
+    "appium": "~card-pizza-{id}"
+  },
+  "pizzaImage": {
+    "webdriverio": "[data-testid='pizza-image-{id}']",
+    "appium": "~img-pizza-{id}"
+  },
+  "pizzaName": {
+    "webdriverio": {
+      "responsive": "[data-testid='pizza-name-{id}-responsive']",
+      "desktop": "[data-testid='pizza-name-{id}-desktop']"
+    },
+    "appium": "~text-pizza-name-{id}"
+  },
+  "pizzaDescription": {
+    "webdriverio": "[data-testid='pizza-description-{id}']",
+    "appium": "~text-pizza-desc-{id}"
+  },
+  "pizzaPrice": {
+    "webdriverio": "[data-testid='pizza-price-{id}']",
+    "appium": "~text-pizza-price-{id}"
+  },
+  "addToCartButton": {
+    "webdriverio": {
+      "responsive": "[data-testid='add-to-cart-{id}-responsive']",
+      "desktop": "[data-testid='add-to-cart-{id}-desktop']"
+    },
+    "appium": "~btn-add-pizza-{id}"
+  },
+  "addToCartLabel": {
+    "appium": "~text-add-pizza-{id}"
+  }
+}
