@@ -15,6 +15,18 @@ function detectStrategy(): ResolvedVisualTarget['resolvedRegionStrategy'] {
   return 'fallback';
 }
 
+// Visual snapshots are platform-scoped, not tool-scoped (a mask/region ref
+// resolves the same way regardless of which action-execution driver is
+// running). Route through the webdriver family, whose branches are always
+// bare strings — the same raw CSS/accessibility-id shape this resolver
+// already expected before tool-keyed locators existed. Untouched domains
+// have no `webdriverio`/`appium` branch at all, so this falls straight
+// through to the legacy web/mobile.* shape, unchanged.
+function familyDriverForPlatform(): string {
+  const platform = (process.env.PLATFORM || 'web').toLowerCase();
+  return platform === 'android' || platform === 'ios' ? 'appium' : 'webdriverio';
+}
+
 export function resolveVisualTarget(snapshot: VisualSnapshot, opts?: { strict?: boolean }): ResolvedVisualTarget {
   const strict = opts?.strict !== false;
   const unresolved: string[] = [];
@@ -26,11 +38,13 @@ export function resolveVisualTarget(snapshot: VisualSnapshot, opts?: { strict?: 
     unresolvedRefs: unresolved,
   };
 
+  const driver = familyDriverForPlatform();
+
   if (!hasLocatorKey(snapshot.regionRef)) {
     unresolved.push(snapshot.regionRef);
   } else {
     try {
-      out.resolvedRegion = resolveLocator(snapshot.regionRef);
+      out.resolvedRegion = resolveLocator(snapshot.regionRef, driver);
       out.resolvedRegionStrategy = detectStrategy();
     } catch (e) {
       unresolved.push(snapshot.regionRef);
@@ -43,7 +57,7 @@ export function resolveVisualTarget(snapshot: VisualSnapshot, opts?: { strict?: 
       continue;
     }
     try {
-      out.resolvedMasks.push(resolveLocator(ref));
+      out.resolvedMasks.push(resolveLocator(ref, driver));
     } catch {
       unresolved.push(ref);
     }

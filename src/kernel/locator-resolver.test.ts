@@ -56,8 +56,15 @@ test('axisKeyFor reads PLATFORM for appium', () => {
 });
 
 test('axisKeyFor returns undefined for a driver with no axis', () => {
+    // mobilewright resolves its own axis separately (session-scoped, see
+    // resolveMobilewrightValue) rather than through this env-based lookup.
     assert.equal(axisKeyFor('mobilewright'), undefined);
-    assert.equal(axisKeyFor('webdriverio'), undefined);
+});
+
+test('axisKeyFor reads VIEWPORT for webdriverio (shares the web-family axis with playwright)', () => {
+    process.env.VIEWPORT = 'responsive';
+    assert.equal(axisKeyFor('webdriverio'), 'responsive');
+    delete process.env.VIEWPORT;
 });
 
 // --- resolveDriverValue ---

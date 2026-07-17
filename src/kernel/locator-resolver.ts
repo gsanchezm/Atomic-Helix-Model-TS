@@ -64,7 +64,11 @@ export function resolveAxis(value: any, axisKey: string | undefined): any {
 }
 
 export function axisKeyFor(driver: string): string | undefined {
-    if (driver === 'playwright') return getViewport();
+    // webdriverio and playwright are both web-family drivers and share the
+    // same viewport axis; appium is the only mobile-family driver wired up
+    // today (mobilewright resolves its own axis separately, session-scoped
+    // — see resolveMobilewrightValue).
+    if (driver === 'playwright' || driver === 'webdriverio') return getViewport();
     if (driver === 'appium') return getPlatform();
     return undefined;
 }
