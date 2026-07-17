@@ -1,0 +1,100 @@
+{
+  "navbarContainer": {
+    "appium": "~view-navbar"
+  },
+  "locationHeaderContainer": {
+    "appium": "~view-location-header"
+  },
+  "headerLogoImage": {
+    "appium": "~img-header-logo"
+  },
+  "headerBrandText": {
+    "appium": "~text-header-brand"
+  },
+  "navLogo": {
+    "webdriverio": "[data-testid='nav-logo']"
+  },
+  "navCatalogLink": {
+    "webdriverio": "[data-testid='nav-catalog']"
+  },
+  "navCheckoutLink": {
+    "webdriverio": "[data-testid='nav-checkout']"
+  },
+  "navCartCount": {
+    "webdriverio": "[data-testid='nav-cart-count']"
+  },
+  "navProfileLink": {
+    "webdriverio": "[data-testid='nav-profile']"
+  },
+  "navbarTitleText": {
+    "appium": "~text-navbar-title"
+  },
+  "languageDEButton": {
+    "webdriverio": "[data-testid='lang-de']",
+    "appium": "~btn-lang-de"
+  },
+  "languageDELabel": {
+    "appium": "~text-lang-de"
+  },
+  "languageFRButton": {
+    "webdriverio": "[data-testid='lang-fr']",
+    "appium": "~btn-lang-fr"
+  },
+  "languageFRLabel": {
+    "appium": "~text-lang-fr"
+  },
+  "headerLanguageDEButton": {
+    "appium": "~btn-header-lang-de"
+  },
+  "headerLanguageDELabel": {
+    "appium": "~text-header-lang-de"
+  },
+  "headerLanguageFRButton": {
+    "appium": "~btn-header-lang-fr"
+  },
+  "headerLanguageFRLabel": {
+    "appium": "~text-header-lang-fr"
+  },
+  "mobileMenuButton": {
+    "webdriverio": "[data-testid='mobile-menu-btn']"
+  },
+  "mobileNavCatalogLink": {
+    "webdriverio": "[data-testid='mobile-nav-catalog']"
+  },
+  "mobileNavCheckoutLink": {
+    "webdriverio": "[data-testid='mobile-nav-checkout']"
+  },
+  "mobileNavProfileLink": {
+    "webdriverio": "[data-testid='mobile-nav-profile']"
+  },
+  "mobileLogoutButton": {
+    "webdriverio": "[data-testid='mobile-logout-btn']"
+  },
+  "bottomNavContainer": {
+    "appium": "~view-bottom-nav"
+  },
+  "bottomNavList": {
+    "appium": {
+      "android": "android=new UiSelector().descriptionMatches(\"nav-[a-z]+\")",
+      "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'nav-'`]"
+    }
+  },
+  "bottomNavLabel": {
+    "appium": {
+      "android": "android=new UiSelector().resourceIdMatches(\"text-nav-(?!badge-).*\")",
+      "ios": "-ios class chain:**/XCUIElementTypeStaticText[`name BEGINSWITH 'text-nav-' AND NOT (name BEGINSWITH 'text-nav-badge-')`]"
+    }
+  },
+  "bottomNavBadge": {
+    "appium": {
+      "android": "android=new UiSelector().descriptionStartsWith(\"view-nav-badge-\")",
+      "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'view-nav-badge-'`]"
+    }
+  },
+  "bottomNavBadgeText": {
+    "appium": {
+      "android": "android=new UiSelector().descriptionStartsWith(\"text-nav-badge-\")",
+      "ios": "-ios class chain:**/XCUIElementTypeStaticText[`name BEGINSWITH 'text-nav-badge-'`]"
+    }
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "navbarContainer": {
+    "mobilewright": { "kind": "testId", "value": "view-navbar" }
+  },
+  "locationHeaderContainer": {
+    "mobilewright": { "kind": "testId", "value": "view-location-header" }
+  },
+  "headerLogoImage": {
+    "mobilewright": { "kind": "testId", "value": "img-header-logo" }
+  },
+  "headerBrandText": {
+    "mobilewright": { "kind": "testId", "value": "text-header-brand" }
+  },
+  "navLogo": {
+    "playwright": { "kind": "testId", "value": "nav-logo" }
+  },
+  "navCatalogLink": {
+    "playwright": { "kind": "testId", "value": "nav-catalog" }
+  },
+  "navCheckoutLink": {
+    "playwright": { "kind": "testId", "value": "nav-checkout" }
+  },
+  "navCartCount": {
+    "playwright": { "kind": "testId", "value": "nav-cart-count" }
+  },
+  "navProfileLink": {
+    "playwright": { "kind": "testId", "value": "nav-profile" }
+  },
+  "navbarTitleText": {
+    "mobilewright": { "kind": "testId", "value": "text-navbar-title" }
+  },
+  "languageDEButton": {
+    "playwright": { "kind": "testId", "value": "lang-de" },
+    "mobilewright": { "kind": "testId", "value": "btn-lang-de" }
+  },
+  "languageDELabel": {
+    "mobilewright": { "kind": "testId", "value": "text-lang-de" }
+  },
+  "languageFRButton": {
+    "playwright": { "kind": "testId", "value": "lang-fr" },
+    "mobilewright": { "kind": "testId", "value": "btn-lang-fr" }
+  },
+  "languageFRLabel": {
+    "mobilewright": { "kind": "testId", "value": "text-lang-fr" }
+  },
+  "headerLanguageDEButton": {
+    "mobilewright": { "kind": "testId", "value": "btn-header-lang-de" }
+  },
+  "headerLanguageDELabel": {
+    "mobilewright": { "kind": "testId", "value": "text-header-lang-de" }
+  },
+  "headerLanguageFRButton": {
+    "mobilewright": { "kind": "testId", "value": "btn-header-lang-fr" }
+  },
+  "headerLanguageFRLabel": {
+    "mobilewright": { "kind": "testId", "value": "text-header-lang-fr" }
+  },
+  "mobileMenuButton": {
+    "playwright": { "kind": "testId", "value": "mobile-menu-btn" }
+  },
+  "mobileNavCatalogLink": {
+    "playwright": { "kind": "testId", "value": "mobile-nav-catalog" }
+  },
+  "mobileNavCheckoutLink": {
+    "playwright": { "kind": "testId", "value": "mobile-nav-checkout" }
+  },
+  "mobileNavProfileLink": {
+    "playwright": { "kind": "testId", "value": "mobile-nav-profile" }
+  },
+  "mobileLogoutButton": {
+    "playwright": { "kind": "testId", "value": "mobile-logout-btn" }
+  },
+  "bottomNavContainer": {
+    "mobilewright": { "kind": "testId", "value": "view-bottom-nav" }
+  }
+}
