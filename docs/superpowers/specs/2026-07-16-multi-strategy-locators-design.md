@@ -132,13 +132,24 @@ requires it to).
   driver)`. `driver` is the same string `getPluginClient` already extracts from the gRPC `platform` field
   (`platform.split(':')[0]`) — `resolveSelector` just threads it one call further, into `resolveLocator`.
 - **`mobilewright`**: keeps resolving **plugin-side**, off the session's actual device platform
-  (`resolveMobileSelector`/`resolveMobilewrightTarget` in `mobilewright.ts`) rather than the process-wide
+  (`resolveMobilewrightSelector`/`resolveMobilewrightTarget` in `mobilewright.ts`) rather than the process-wide
   `PLATFORM` env var. This is *better* than the kernel-side path (session-scoped, not env-scoped) and is
   preserved as-is — only the lookup source changes: check `node.mobilewright` first (new, explicit); if absent,
-  fall back to the existing borrow-from-`mobile.*` + `~`-strip, hardened per §6. Because `resolveMobileSelector`
+  fall back to the existing borrow + `~`-strip, hardened per §6. Because `resolveMobilewrightSelector`
   already receives the session's real `platform` (`'android'|'ios'`), checking `node.mobilewright` first is a
   two-step lookup: if it's an axis object (`{android, ios}`, §3.6) pick the branch for the session's platform;
   if it's a flat `{kind, value, ...}` use it for both.
+
+  **Post-implementation correction (found live, during Task 6's end-to-end run against a real device,
+  commit `ada1cae`):** the borrow-fallback above originally read only `node.mobile.*`. That was correct at
+  design time (§4.6's `login.locators.json` still had a `mobile` key), but §4.6/§7's own `login.webdriver.locators.json`
+  split later renamed that field to `node.appium` — so a migrated domain's key with no `mobilewright`
+  override resolved to `undefined` and skipped the §6 hardened-prefix check entirely (silently searched for
+  the literal logical key as a testId, generic timeout instead of the intended descriptive error). The borrow
+  now checks `node.appium.*` first, falling back to `node.mobile.*` only for domains that haven't migrated to
+  family files at all — `resolveMobilewrightSelector` (originally named `resolveMobileSelector`, renamed for
+  clarity per final review) has exactly one caller, `mobilewright.ts`, and the appium plugin's runtime is
+  untouched by this change, so §4.5's "zero new runtime code" guarantee for the `webdriver` family still holds.
 
 `resolveLocator`'s new shape — guard clauses, no nested branching. `resolveAxis` is the one shared helper that
 also backs the `mobilewright` axis lookup described above:

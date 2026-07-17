@@ -5,7 +5,7 @@
 
 import { getMobilewrightActionRegistry } from '@plugins/mobilewright/actions/registerMobilewrightActions';
 import { ensureSession, teardown, MobilewrightPlatform } from '@plugins/mobilewright/mobilewright-lifecycle';
-import { hasLocatorKey, resolveMobileSelector } from '@kernel/locator-resolver';
+import { hasLocatorKey, resolveMobilewrightSelector } from '@kernel/locator-resolver';
 
 const registry = getMobilewrightActionRegistry();
 
@@ -36,7 +36,7 @@ export function resolveMobilewrightTarget(rawTarget: string, platform: Mobilewri
     const rest = sepIndex === -1 ? '' : rawTarget.slice(sepIndex);
 
     if (!hasLocatorKey(key)) return rawTarget;
-    const resolved = resolveMobileSelector(key, platform);
+    const resolved = resolveMobilewrightSelector(key, platform);
     if (!resolved) return rawTarget;
 
     if (resolved.startsWith('{')) return `${resolved}${rest}`;

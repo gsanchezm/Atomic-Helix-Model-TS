@@ -6,7 +6,7 @@ import {
     resolveDriverValue,
     resolveMobilewrightValue,
     resolveLocator,
-    resolveMobileSelector,
+    resolveMobilewrightSelector,
 } from '@kernel/locator-resolver';
 
 // --- resolveAxis ---
@@ -136,7 +136,7 @@ test('resolveMobilewrightValue prefers a flat node.appium string over node.mobil
     assert.equal(resolveMobilewrightValue(node, 'android'), '~from-appium');
 });
 
-// --- resolveLocator / resolveMobileSelector integration (real files, untouched domain) ---
+// --- resolveLocator / resolveMobilewrightSelector integration (real files, untouched domain) ---
 // checkoutHeader / zipCodeInput live in checkout.locators.json, which this
 // plan never modifies — a stable regression fixture for the legacy path.
 
@@ -154,6 +154,6 @@ test('resolveLocator resolves the legacy mobile shape unchanged when no driver b
     delete process.env.PLATFORM;
 });
 
-test('resolveMobileSelector falls back to node.mobile.* for a key with no mobilewright override', () => {
-    assert.equal(resolveMobileSelector('zipCodeInput', 'android'), '~input-zipcode');
+test('resolveMobilewrightSelector falls back to node.mobile.* for a key with no mobilewright override', () => {
+    assert.equal(resolveMobilewrightSelector('zipCodeInput', 'android'), '~input-zipcode');
 });

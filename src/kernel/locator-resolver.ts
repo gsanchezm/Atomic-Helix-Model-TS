@@ -83,7 +83,7 @@ function validateStructuredLocator(value: any): void {
 }
 
 /** Resolve one driver's branch (already axis-selected) into the wire string
- *  resolveLocator/resolveMobileSelector return: a raw string as-is, or a
+ *  resolveLocator/resolveMobilewrightSelector return: a raw string as-is, or a
  *  {kind,...} object serialized to JSON. */
 export function resolveDriverValue(rawValue: any, driver: string): string | undefined {
     const value = resolveAxis(rawValue, axisKeyFor(driver));
@@ -192,7 +192,7 @@ export function hasLocatorKey(logicalKey: string): boolean {
 // the plugin the same mobile-side registry lookup other mobile drivers get,
 // keyed off the session's actual device platform rather than the
 // process-wide PLATFORM env var.
-export function resolveMobileSelector(logicalKey: string, platform: 'android' | 'ios'): string | undefined {
+export function resolveMobilewrightSelector(logicalKey: string, platform: 'android' | 'ios'): string | undefined {
     const node = loadLocators()[logicalKey];
     if (!node) return undefined;
     return resolveMobilewrightValue(node, platform);
