@@ -2,24 +2,28 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { resolveVisualTarget } from '@core/contracts/visual-target-resolver';
 
-// checkoutHeader (checkout.locators.json) is an untouched-domain fixture:
-// "web": "h1:has-text(\"Checkout\")", "mobile": "~text-section-address".
-// zipCodeInput.mobile.android/ios = "~input-zipcode".
+// legacyFallbackHeader / legacyFallbackTestId live in
+// src/core/tests/_fixtures/legacy-fallback.locators.json, a dedicated
+// fixture that intentionally carries only the legacy web/mobile shape
+// (no webdriverio/appium branch) — an untouched-domain fixture that stays
+// stable regardless of which real domains get migrated to family files.
+// legacyFallbackHeader: "web": 'h1:has-text("Legacy Fallback")', "mobile": "~legacy-fallback-header".
+// legacyFallbackTestId.mobile.android/ios = "~legacy-fallback-id".
 
 test('resolveVisualTarget resolves an untouched domain unchanged under PLATFORM=web', () => {
     process.env.PLATFORM = 'web';
-    const result = resolveVisualTarget({ id: 's1', regionRef: 'checkoutHeader', maskRefs: ['zipCodeInput'] });
-    assert.equal(result.resolvedRegion, 'h1:has-text("Checkout")');
-    assert.equal(result.resolvedMasks[0], '[data-testid=\'zip-code\']');
+    const result = resolveVisualTarget({ id: 's1', regionRef: 'legacyFallbackHeader', maskRefs: ['legacyFallbackTestId'] });
+    assert.equal(result.resolvedRegion, 'h1:has-text("Legacy Fallback")');
+    assert.equal(result.resolvedMasks[0], '[data-testid=\'legacy-fallback\']');
     assert.equal(result.unresolvedRefs.length, 0);
     delete process.env.PLATFORM;
 });
 
 test('resolveVisualTarget resolves an untouched domain unchanged under PLATFORM=android', () => {
     process.env.PLATFORM = 'android';
-    const result = resolveVisualTarget({ id: 's2', regionRef: 'checkoutHeader', maskRefs: ['zipCodeInput'] });
-    assert.equal(result.resolvedRegion, '~text-section-address');
-    assert.equal(result.resolvedMasks[0], '~input-zipcode');
+    const result = resolveVisualTarget({ id: 's2', regionRef: 'legacyFallbackHeader', maskRefs: ['legacyFallbackTestId'] });
+    assert.equal(result.resolvedRegion, '~legacy-fallback-header');
+    assert.equal(result.resolvedMasks[0], '~legacy-fallback-id');
     delete process.env.PLATFORM;
 });
 

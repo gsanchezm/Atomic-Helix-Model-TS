@@ -136,24 +136,28 @@ test('resolveMobilewrightValue prefers a flat node.appium string over node.mobil
     assert.equal(resolveMobilewrightValue(node, 'android'), '~from-appium');
 });
 
-// --- resolveLocator / resolveMobilewrightSelector integration (real files, untouched domain) ---
-// checkoutHeader / zipCodeInput live in checkout.locators.json, which this
-// plan never modifies — a stable regression fixture for the legacy path.
+// --- resolveLocator / resolveMobilewrightSelector integration (real files, untouched fixture) ---
+// legacyFallbackTestId / legacyFallbackHeader live in
+// src/core/tests/_fixtures/legacy-fallback.locators.json, a dedicated fixture
+// that intentionally carries only the legacy web/mobile shape (no
+// webdriverio/appium/playwright/mobilewright branches) — a stable regression
+// fixture for the legacy path that stays untouched regardless of which real
+// domains get migrated to family files.
 
 test('resolveLocator resolves the legacy web shape unchanged when no driver branch exists', () => {
     process.env.PLATFORM = 'web';
     process.env.VIEWPORT = 'desktop';
-    assert.equal(resolveLocator('zipCodeInput', 'playwright'), "[data-testid='zip-code']");
+    assert.equal(resolveLocator('legacyFallbackTestId', 'playwright'), "[data-testid='legacy-fallback']");
     delete process.env.PLATFORM;
     delete process.env.VIEWPORT;
 });
 
 test('resolveLocator resolves the legacy mobile shape unchanged when no driver branch exists', () => {
     process.env.PLATFORM = 'android';
-    assert.equal(resolveLocator('zipCodeInput', 'appium'), '~input-zipcode');
+    assert.equal(resolveLocator('legacyFallbackTestId', 'appium'), '~legacy-fallback-id');
     delete process.env.PLATFORM;
 });
 
 test('resolveMobilewrightSelector falls back to node.mobile.* for a key with no mobilewright override', () => {
-    assert.equal(resolveMobilewrightSelector('zipCodeInput', 'android'), '~input-zipcode');
+    assert.equal(resolveMobilewrightSelector('legacyFallbackTestId', 'android'), '~legacy-fallback-id');
 });

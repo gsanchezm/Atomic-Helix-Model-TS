@@ -12,13 +12,16 @@ test('isMobilewrightPlatform is true only for the mobilewright driver', () => {
     assert.equal(isMobilewrightPlatform('appium:0'), false);
 });
 
-// zipCodeInput lives in checkout.locators.json, which this plan never
-// modifies — a stable regression fixture for the legacy resolution path.
+// legacyFallbackTestId lives in
+// src/core/tests/_fixtures/legacy-fallback.locators.json, a dedicated
+// fixture carrying only the legacy web/mobile shape — a stable regression
+// fixture for the legacy resolution path, independent of any real domain's
+// migration status.
 
 test('resolveSelector resolves a simple key against the legacy web shape', () => {
     process.env.PLATFORM = 'web';
     process.env.VIEWPORT = 'desktop';
-    assert.equal(resolveSelector('CLICK', 'zipCodeInput', 'playwright:0'), "[data-testid='zip-code']");
+    assert.equal(resolveSelector('CLICK', 'legacyFallbackTestId', 'playwright:0'), "[data-testid='legacy-fallback']");
     delete process.env.PLATFORM;
     delete process.env.VIEWPORT;
 });
@@ -26,7 +29,7 @@ test('resolveSelector resolves a simple key against the legacy web shape', () =>
 test('resolveSelector resolves only the key portion of a composite target, preserving the payload', () => {
     process.env.PLATFORM = 'web';
     process.env.VIEWPORT = 'desktop';
-    assert.equal(resolveSelector('TYPE', 'zipCodeInput||90210', 'playwright:0'), "[data-testid='zip-code']||90210");
+    assert.equal(resolveSelector('TYPE', 'legacyFallbackTestId||90210', 'playwright:0'), "[data-testid='legacy-fallback']||90210");
     delete process.env.PLATFORM;
     delete process.env.VIEWPORT;
 });
