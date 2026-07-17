@@ -4,7 +4,7 @@ import * as path from 'path';
 import { logger } from '@utils/logger';
 import { resolveSelector } from '@kernel/selector-resolution';
 import { ensurePortFree } from '@kernel/port-guard';
-import { INTENT, LEGACY_INTENT_ALIASES } from '@kernel/intents';
+import { INTENT } from '@kernel/intents';
 import { WriteLock } from '@kernel/write-lock';
 import {
     assertActionAllowed,
