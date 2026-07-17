@@ -46,6 +46,7 @@ const PLUGIN_ADDRESSES: Readonly<Record<string, string>> = {
     'mobilewright': process.env.MOBILEWRIGHT_ADDRESS || '127.0.0.1:50057',
     'zap':          process.env.ZAP_ADDRESS          || '127.0.0.1:50058',
     'mobsf':        process.env.MOBSF_ADDRESS        || '127.0.0.1:50059',
+    'webdriverio':  process.env.WEBDRIVERIO_ADDRESS  || '127.0.0.1:50060',
 };
 
 // --- Types ---

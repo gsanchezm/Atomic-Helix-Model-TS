@@ -22,5 +22,8 @@ CMD ["npx", "ts-node", "-r", "tsconfig-paths/register", "-r", "dotenv/config", "
 FROM base AS gatling-plugin
 CMD ["npx", "ts-node", "-r", "tsconfig-paths/register", "-r", "dotenv/config", "src/plugins/gatling/server.ts"]
 
+FROM base AS webdriverio-plugin
+CMD ["npx", "ts-node", "-r", "tsconfig-paths/register", "-r", "dotenv/config", "src/plugins/webdriverio/server.ts"]
+
 FROM base AS test-runner
 CMD ["npx", "cucumber-js"]
