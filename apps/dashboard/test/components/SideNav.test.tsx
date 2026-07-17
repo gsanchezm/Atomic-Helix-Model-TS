@@ -60,7 +60,7 @@ describe('SideNav', () => {
 
     // Get all buttons in DOM order (skip the first "All tools" button)
     const buttons = container.querySelectorAll('.side-nav button');
-    expect(buttons.length).toBeGreaterThanOrEqual(3); // All tools + Web + API
+    expect(buttons.length).toBe(3); // All tools + Web + API
 
     // First button is "All tools"
     expect(buttons[0]?.textContent).toContain('All tools');

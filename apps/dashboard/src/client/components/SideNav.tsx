@@ -15,7 +15,7 @@ export function SideNav({ tools, active, onPick }: SideNavProps) {
   return (
     <nav className="side-nav">
       <div className="side-title">Test types</div>
-      <button className={active === 'all' ? 'active' : ''} onClick={() => onPick('all')}>
+      <button type="button" className={active === 'all' ? 'active' : ''} onClick={() => onPick('all')}>
         <span className="nm">All tools</span>
         <span className="ct">{tools.length}</span>
       </button>
@@ -24,7 +24,7 @@ export function SideNav({ tools, active, onPick }: SideNavProps) {
         if (!ts.length) return null;
         const stats = catStats(ts);
         return (
-          <button key={kind} className={active === kind ? 'active' : ''} onClick={() => onPick(kind)}>
+          <button type="button" key={kind} className={active === kind ? 'active' : ''} onClick={() => onPick(kind)}>
             <HealthDot tone={stats.tone} />
             <span className="nm">{CATEGORY_META[kind].name}</span>
             {stats.failed > 0 && <span className="fl">{stats.failed}</span>}
