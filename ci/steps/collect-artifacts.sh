@@ -19,6 +19,12 @@ else
         npx ts-node -r tsconfig-paths/register src/telemetry/parse-telemetry.ts "$RESULTS_DIR" || { echo "parse-telemetry failed" >&2; exit 1; }
         mkdir -p "$DEST/telemetry"
         cp -rf results/* "$DEST/telemetry/" 2>/dev/null || true
+    elif [ "$PROFILE" = "gatling" ]; then
+        # Gatling never starts the chaos-proxy — start-stack.sh's `gatling`
+        # arm is a documented no-op (Gatling simulations run standalone, no
+        # proxy/plugin involved) — so results/ is never populated for this
+        # profile, unlike every other one. Not a failure; informational only.
+        echo "no results/ directory — expected for the gatling profile (no proxy telemetry)"
     else
         echo "No results directory found. Telemetry is required for AHM runs." >&2
         exit 1
