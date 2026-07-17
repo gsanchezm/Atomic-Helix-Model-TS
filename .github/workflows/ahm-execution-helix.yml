@@ -1,15 +1,22 @@
 # =============================================================================
 # AHM Execution Helix — Unified CI Workflow
 #
-# Consolidates: API E2E, Web E2E, Android E2E, and Gatling Perf
-# into a single file with conditional jobs controlled by `platform` input.
+# Consolidates: API E2E, Web E2E, Android E2E, iOS E2E, and Gatling Perf into
+# a single file with conditional jobs controlled by the `platform` input, AND
+# (as of the architecture_type consolidation) folds in what used to be the
+# separate `tom-quantitative-execution.yml` workflow. `architecture_type`
+# (`standard` | `TOM`) selects which reporting/metrics tail each job runs:
+# `standard` parses telemetry to CSV (the original AHM path); `TOM` stamps
+# every artifact/record with experiment identity and runs the quantitative-
+# architecture metrics pipeline, plus the extra `consolidate` job. Every other
+# job/step is shared between both architecture_type values.
 # =============================================================================
 
 name: AHM — Execution Helix
 
 on:
   # Auto-triggers temporarily disabled — run only via manual dispatch while
-  # iterating on tom-quantitative-execution.yml. Re-enable push/pull_request
+  # this workflow's job surface continues to evolve. Re-enable push/pull_request
   # when ready to restore automatic CI for this workflow.
   # push:
   #   branches: [main]
@@ -22,7 +29,21 @@ on:
         required: false
         default: all
         type: choice
-        options: [all, api, web, mobile, android, ios, perf]
+        options: [all, api, web, playwright, playwright-desktop, playwright-responsive, pixelmatch, pixelmatch-desktop, pixelmatch-responsive, mobile, android, ios, appium, appium-android, appium-ios, perf, gatling]
+      architecture_type:
+        description: 'Pipeline identity — selects the reporting/metrics tail'
+        required: false
+        default: standard
+        type: choice
+        options: [standard, TOM]
+      experiment_batch_id:
+        description: 'Experiment batch id (TOM only — groups repeated runs)'
+        required: false
+        default: batch-adhoc
+      run_index:
+        description: 'Run index within the batch (TOM only)'
+        required: false
+        default: '001'
       perf_profile:
         description: 'Gatling injection profile (perf only)'
         required: false
@@ -45,10 +66,22 @@ on:
         options: ['28', '29', '30', '31', '32', '33']
 
 # ---------------------------------------------------------------------------
-# Shared environment — inherited by every job
+# Shared environment — inherited by every job. The ARCHITECTURE_TYPE through
+# BRANCH_NAME vars carry the experimental identity the TOM metrics layer
+# stamps onto every record; they are harmless no-ops when
+# architecture_type=standard since nothing reads them outside the TOM-gated
+# metrics steps in each job below.
 # ---------------------------------------------------------------------------
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+  ARCHITECTURE_TYPE: ${{ inputs.architecture_type || 'standard' }}
+  EXPERIMENT_BATCH_ID: ${{ inputs.experiment_batch_id || 'batch-adhoc' }}
+  RUN_INDEX: ${{ inputs.run_index || github.run_attempt }}
+  REPOSITORY_NAME: ${{ github.repository }}
+  WORKFLOW_RUN_ID: ${{ github.run_id }}
+  WORKFLOW_ATTEMPT: ${{ github.run_attempt }}
+  COMMIT_SHA: ${{ github.sha }}
+  BRANCH_NAME: ${{ github.ref_name }}
   NODE_VERSION: '22'
   LOG_LEVEL: info
   # OmniPizza release base URL is resolved dynamically by the
@@ -86,6 +119,10 @@ jobs:
       github.event_name != 'workflow_dispatch'
       || inputs.platform == 'all'
       || inputs.platform == 'web'
+      || inputs.platform == 'playwright'
+      || inputs.platform == 'playwright-desktop'
+      || inputs.platform == 'pixelmatch'
+      || inputs.platform == 'pixelmatch-desktop'
     steps:
       - run: echo "Web desktop selected"
 
@@ -96,6 +133,10 @@ jobs:
       github.event_name != 'workflow_dispatch'
       || inputs.platform == 'all'
       || inputs.platform == 'web'
+      || inputs.platform == 'playwright'
+      || inputs.platform == 'playwright-responsive'
+      || inputs.platform == 'pixelmatch'
+      || inputs.platform == 'pixelmatch-responsive'
     steps:
       - run: echo "Web responsive selected"
 
@@ -107,6 +148,8 @@ jobs:
       || inputs.platform == 'all'
       || inputs.platform == 'mobile'
       || inputs.platform == 'android'
+      || inputs.platform == 'appium'
+      || inputs.platform == 'appium-android'
     steps:
       - run: echo "Android selected"
 
@@ -118,6 +161,8 @@ jobs:
       || inputs.platform == 'all'
       || inputs.platform == 'mobile'
       || inputs.platform == 'ios'
+      || inputs.platform == 'appium'
+      || inputs.platform == 'appium-ios'
     steps:
       - run: echo "iOS selected"
 
@@ -128,6 +173,7 @@ jobs:
       github.event_name != 'workflow_dispatch'
       || inputs.platform == 'all'
       || inputs.platform == 'perf'
+      || inputs.platform == 'gatling'
 
     steps:
       - run: echo "Gatling selected"
@@ -139,7 +185,9 @@ jobs:
   # the tag + download base URL as job outputs. Mobile jobs consume these
   # via `needs.resolve-omnipizza-release.outputs.*` so the workflow always
   # tests against the freshest published APK / simulator bundle without
-  # editing this file each release. Gated on mobile being selected so the
+  # editing this file each release. Gated on mobile being selected (either
+  # by the coarse `mobile`/`android`/`ios` values or the granular
+  # `appium`/`appium-android`/`appium-ios` values TOM's dispatch used) so the
   # API call is skipped when only API/Web/Perf are dispatched.
   # ---------------------------------------------------------------------------
   resolve-omnipizza-release:
@@ -151,6 +199,9 @@ jobs:
       || inputs.platform == 'mobile'
       || inputs.platform == 'android'
       || inputs.platform == 'ios'
+      || inputs.platform == 'appium'
+      || inputs.platform == 'appium-android'
+      || inputs.platform == 'appium-ios'
     outputs:
       tag: ${{ steps.fetch.outputs.tag }}
       base_url: ${{ steps.fetch.outputs.base_url }}
@@ -192,6 +243,14 @@ jobs:
       fail-fast: false
       matrix:
         suite: [reads, writes]
+    env:
+      TOOL_NAME: api
+      PLATFORM: api
+      DRIVER: api
+      TOM_RUN_ID: >-
+        ${{ inputs.architecture_type == 'TOM'
+            && format('tom-{0}-{1}-{2}-api-{3}', github.run_id, github.run_attempt, inputs.run_index || github.run_attempt, matrix.suite)
+            || format('gh-{0}-{1}-api-{2}', github.run_id, github.run_attempt, matrix.suite) }}
 
     steps:
       - uses: actions/checkout@v6
@@ -235,6 +294,10 @@ jobs:
           DRIVER: api
           PLUGIN_API: 'true'
 
+      - name: Capture run start time
+        if: always()
+        run: echo "RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
       - name: Run Cucumber suite (API layer)
         shell: bash
         run: |
@@ -243,7 +306,7 @@ jobs:
           else
             TAG_EXPRESSION="@api and @writes-shared-state"
           fi
-          pnpm test --tags "$TAG_EXPRESSION"
+          pnpm test --tags "$TAG_EXPRESSION" --format json:reports/api-${{ matrix.suite }}.json
         env:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           PLATFORM: api
@@ -252,10 +315,13 @@ jobs:
           MINIO_PORT: '9000'
           MINIO_ACCESS_KEY: minioadmin
           MINIO_SECRET_KEY: minioadmin
-          TOM_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-api-${{ matrix.suite }}
 
-      - name: Parse JSONL to CSV Artifacts
+      - name: Capture run end time
         if: always()
+        run: echo "RUN_ENDED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Parse JSONL to CSV Artifacts (standard)
+        if: ${{ always() && inputs.architecture_type != 'TOM' }}
         run: |
           RESULTS_DIR=$(ls -d results/* 2>/dev/null | head -n 1)
           if [ -z "$RESULTS_DIR" ]; then
@@ -264,12 +330,32 @@ jobs:
           fi
           npx ts-node -r tsconfig-paths/register src/telemetry/parse-telemetry.ts "$RESULTS_DIR"
 
-      - name: Upload Telemetry Artifacts
-        if: always()
+      - name: Upload Telemetry Artifacts (standard)
+        if: ${{ always() && inputs.architecture_type != 'TOM' }}
         uses: actions/upload-artifact@v7
         with:
           name: ahm-telemetry-${{ github.job }}-${{ matrix.suite }}-${{ github.run_id }}
           path: results/
+          retention-days: 30
+
+      - name: Generate run manifest (TOM)
+        if: ${{ always() && inputs.architecture_type == 'TOM' }}
+        run: pnpm run metrics:manifest
+
+      - name: Run metrics pipeline (TOM)
+        if: ${{ always() && inputs.architecture_type == 'TOM' }}
+        run: pnpm run metrics:all
+
+      - name: Upload TOM metrics
+        if: ${{ always() && inputs.architecture_type == 'TOM' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: tom-metrics-api-${{ matrix.suite }}-${{ github.run_id }}
+          path: |
+            metrics/
+            results/
+            logs/
+          if-no-files-found: ignore
           retention-days: 30
 
   # ---------------------------------------------------------------------------
@@ -306,6 +392,16 @@ jobs:
     container:
       image: mcr.microsoft.com/playwright:v1.61.1-jammy
       options: --user 0
+
+    env:
+      TOOL_NAME: playwright
+      PLATFORM: web
+      VIEWPORT: desktop
+      DRIVER: playwright
+      TOM_RUN_ID: >-
+        ${{ inputs.architecture_type == 'TOM'
+            && format('tom-{0}-{1}-{2}-playwright-desktop-{3}-{4}', github.run_id, github.run_attempt, inputs.run_index || github.run_attempt, matrix.suite, matrix.browser)
+            || format('gh-{0}-{1}-desktop-{2}-{3}', github.run_id, github.run_attempt, matrix.suite, matrix.browser) }}
 
     steps:
       - uses: actions/checkout@v6
@@ -380,6 +476,10 @@ jobs:
           PLUGIN_PIXELMATCH: 'false'
           PLUGIN_API: 'true'
 
+      - name: Capture run start time
+        if: always()
+        run: echo "RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
       - name: Run E2E tests
         shell: bash
         run: |
@@ -404,7 +504,10 @@ jobs:
           # doesn't load capability it won't use AND the hook self-skips
           # if the plugin ever did register the capability.
           PLUGIN_PIXELMATCH: 'false'
-          TOM_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-desktop-${{ matrix.suite }}-${{ matrix.browser }}
+
+      - name: Capture run end time
+        if: always()
+        run: echo "RUN_ENDED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
 
       - name: Upload service logs
         if: always()
@@ -415,8 +518,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Parse JSONL to CSV Artifacts
-        if: always()
+      - name: Parse JSONL to CSV Artifacts (standard)
+        if: ${{ always() && inputs.architecture_type != 'TOM' }}
         run: |
           RESULTS_DIR=$(ls -d results/* 2>/dev/null | head -n 1)
           if [ -z "$RESULTS_DIR" ]; then
@@ -425,12 +528,37 @@ jobs:
           fi
           npx ts-node -r tsconfig-paths/register src/telemetry/parse-telemetry.ts "$RESULTS_DIR"
 
-      - name: Upload Telemetry Artifacts
-        if: always()
+      - name: Upload Telemetry Artifacts (standard)
+        if: ${{ always() && inputs.architecture_type != 'TOM' }}
         uses: actions/upload-artifact@v7
         with:
           name: ahm-telemetry-${{ github.job }}-${{ matrix.suite }}-${{ matrix.browser }}-${{ github.run_id }}
           path: results/
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Generate run manifest (TOM)
+        if: ${{ always() && inputs.architecture_type == 'TOM' }}
+        run: pnpm run metrics:manifest
+
+      - name: Run metrics pipeline (TOM)
+        if: ${{ always() && inputs.architecture_type == 'TOM' }}
+        run: pnpm run metrics:all
+
+      - name: Upload TOM metrics
+        if: ${{ always() && inputs.architecture_type == 'TOM' }}
+        uses: actions/upload-artifact@v7
+        with:
+          # matrix.browser is appended here (TOM's original playwright-desktop
+          # job had no browser matrix, so its artifact name didn't need it —
+          # this consolidated job always runs chromium/firefox/webkit, so the
+          # browser must be part of the name or three parallel TOM-mode jobs
+          # would collide on the same upload-artifact name).
+          name: tom-metrics-playwright-desktop-${{ matrix.suite }}-${{ matrix.browser }}-${{ github.run_id }}
+          path: |
+            metrics/
+            results/
+            logs/
           if-no-files-found: ignore
           retention-days: 30
 
@@ -456,6 +584,16 @@ jobs:
     container:
       image: mcr.microsoft.com/playwright:v1.61.1-jammy
       options: --user 0
+
+    env:
+      TOOL_NAME: playwright
+      PLATFORM: web
+      VIEWPORT: responsive
+      DRIVER: playwright
+      TOM_RUN_ID: >-
+        ${{ inputs.architecture_type == 'TOM'
+            && format('tom-{0}-{1}-{2}-playwright-responsive-{3}-{4}', github.run_id, github.run_attempt, inputs.run_index || github.run_attempt, matrix.suite, matrix.browser)
+            || format('gh-{0}-{1}-responsive-{2}-{3}', github.run_id, github.run_attempt, matrix.suite, matrix.browser) }}
 
     steps:
       - uses: actions/checkout@v6
@@ -521,6 +659,10 @@ jobs:
           PLUGIN_PIXELMATCH: 'false'
           PLUGIN_API: 'true'
 
+      - name: Capture run start time
+        if: always()
+        run: echo "RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
       - name: Run E2E tests
         shell: bash
         run: |
@@ -541,7 +683,10 @@ jobs:
           PROXY_ADDRESS: 127.0.0.1:50051
           HEADLESS: 'true'
           PLUGIN_PIXELMATCH: 'false'
-          TOM_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-responsive-${{ matrix.suite }}-${{ matrix.browser }}
+
+      - name: Capture run end time
+        if: always()
+        run: echo "RUN_ENDED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
 
       - name: Upload service logs
         if: always()
@@ -552,8 +697,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Parse JSONL to CSV Artifacts
-        if: always()
+      - name: Parse JSONL to CSV Artifacts (standard)
+        if: ${{ always() && inputs.architecture_type != 'TOM' }}
         run: |
           RESULTS_DIR=$(ls -d results/* 2>/dev/null | head -n 1)
           if [ -z "$RESULTS_DIR" ]; then
@@ -562,12 +707,33 @@ jobs:
           fi
           npx ts-node -r tsconfig-paths/register src/telemetry/parse-telemetry.ts "$RESULTS_DIR"
 
-      - name: Upload Telemetry Artifacts
-        if: always()
+      - name: Upload Telemetry Artifacts (standard)
+        if: ${{ always() && inputs.architecture_type != 'TOM' }}
         uses: actions/upload-artifact@v7
         with:
           name: ahm-telemetry-${{ github.job }}-${{ matrix.suite }}-${{ matrix.browser }}-${{ github.run_id }}
           path: results/
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Generate run manifest (TOM)
+        if: ${{ always() && inputs.architecture_type == 'TOM' }}
+        run: pnpm run metrics:manifest
+
+      - name: Run metrics pipeline (TOM)
+        if: ${{ always() && inputs.architecture_type == 'TOM' }}
+        run: pnpm run metrics:all
+
+      - name: Upload TOM metrics
+        if: ${{ always() && inputs.architecture_type == 'TOM' }}
+        uses: actions/upload-artifact@v7
+        with:
+          # matrix.browser appended — see e2e-web's identical note above.
+          name: tom-metrics-playwright-responsive-${{ matrix.suite }}-${{ matrix.browser }}-${{ github.run_id }}
+          path: |
+            metrics/
+            results/
+            logs/
           if-no-files-found: ignore
           retention-days: 30
 
@@ -588,6 +754,10 @@ jobs:
   #      sequencing keeps the timeline interpretable.
   # Desktop/responsive read legs run freely in parallel. Visual jobs join the
   # same standard-user write queue because they include tagged write scenarios.
+  # (The now-folded-in TOM workflow also chained pixelmatch-responsive after
+  # pixelmatch-desktop for the same shared-fixture reason; kept here as the
+  # shared standard-user-writes concurrency group only — see design doc §3.5
+  # for why the extra needs: edge is intentionally NOT carried over.)
   # ---------------------------------------------------------------------------
   visual-web:
     name: Visual — Playwright Desktop (Pixelmatch)
@@ -602,6 +772,16 @@ jobs:
     container:
       image: mcr.microsoft.com/playwright:v1.61.1-jammy
       options: --user 0
+
+    env:
+      TOOL_NAME: pixelmatch
+      PLATFORM: web
+      VIEWPORT: desktop
+      DRIVER: playwright
+      TOM_RUN_ID: >-
+        ${{ inputs.architecture_type == 'TOM'
+            && format('tom-{0}-{1}-{2}-pixelmatch-desktop', github.run_id, github.run_attempt, inputs.run_index || github.run_attempt)
+            || format('gh-{0}-{1}-desktop-visual', github.run_id, github.run_attempt) }}
 
     steps:
       - uses: actions/checkout@v6
@@ -669,7 +849,12 @@ jobs:
           PLUGIN_PIXELMATCH: 'true'
           PLUGIN_API: 'true'
 
-      - name: Run visual capture
+      - name: Capture run start time
+        if: always()
+        run: echo "RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Run visual capture (standard)
+        if: ${{ inputs.architecture_type != 'TOM' }}
         run: pnpm test:json:visual:desktop
         env:
           BASE_URL: ${{ secrets.BASE_URL }}
@@ -680,9 +865,29 @@ jobs:
           PROXY_ADDRESS: 127.0.0.1:50051
           HEADLESS: 'true'
           PLUGIN_PIXELMATCH: 'true'
-          # Distinct run id from the functional pass so visual-results
-          # buckets stay separate per-job.
-          TOM_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-desktop-visual
+
+      - name: Run visual capture (TOM)
+        # COMPARE against the committed baselines (the gate). `test:json:visual:desktop`
+        # (the standard-path step above) maps to scripts/visual-regen.js which WIPES +
+        # regenerates baselines and forces VISUAL_UPDATE_BASELINE=true (local-iteration
+        # only) — use the compare script here so the TOM path's visual gate actually
+        # validates against visual-baselines/.
+        if: ${{ inputs.architecture_type == 'TOM' }}
+        run: pnpm test:json:visual:compare:desktop
+        env:
+          BASE_URL: ${{ secrets.BASE_URL }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          PLATFORM: web
+          VIEWPORT: desktop
+          DRIVER: playwright
+          PROXY_ADDRESS: 127.0.0.1:50051
+          HEADLESS: 'true'
+          PLUGIN_PIXELMATCH: 'true'
+          VISUAL_UPDATE_BASELINE: 'false'
+
+      - name: Capture run end time
+        if: always()
+        run: echo "RUN_ENDED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
 
       - name: Visual gate — fail the job if any snapshot drifted
         # Cucumber stays green on drift (the visual hook swallows
@@ -711,8 +916,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: Parse JSONL to CSV Artifacts
-        if: always()
+      - name: Parse JSONL to CSV Artifacts (standard)
+        if: ${{ always() && inputs.architecture_type != 'TOM' }}
         run: |
           RESULTS_DIR=$(ls -d results/* 2>/dev/null | head -n 1)
           if [ -z "$RESULTS_DIR" ]; then
@@ -721,12 +926,33 @@ jobs:
           fi
           npx ts-node -r tsconfig-paths/register src/telemetry/parse-telemetry.ts "$RESULTS_DIR"
 
-      - name: Upload Telemetry Artifacts
-        if: always()
+      - name: Upload Telemetry Artifacts (standard)
+        if: ${{ always() && inputs.architecture_type != 'TOM' }}
         uses: actions/upload-artifact@v7
         with:
           name: ahm-telemetry-${{ github.job }}-${{ github.run_id }}
           path: results/
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Generate run manifest (TOM)
+        if: ${{ always() && inputs.architecture_type == 'TOM' }}
+        run: pnpm run metrics:manifest
+
+      - name: Run metrics pipeline (TOM)
+        if: ${{ always() && inputs.architecture_type == 'TOM' }}
+        run: pnpm run metrics:all
+
+      - name: Upload TOM metrics
+        if: ${{ always() && inputs.architecture_type == 'TOM' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: tom-metrics-pixelmatch-desktop-${{ github.run_id }}
+          path: |
+            metrics/
+            results/
+            logs/
+            visual-results/
           if-no-files-found: ignore
           retention-days: 30
 
@@ -748,6 +974,16 @@ jobs:
     container:
       image: mcr.microsoft.com/playwright:v1.61.1-jammy
       options: --user 0
+
+    env:
+      TOOL_NAME: pixelmatch
+      PLATFORM: web
+      VIEWPORT: responsive
+      DRIVER: playwright
+      TOM_RUN_ID: >-
+        ${{ inputs.architecture_type == 'TOM'
+            && format('tom-{0}-{1}-{2}-pixelmatch-responsive', github.run_id, github.run_attempt, inputs.run_index || github.run_attempt)
+            || format('gh-{0}-{1}-responsive-visual', github.run_id, github.run_attempt) }}
 
     steps:
       - uses: actions/checkout@v6
@@ -812,7 +1048,12 @@ jobs:
           PLUGIN_PIXELMATCH: 'true'
           PLUGIN_API: 'true'
 
-      - name: Run visual capture
+      - name: Capture run start time
+        if: always()
+        run: echo "RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Run visual capture (standard)
+        if: ${{ inputs.architecture_type != 'TOM' }}
         run: pnpm test:json:visual:responsive
         env:
           BASE_URL: ${{ secrets.BASE_URL }}
@@ -823,7 +1064,25 @@ jobs:
           PROXY_ADDRESS: 127.0.0.1:50051
           HEADLESS: 'true'
           PLUGIN_PIXELMATCH: 'true'
-          TOM_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-responsive-visual
+
+      - name: Run visual capture (TOM)
+        # COMPARE against the committed baselines — see visual-web's identical note.
+        if: ${{ inputs.architecture_type == 'TOM' }}
+        run: pnpm test:json:visual:compare:responsive
+        env:
+          BASE_URL: ${{ secrets.BASE_URL }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          PLATFORM: web
+          VIEWPORT: responsive
+          DRIVER: playwright
+          PROXY_ADDRESS: 127.0.0.1:50051
+          HEADLESS: 'true'
+          PLUGIN_PIXELMATCH: 'true'
+          VISUAL_UPDATE_BASELINE: 'false'
+
+      - name: Capture run end time
+        if: always()
+        run: echo "RUN_ENDED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
 
       - name: Visual gate — fail the job if any snapshot drifted
         if: success() || failure()
@@ -847,8 +1106,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: Parse JSONL to CSV Artifacts
-        if: always()
+      - name: Parse JSONL to CSV Artifacts (standard)
+        if: ${{ always() && inputs.architecture_type != 'TOM' }}
         run: |
           RESULTS_DIR=$(ls -d results/* 2>/dev/null | head -n 1)
           if [ -z "$RESULTS_DIR" ]; then
@@ -857,12 +1116,33 @@ jobs:
           fi
           npx ts-node -r tsconfig-paths/register src/telemetry/parse-telemetry.ts "$RESULTS_DIR"
 
-      - name: Upload Telemetry Artifacts
-        if: always()
+      - name: Upload Telemetry Artifacts (standard)
+        if: ${{ always() && inputs.architecture_type != 'TOM' }}
         uses: actions/upload-artifact@v7
         with:
           name: ahm-telemetry-${{ github.job }}-${{ github.run_id }}
           path: results/
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Generate run manifest (TOM)
+        if: ${{ always() && inputs.architecture_type == 'TOM' }}
+        run: pnpm run metrics:manifest
+
+      - name: Run metrics pipeline (TOM)
+        if: ${{ always() && inputs.architecture_type == 'TOM' }}
+        run: pnpm run metrics:all
+
+      - name: Upload TOM metrics
+        if: ${{ always() && inputs.architecture_type == 'TOM' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: tom-metrics-pixelmatch-responsive-${{ github.run_id }}
+          path: |
+            metrics/
+            results/
+            logs/
+            visual-results/
           if-no-files-found: ignore
           retention-days: 30
 
@@ -881,6 +1161,14 @@ jobs:
       fail-fast: false
       matrix:
         suite: [reads, writes]
+    env:
+      TOOL_NAME: appium-android
+      PLATFORM: android
+      DRIVER: appium
+      TOM_RUN_ID: >-
+        ${{ inputs.architecture_type == 'TOM'
+            && format('tom-{0}-{1}-{2}-appium-android-{3}', github.run_id, github.run_attempt, inputs.run_index || github.run_attempt, matrix.suite)
+            || format('gh-{0}-{1}-android-{2}', github.run_id, github.run_attempt, matrix.suite) }}
 
     steps:
       - uses: actions/checkout@v6
@@ -994,6 +1282,10 @@ jobs:
           PLUGIN_APPIUM: 'true'
           PLUGIN_API: 'true'
 
+      - name: Capture run start time
+        if: always()
+        run: echo "RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
       - name: Run E2E tests
         id: android_tests
         shell: bash
@@ -1017,7 +1309,10 @@ jobs:
           MINIO_PORT: '9000'
           MINIO_ACCESS_KEY: minioadmin
           MINIO_SECRET_KEY: minioadmin
-          TOM_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-android-${{ matrix.suite }}
+
+      - name: Capture run end time
+        if: always()
+        run: echo "RUN_ENDED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
 
       - name: Show Android emulator logs
         if: failure()
@@ -1029,8 +1324,8 @@ jobs:
             echo "android-emulator container was not created."
           fi
 
-      - name: Parse JSONL to CSV Artifacts
-        if: always() && steps.android_tests.outcome != 'skipped'
+      - name: Parse JSONL to CSV Artifacts (standard)
+        if: ${{ always() && steps.android_tests.outcome != 'skipped' && inputs.architecture_type != 'TOM' }}
         run: |
           RESULTS_DIR=$(ls -d results/* 2>/dev/null | head -n 1)
           if [ -z "$RESULTS_DIR" ]; then
@@ -1039,12 +1334,32 @@ jobs:
           fi
           npx ts-node -r tsconfig-paths/register src/telemetry/parse-telemetry.ts "$RESULTS_DIR"
 
-      - name: Upload Telemetry Artifacts
-        if: always()
+      - name: Upload Telemetry Artifacts (standard)
+        if: ${{ always() && inputs.architecture_type != 'TOM' }}
         uses: actions/upload-artifact@v7
         with:
           name: ahm-telemetry-${{ github.job }}-${{ matrix.suite }}-${{ github.run_id }}
           path: results/
+          retention-days: 30
+
+      - name: Generate run manifest (TOM)
+        if: ${{ always() && inputs.architecture_type == 'TOM' }}
+        run: pnpm run metrics:manifest
+
+      - name: Run metrics pipeline (TOM)
+        if: ${{ always() && inputs.architecture_type == 'TOM' }}
+        run: pnpm run metrics:all
+
+      - name: Upload TOM metrics
+        if: ${{ always() && inputs.architecture_type == 'TOM' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: tom-metrics-appium-android-${{ matrix.suite }}-${{ github.run_id }}
+          path: |
+            metrics/
+            results/
+            logs/
+          if-no-files-found: ignore
           retention-days: 30
 
       - name: Stop emulator
@@ -1066,6 +1381,14 @@ jobs:
       fail-fast: false
       matrix:
         suite: [reads, writes]
+    env:
+      TOOL_NAME: appium-ios
+      PLATFORM: ios
+      DRIVER: appium
+      TOM_RUN_ID: >-
+        ${{ inputs.architecture_type == 'TOM'
+            && format('tom-{0}-{1}-{2}-appium-ios-{3}', github.run_id, github.run_attempt, inputs.run_index || github.run_attempt, matrix.suite)
+            || format('gh-{0}-{1}-ios-{2}', github.run_id, github.run_attempt, matrix.suite) }}
 
     steps:
       - uses: actions/checkout@v6
@@ -1177,6 +1500,10 @@ jobs:
           MINIO_ACCESS_KEY: minioadmin
           MINIO_SECRET_KEY: minioadmin
 
+      - name: Capture run start time
+        if: always()
+        run: echo "RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
       - name: Run E2E tests
         shell: bash
         run: |
@@ -1201,10 +1528,13 @@ jobs:
           MINIO_PORT: '9000'
           MINIO_ACCESS_KEY: minioadmin
           MINIO_SECRET_KEY: minioadmin
-          TOM_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-ios-${{ matrix.suite }}
 
-      - name: Parse JSONL to CSV Artifacts
+      - name: Capture run end time
         if: always()
+        run: echo "RUN_ENDED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Parse JSONL to CSV Artifacts (standard)
+        if: ${{ always() && inputs.architecture_type != 'TOM' }}
         run: |
           RESULTS_DIR=$(ls -d results/* 2>/dev/null | head -n 1)
           if [ -z "$RESULTS_DIR" ]; then
@@ -1213,12 +1543,32 @@ jobs:
           fi
           npx ts-node -r tsconfig-paths/register src/telemetry/parse-telemetry.ts "$RESULTS_DIR"
 
-      - name: Upload Telemetry Artifacts
-        if: always()
+      - name: Upload Telemetry Artifacts (standard)
+        if: ${{ always() && inputs.architecture_type != 'TOM' }}
         uses: actions/upload-artifact@v7
         with:
           name: ahm-telemetry-${{ github.job }}-${{ matrix.suite }}-${{ github.run_id }}
           path: results/
+          retention-days: 30
+
+      - name: Generate run manifest (TOM)
+        if: ${{ always() && inputs.architecture_type == 'TOM' }}
+        run: pnpm run metrics:manifest
+
+      - name: Run metrics pipeline (TOM)
+        if: ${{ always() && inputs.architecture_type == 'TOM' }}
+        run: pnpm run metrics:all
+
+      - name: Upload TOM metrics
+        if: ${{ always() && inputs.architecture_type == 'TOM' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: tom-metrics-appium-ios-${{ matrix.suite }}-${{ github.run_id }}
+          path: |
+            metrics/
+            results/
+            logs/
+          if-no-files-found: ignore
           retention-days: 30
 
   # ---------------------------------------------------------------------------
@@ -1228,6 +1578,14 @@ jobs:
     name: Perf — Gatling ${{ inputs.perf_profile || 'smoke' }}
     needs: gate-gatling
     runs-on: ubuntu-latest
+    env:
+      TOOL_NAME: gatling
+      PLATFORM: performance
+      DRIVER: gatling
+      TOM_RUN_ID: >-
+        ${{ inputs.architecture_type == 'TOM'
+            && format('tom-{0}-{1}-{2}-gatling-{3}', github.run_id, github.run_attempt, inputs.run_index || github.run_attempt, inputs.perf_profile || 'smoke')
+            || format('gh-{0}-{1}-gatling-{2}', github.run_id, github.run_attempt, inputs.perf_profile || 'smoke') }}
 
     steps:
       - uses: actions/checkout@v6
@@ -1251,6 +1609,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Capture run start time
+        if: always()
+        run: echo "RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
       - name: Run simulation
         run: pnpm perf:${{ inputs.perf_profile || 'smoke' }}
         env:
@@ -1259,11 +1621,107 @@ jobs:
           PERF_DURATION: ${{ inputs.perf_duration || '120' }}
           LANGUAGE: en
 
-      - name: Upload Gatling HTML report
+      - name: Capture run end time
         if: always()
+        run: echo "RUN_ENDED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Upload Gatling HTML report (standard)
+        if: ${{ always() && inputs.architecture_type != 'TOM' }}
         uses: actions/upload-artifact@v7
         with:
           name: gatling-report-${{ inputs.perf_profile || 'smoke' }}-${{ github.run_id }}
           path: target/gatling/
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Generate run manifest (TOM)
+        if: ${{ always() && inputs.architecture_type == 'TOM' }}
+        run: pnpm run metrics:manifest
+
+      - name: Run metrics pipeline (TOM)
+        if: ${{ always() && inputs.architecture_type == 'TOM' }}
+        run: pnpm run metrics:all
+
+      - name: Upload TOM metrics
+        if: ${{ always() && inputs.architecture_type == 'TOM' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: tom-metrics-gatling-${{ github.run_id }}
+          path: |
+            metrics/
+            results/
+            logs/
+            target/gatling/
+          if-no-files-found: ignore
+          retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  # Job 7: Consolidate — merge every per-tool TOM metrics artifact and run the
+  # full operational + quality metrics pipeline over the combined inputs.
+  # Copied from the now-folded-in tom-quantitative-execution.yml's own
+  # `consolidate` job; only runs when architecture_type=TOM (the standard
+  # path has no equivalent merge step — each job's own telemetry upload is
+  # the final word there). `needs:` targets the shared job keys above rather
+  # than TOM's original per-tool job names.
+  # ---------------------------------------------------------------------------
+  consolidate:
+    name: Consolidate — Experiment metrics
+    needs:
+      - api-smoke
+      - e2e-web
+      - e2e-web-responsive
+      - visual-web
+      - visual-web-responsive
+      - e2e-android
+      - e2e-ios
+      - perf-gatling
+    if: ${{ always() && inputs.architecture_type == 'TOM' }}
+    runs-on: ubuntu-latest
+    env:
+      TOOL_NAME: ALL
+      PLATFORM: ALL
+      DRIVER: none
+      TOM_RUN_ID: tom-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.run_index || github.run_attempt }}-consolidated
+
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+      - name: Cache pnpm store
+        uses: actions/cache@v5
+        with:
+          path: ~/.pnpm-store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download all per-tool metrics artifacts
+        if: always()
+        # download-artifact bumped to v7 alongside upload-artifact (§3.6) —
+        # the two actions ship in lockstep majors; this pairing could not be
+        # re-verified against the live GitHub Marketplace listing from this
+        # offline worktree, so double check before relying on it in prod.
+        uses: actions/download-artifact@v7
+        with:
+          pattern: tom-metrics-*
+          merge-multiple: true
+          path: .
+
+      - name: Run consolidated experiment metrics
+        if: always()
+        run: pnpm run metrics:experiment
+
+      - name: Upload consolidated TOM metrics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: tom-metrics-consolidated-${{ github.run_id }}
+          path: |
+            metrics/
           if-no-files-found: ignore
           retention-days: 30

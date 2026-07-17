@@ -321,8 +321,11 @@ The `mobile` profile chains: `android-emulator (docker-android)` → `appium-ser
 
 | Workflow                    | Purpose                                                                  |
 |-----------------------------|--------------------------------------------------------------------------|
-| `ahm-execution-helix.yml`   | Unified test execution: api, web (desktop + responsive), android, ios, perf. Manual dispatch via `platform: all\|api\|web\|mobile\|android\|ios\|perf`. |
+| `ahm-execution-helix.yml`   | Unified test execution: api, web (desktop + responsive), android, ios, perf. Manual dispatch via `platform: all\|api\|web\|mobile\|android\|ios\|perf\|...` and `architecture_type: standard\|TOM` (TOM tags every artifact/record for the quantitative-architecture metrics pipeline and runs the extra `Consolidate` job). |
+| `update-visual-baselines.yml` | Regenerates Pixelmatch baselines per viewport, opens a refresh PR.     |
 | `deploy-pages.yml`          | Static site deploy when `web/**` changes (GitHub Pages).                 |
+
+`experiment_batch_id` and `run_index` are additional dispatch inputs, honored only when `architecture_type=TOM` (they group repeated runs into an experiment batch and number each run within it); both are ignored when `architecture_type=standard`. `ahm-execution-helix.yml` used to coexist with a separate `tom-quantitative-execution.yml` workflow that duplicated most of its job/step shape — the two were consolidated behind the `architecture_type` input above, and `tom-quantitative-execution.yml` was deleted.
 
 The Helix workflow gates jobs by the `platform` input on manual dispatch. **On `push`/`pull_request` to `main`, every job runs** — including `e2e-android` (KVM + docker-android) and `e2e-ios` (`macos-latest`) — because each gate's `if` is `github.event_name != 'workflow_dispatch' || inputs.platform == …`, and the first operand is already `true` for push/PR. A published OmniPizza release is therefore a prerequisite for *all* event-triggered runs, not only mobile dispatches. (If you want mobile to be manual-only, the gate `if:` blocks must be tightened to `github.event_name == 'workflow_dispatch' && …`.)
 
