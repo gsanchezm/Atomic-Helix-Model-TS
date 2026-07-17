@@ -1,0 +1,83 @@
+{
+  "profileScreen": {
+    "mobilewright": { "kind": "testId", "value": "screen-profile" }
+  },
+  "profileCard": {
+    "mobilewright": { "kind": "testId", "value": "view-profile-card" }
+  },
+  "profileAvatar": {
+    "mobilewright": { "kind": "testId", "value": "img-profile-avatar" }
+  },
+  "profileSubtitleText": {
+    "mobilewright": { "kind": "testId", "value": "text-profile-subtitle" }
+  },
+  "profileUsernameText": {
+    "mobilewright": { "kind": "testId", "value": "text-profile-username" }
+  },
+  "premiumBadgeText": {
+    "mobilewright": { "kind": "testId", "value": "text-premium-badge" }
+  },
+  "profileMetaText": {
+    "mobilewright": { "kind": "testId", "value": "text-profile-meta" }
+  },
+  "formTitleText": {
+    "mobilewright": { "kind": "testId", "value": "text-form-title" }
+  },
+  "fullNameLabel": {
+    "mobilewright": { "kind": "testId", "value": "label-profile-fullname" }
+  },
+  "profileFullNameInput": {
+    "playwright": {
+      "responsive": { "kind": "testId", "value": "profile-fullname-responsive" },
+      "desktop": { "kind": "testId", "value": "profile-fullname-desktop" }
+    },
+    "mobilewright": { "kind": "testId", "value": "input-profile-fullname" }
+  },
+  "phoneNumberLabel": {
+    "mobilewright": { "kind": "testId", "value": "label-profile-phone" }
+  },
+  "profilePhoneNumberInput": {
+    "playwright": { "kind": "testId", "value": "profile-phone" },
+    "mobilewright": { "kind": "testId", "value": "input-profile-phone" }
+  },
+  "addressLabel": {
+    "mobilewright": { "kind": "testId", "value": "label-profile-address" }
+  },
+  "addressInput": {
+    "playwright": {
+      "responsive": { "kind": "testId", "value": "profile-address-responsive" },
+      "desktop": { "kind": "testId", "value": "profile-address-desktop" }
+    }
+  },
+  "notesLabel": {
+    "mobilewright": { "kind": "testId", "value": "label-profile-notes" }
+  },
+  "notesInput": {
+    "playwright": { "kind": "testId", "value": "profile-notes" },
+    "mobilewright": { "kind": "testId", "value": "input-profile-notes" }
+  },
+  "cancelButton": {
+    "playwright": { "kind": "testId", "value": "profile-cancel-btn" },
+    "mobilewright": { "kind": "testId", "value": "btn-cancel-profile" }
+  },
+  "cancelButtonLabel": {
+    "mobilewright": { "kind": "testId", "value": "text-cancel-profile" }
+  },
+  "saveButton": {
+    "playwright": {
+      "responsive": { "kind": "testId", "value": "profile-save-btn-responsive" },
+      "desktop": { "kind": "testId", "value": "profile-save-btn-desktop" }
+    },
+    "mobilewright": { "kind": "testId", "value": "btn-save-profile" }
+  },
+  "saveButtonLabel": {
+    "mobilewright": { "kind": "testId", "value": "text-save-profile" }
+  },
+  "deleteAccountButton": {
+    "playwright": { "kind": "testId", "value": "delete-account-btn" },
+    "mobilewright": { "kind": "testId", "value": "btn-delete-account" }
+  },
+  "deleteAccountLabel": {
+    "mobilewright": { "kind": "testId", "value": "text-delete-account" }
+  }
+}

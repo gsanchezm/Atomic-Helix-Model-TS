@@ -1,0 +1,83 @@
+{
+  "profileScreen": {
+    "appium": "~screen-profile"
+  },
+  "profileCard": {
+    "appium": "~view-profile-card"
+  },
+  "profileAvatar": {
+    "appium": "~img-profile-avatar"
+  },
+  "profileSubtitleText": {
+    "appium": "~text-profile-subtitle"
+  },
+  "profileUsernameText": {
+    "appium": "~text-profile-username"
+  },
+  "premiumBadgeText": {
+    "appium": "~text-premium-badge"
+  },
+  "profileMetaText": {
+    "appium": "~text-profile-meta"
+  },
+  "formTitleText": {
+    "appium": "~text-form-title"
+  },
+  "fullNameLabel": {
+    "appium": "~label-profile-fullname"
+  },
+  "profileFullNameInput": {
+    "webdriverio": {
+      "responsive": "[data-testid='profile-fullname-responsive']",
+      "desktop": "[data-testid='profile-fullname-desktop']"
+    },
+    "appium": "~input-profile-fullname"
+  },
+  "phoneNumberLabel": {
+    "appium": "~label-profile-phone"
+  },
+  "profilePhoneNumberInput": {
+    "webdriverio": "[data-testid='profile-phone']",
+    "appium": "~input-profile-phone"
+  },
+  "addressLabel": {
+    "appium": "~label-profile-address"
+  },
+  "addressInput": {
+    "webdriverio": {
+      "responsive": "[data-testid='profile-address-responsive']",
+      "desktop": "[data-testid='profile-address-desktop']"
+    }
+  },
+  "notesLabel": {
+    "appium": "~label-profile-notes"
+  },
+  "notesInput": {
+    "webdriverio": "[data-testid='profile-notes']",
+    "appium": "~input-profile-notes"
+  },
+  "cancelButton": {
+    "webdriverio": "[data-testid='profile-cancel-btn']",
+    "appium": "~btn-cancel-profile"
+  },
+  "cancelButtonLabel": {
+    "appium": "~text-cancel-profile"
+  },
+  "saveButton": {
+    "webdriverio": {
+      "responsive": "[data-testid='profile-save-btn-responsive']",
+      "desktop": "[data-testid='profile-save-btn-desktop']"
+    },
+    "appium": "~btn-save-profile"
+  },
+  "saveButtonLabel": {
+    "appium": "~text-save-profile"
+  },
+  "deleteAccountButton": {
+    "webdriverio": "[data-testid='delete-account-btn']",
+    "appium": "~btn-delete-account"
+  },
+  "deleteAccountLabel": {
+    "appium": "~text-delete-account"
+  }
+}
