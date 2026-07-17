@@ -1,0 +1,112 @@
+{
+  "orderSuccessScreen": {
+    "webdriverio": {
+      "desktop": "[data-testid='order-success-title-desktop']",
+      "responsive": "[data-testid='order-success-title-responsive']"
+    },
+    "appium": {
+      "android": "~screen-order-success",
+      "ios": "~btn-order-details"
+    }
+  },
+  "orderIdLabel": {
+    "webdriverio": "[data-testid='order-id']"
+  },
+  "orderSuccessTitle": {
+    "webdriverio": {
+      "responsive": "[data-testid='order-success-title-responsive']",
+      "desktop": "[data-testid='order-success-title-desktop']"
+    }
+  },
+  "backToCatalogButton": {
+    "webdriverio": {
+      "responsive": "[data-testid='back-to-catalog-responsive']",
+      "desktop": "[data-testid='back-to-catalog-desktop']"
+    },
+    "appium": "~btn-back-catalog"
+  },
+  "liveBadgeContainer": {
+    "appium": "~view-live-badge"
+  },
+  "liveTrackingText": {
+    "webdriverio": "[data-testid='live-tracking-status']",
+    "appium": "~text-live-tracking"
+  },
+  "courierTagText": {
+    "appium": "~text-courier-tag"
+  },
+  "statusTitleText": {
+    "appium": "~text-status-title"
+  },
+  "statusSubtitleText": {
+    "webdriverio": "[data-testid='expected-arrival']",
+    "appium": "~text-status-sub"
+  },
+  "timeEstimateText": {
+    "webdriverio": "[data-testid='delivery-time-min']",
+    "appium": "~text-time-estimate"
+  },
+  "minLabelText": {
+    "webdriverio": "[data-testid='delivery-time-label']",
+    "appium": "~text-min-label"
+  },
+  "bottomSheetContainer": {
+    "appium": "~view-bottom-sheet"
+  },
+  "courierInfoContainer": {
+    "webdriverio": "[data-testid='courier-info']",
+    "appium": "~view-courier-card"
+  },
+  "courierRatingText": {
+    "webdriverio": "[data-testid='courier-rating']",
+    "appium": "~text-courier-rating"
+  },
+  "courierLabelText": {
+    "webdriverio": "[data-testid='courier-role-label']",
+    "appium": "~text-courier-label"
+  },
+  "courierNameText": {
+    "webdriverio": "[data-testid='courier-name']",
+    "appium": "~text-courier-name"
+  },
+  "courierVehicleText": {
+    "webdriverio": "[data-testid='courier-vehicle']",
+    "appium": "~text-courier-vehicle"
+  },
+  "courierImage": {
+    "webdriverio": "[data-testid='img-courier']",
+    "appium": "~img-courier-avatar"
+  },
+  "courierChatButton": {
+    "webdriverio": {
+      "responsive": "[data-testid='courier-chat-responsive']",
+      "desktop": "[data-testid='courier-chat-desktop']"
+    },
+    "appium": "~btn-courier-chat"
+  },
+  "courierCallButton": {
+    "webdriverio": {
+      "responsive": "[data-testid='courier-call-responsive']",
+      "desktop": "[data-testid='courier-call-desktop']"
+    },
+    "appium": "~btn-courier-call"
+  },
+  "orderIdText": {
+    "webdriverio": "[data-testid='order-id']"
+  },
+  "orderTotalText": {
+    "webdriverio": "[data-testid='order-total']"
+  },
+  "viewOrderDetailsButton": {
+    "webdriverio": "[data-testid='order-details-toggle']",
+    "appium": "~btn-order-details"
+  },
+  "orderDetailsPanel": {
+    "webdriverio": "[data-testid='order-details-panel']",
+    "appium": "~view-order-details-panel"
+  },
+  "orderDetailsLabel": {
+    "webdriverio": "[data-testid='order-details-label']",
+    "appium": "~text-order-details"
+  }
+}
