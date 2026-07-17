@@ -33,12 +33,21 @@ export async function navigateToCheckout(market?: string, accessToken?: string):
         return;
     }
 
-    // Web path: navigate via URL
+    // Web path: a hard NAVIGATE straight to `${baseUrl}/checkout` always
+    // bounced back to /catalog, even with a fully-seeded and already-hydrated
+    // session (confirmed via GET_CHECKOUT_DIAGNOSTICS immediately beforehand
+    // showing valid auth/nav state) — this app only enters the checkout view
+    // correctly via client-side routing, not a direct/hard load of that URL.
+    // So: land on root via NAVIGATE (same as the catalog path), wait for the
+    // authenticated shell to render, then CLICK the real in-app nav link.
     const baseUrl = process.env.BASE_URL;
     if (!baseUrl) {
         throw new Error('Missing required env var: BASE_URL');
     }
-    await sendIntent(INTENT.NAVIGATE, `${baseUrl}${CHECKOUT_PATH}`);
+    await sendIntent(INTENT.NAVIGATE, baseUrl);
+    await sendIntent(INTENT.WAIT_FOR_ELEMENT, 'navLogo||20000');
+    await sendIntent(INTENT.CLICK, 'navCheckoutLink');
+    await sendIntent(INTENT.WAIT_FOR_ELEMENT, 'streetInput||20000');
 
     const diagnostics = await sendBrowserCommand(BROWSER_COMMAND.GET_CHECKOUT_DIAGNOSTICS);
     log.info(JSON.parse(diagnostics.payload || '{}'), 'Checkout page loaded');
