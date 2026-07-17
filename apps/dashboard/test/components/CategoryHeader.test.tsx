@@ -31,4 +31,22 @@ describe('CategoryHeader', () => {
     expect(screen.getByText('70.0%')).toBeInTheDocument();
     expect(screen.getByText('2')).toBeInTheDocument();
   });
+
+  it('applies fail class to failed-count element when failed > 0', () => {
+    const { container } = render(<CategoryHeader kind="web_ui" tools={[tool('playwright', 7, 2, 1)]} />);
+    const failedElement = container.querySelector('.cat-stats b.fail');
+    expect(failedElement).not.toBeNull();
+    expect(failedElement?.textContent).toBe('2');
+  });
+
+  it('does not apply fail class when failed is 0', () => {
+    const { container } = render(<CategoryHeader kind="web_ui" tools={[tool('playwright', 10, 0, 0)]} />);
+    const failedElement = container.querySelector('.cat-stats b.fail');
+    expect(failedElement).toBeNull();
+  });
+
+  it('formats percentage with correct rounding for non-terminating values', () => {
+    render(<CategoryHeader kind="web_ui" tools={[tool('test1', 1, 2, 0)]} />);
+    expect(screen.getByText('33.3%')).toBeInTheDocument();
+  });
 });
