@@ -23,7 +23,7 @@
     "test:chrome": "cross-env DRIVER=playwright PLATFORM=web BROWSER=chromium VIEWPORT=desktop CUCUMBER_PARALLEL=4 cucumber-js --tags \"@desktop\"",
     "test:firefox": "cross-env DRIVER=playwright PLATFORM=web BROWSER=firefox VIEWPORT=desktop CUCUMBER_PARALLEL=4 cucumber-js --tags \"@desktop\"",
     "test:safari": "cross-env DRIVER=playwright PLATFORM=web BROWSER=webkit VIEWPORT=desktop CUCUMBER_PARALLEL=4 cucumber-js --tags \"@desktop\"",
-    "test:cypress:desktop": "cypress run --config-file src/plugins/cypress/cypress.config.ts --env tags=@desktop",
+    "test:cypress:desktop": "cypress run --config-file src/plugins/cypress/cypress.config.ts --spec src/core/tests/login/features/invalid-credentials.feature --env tags=@desktop",
     "test:parallel-browsers": "node scripts/run-cross-browser-parallel.js",
     "test:json:api": "cucumber-js --tags \"@api\" --format json:reports/api.json",
     "test:json:playwright": "cucumber-js --tags \"@desktop or @responsive\" --format json:reports/playwright.json",

@@ -1,4 +1,5 @@
 import path from 'node:path';
+import dotenv from 'dotenv';
 import { defineConfig } from 'cypress';
 import createBundler from '@bahmutov/cypress-esbuild-preprocessor';
 import { addCucumberPreprocessorPlugin } from '@badeball/cypress-cucumber-preprocessor';
@@ -7,6 +8,31 @@ import { addCucumberPreprocessorPlugin } from '@badeball/cypress-cucumber-prepro
 // confirmed against node_modules/@badeball/cypress-cucumber-preprocessor/dist/subpath-entrypoints/esbuild.d.ts
 // and the package's own quick-start docs (github.com/badeball/cypress-cucumber-preprocessor/blob/master/docs/quick-start.md).
 import { createEsbuildPlugin } from '@badeball/cypress-cucumber-preprocessor/esbuild';
+
+// Loaded first, before anything below reads process.env.*: every other
+// execution tier in this repo loads `.env` (cucumber.js's `requireModule:
+// [..., "dotenv/config"]`, every `plugin:*` npm script's `-r dotenv/config`)
+// but `cypress run` does not auto-load `.env`, and nothing upstream of this
+// file did either — so without this, a `.env`-configured BASE_URL (below)
+// would silently resolve to undefined.
+//
+// NOT a bare `import 'dotenv/config'`: that resolves `.env` relative to
+// `process.cwd()` at import time, and — verified empirically here the same
+// way as the specPattern/supportFile/screenshotsFolder/videosFolder findings
+// below — `process.cwd()` inside this config module is NOT the shell's
+// invocation directory (the repo root); Cypress's config loader sets it to
+// this config file's own directory instead (confirmed via a temporary
+// console.log: `process.cwd()` printed as this file's own directory, while
+// `config.projectRoot`, read inside setupNodeEvents, correctly printed the
+// repo root). A bare `dotenv/config` import would therefore silently look
+// for `.env` inside src/plugins/cypress/ and never find the repo-root
+// `.env` every other tier expects. Anchoring the lookup on `__dirname`
+// (unaffected by process.cwd(), unlike the bare import) works regardless of
+// invocation cwd or Cypress's cwd quirk — same fix shape already used below
+// for specPattern/supportFile/screenshotsFolder/videosFolder. No-op (returns
+// an error, does not throw) when no `.env` exists, matching this sandbox's
+// current state.
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 // specPattern reaches back into the shared feature-file tree — Cypress
 // reuses the exact same .feature files cucumber-js runs, per §4's Option A.
@@ -64,6 +90,20 @@ const toPosixPath = (value: string): string => value.split(path.sep).join('/');
 // directly in config.env sidestep both problems and are honored first in
 // preprocessor-configuration.js's override precedence
 // (overrides.stepDefinitions ?? file-config ?? defaults).
+// FOOTGUN, read before narrowing specPattern: the `[filepath]` token above
+// resolves relative to the common ancestor directory of every .feature file
+// specPattern discovers — currently `src/core/tests`, because specPattern
+// (below) is repo-wide across all domains. That's why the pilot's
+// step-definition file lives at
+// step_definitions/login/features/invalid-credentials/login.steps.ts (the
+// full path from that common ancestor down to the feature file, minus the
+// .feature extension). If specPattern is ever narrowed to just the login
+// domain (e.g. to "clean up" scope now that only login has step-definitions),
+// the common ancestor collapses to src/core/tests/login/features, [filepath]
+// resolves to just "invalid-credentials", and this step-definition file stops
+// being found — every step in the pilot silently becomes "undefined". Keep
+// specPattern repo-wide; scope individual test runs with `--spec` instead
+// (see the test:cypress:desktop script in package.json).
 const stepDefinitions = [
     toPosixPath(path.join(pluginDir, 'step_definitions/common/*.ts')),
     toPosixPath(path.join(pluginDir, 'step_definitions/[filepath]/*.steps.ts')),
