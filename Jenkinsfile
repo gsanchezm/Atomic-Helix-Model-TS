@@ -211,7 +211,7 @@ pipeline {
                             stage('Run') {
                                 steps {
                                     script {
-                                        withOptionalLock(SUITE) {
+                                        withOptionalLock(env.SUITE) {
                                             sh 'bash ci/steps/setup-environment.sh'
                                             sh '''
                                                 if docker compose version >/dev/null 2>&1; then
@@ -279,7 +279,7 @@ pipeline {
                             stage('Run') {
                                 steps {
                                     script {
-                                        withOptionalLock(SUITE) {
+                                        withOptionalLock(env.SUITE) {
                                             sh 'bash ci/steps/setup-environment.sh'
                                             withEnv([
                                                 'PLATFORM=web', 'VIEWPORT=desktop', 'DRIVER=playwright',
@@ -340,7 +340,7 @@ pipeline {
                             stage('Run') {
                                 steps {
                                     script {
-                                        withOptionalLock(SUITE) {
+                                        withOptionalLock(env.SUITE) {
                                             sh 'bash ci/steps/setup-environment.sh'
                                             withEnv([
                                                 'PLATFORM=web', 'VIEWPORT=responsive', 'DRIVER=playwright',
@@ -403,7 +403,7 @@ pipeline {
                                 steps {
                                     unstash 'omnipizza-release'
                                     script {
-                                        withOptionalLock(SUITE) {
+                                        withOptionalLock(env.SUITE) {
                                             sh 'bash ci/steps/setup-environment.sh'
                                             sh '''
                                                 echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -521,7 +521,7 @@ pipeline {
                                 steps {
                                     unstash 'omnipizza-release'
                                     script {
-                                        withOptionalLock(SUITE) {
+                                        withOptionalLock(env.SUITE) {
                                             sh 'bash ci/steps/setup-environment.sh'
                                             def baseUrl = readFile('omnipizza-base-url.txt').trim()
                                             withEnv(["OMNIPIZZA_RELEASE_BASE_URL=${baseUrl}"]) {
@@ -667,8 +667,8 @@ pipeline {
                                 steps {
                                     unstash 'omnipizza-release'
                                     script {
-                                        withOptionalLock(SUITE) {
-                                            if (PLATFORM == 'android') {
+                                        withOptionalLock(env.SUITE) {
+                                            if (env.PLATFORM == 'android') {
                                                 sh '''
                                                     echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
                                                     sudo udevadm control --reload-rules
@@ -676,7 +676,7 @@ pipeline {
                                                 '''
                                             }
                                             sh 'bash ci/steps/setup-environment.sh'
-                                            if (PLATFORM == 'android') {
+                                            if (env.PLATFORM == 'android') {
                                                 sh '''
                                                     sudo apt-get update
                                                     sudo apt-get install -y android-sdk-platform-tools
@@ -687,7 +687,7 @@ pipeline {
                                             def iosAppPath = ''
                                             def iosUdid = ''
                                             def iosDeviceName = ''
-                                            if (PLATFORM == 'android') {
+                                            if (env.PLATFORM == 'android') {
                                                 withEnv(["OMNIPIZZA_RELEASE_BASE_URL=${baseUrl}"]) {
                                                     sh '''
                                                         mkdir -p assets/apps/android
@@ -786,7 +786,7 @@ pipeline {
                                             // devices via `mobilecli`, not an Appium
                                             // server/WebDriverIO remote() session -- go
                                             // straight to start-stack.sh mobilewright.
-                                            def capProfile = (PLATFORM == 'android') ? 'docker_android' : 'ci_ios_headless'
+                                            def capProfile = (env.PLATFORM == 'android') ? 'docker_android' : 'ci_ios_headless'
                                             withEnv([
                                                 'DRIVER=mobilewright',
                                                 "CAP_PROFILE=${capProfile}",
@@ -828,7 +828,7 @@ pipeline {
                         post {
                             always {
                                 script {
-                                    if (PLATFORM == 'android') {
+                                    if (env.PLATFORM == 'android') {
                                         sh 'docker rm -f android-emulator || true'
                                     }
                                 }
@@ -1020,7 +1020,7 @@ pipeline {
                             stage('Run') {
                                 steps {
                                     script {
-                                        withOptionalLock(SUITE) {
+                                        withOptionalLock(env.SUITE) {
                                             sh 'bash ci/steps/setup-environment.sh'
                                             withEnv([
                                                 'BROWSER=chromium', 'PLATFORM=web', 'VIEWPORT=desktop',
