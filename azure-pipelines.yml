@@ -26,11 +26,15 @@
 #    the actual job/profile/script/secret contract this task is graded
 #    against (ground truth §11): MinIO telemetry-storage bring-up
 #    (docker-compose minio, a GHA-inlined step, not one of the 5 shared
-#    scripts), the `actions/cache@v5` pnpm-store cache step (
-#    setup-environment.sh's own header comment explicitly says caching is
-#    each adapter's own concern to add or skip), the RUN_STARTED_AT/
-#    RUN_ENDED_AT timestamp bookkeeping steps, and the extra
-#    `/tmp/ahm-ci-logs/` "service logs" artifact upload used by the
+#    scripts) AND the MINIO_ENDPOINT/MINIO_PORT/MINIO_ACCESS_KEY/
+#    MINIO_SECRET_KEY env vars GHA sets on its run-suite steps (dropped
+#    together — there is no live MinIO to point them at without the
+#    bring-up step; if collect-artifacts.sh's telemetry parse ever expects
+#    to reach MinIO, re-add both together), the `actions/cache@v5`
+#    pnpm-store cache step (setup-environment.sh's own header comment
+#    explicitly says caching is each adapter's own concern to add or skip),
+#    the RUN_STARTED_AT/RUN_ENDED_AT timestamp bookkeeping steps, and the
+#    extra `/tmp/ahm-ci-logs/` "service logs" artifact upload used by the
 #    Playwright-family jobs in GHA. None of these are part of the 5-script
 #    Template Method contract or the §10 artifacts contract this file is
 #    checked against. Device/emulator/simulator bring-up (KVM, docker
@@ -38,12 +42,18 @@
 #    download) is NOT trimmed — those are load-bearing, kept in full.
 # 3. `e2e-mobilewright` (GHA: one job, `matrix: platform:[android,ios]`,
 #    `runs-on: ${{ matrix.platform == 'ios' && 'macos-latest' || 'ubuntu-latest' }}`)
-#    has NO clean Azure equivalent: Azure's `strategy: matrix:` cannot vary a
-#    job's `pool:`/`container:` per leg — all legs of one job share one pool
-#    block, and pool selection is resolved before an agent (and therefore
-#    any matrix-leg variable) exists. Splitting into 4 separate jobs
+#    has NO clean Azure equivalent. Note this is NOT a blanket "matrix can't
+#    drive vmImage" limitation — `pool: { vmImage: $(imageVar) }` fed by a
+#    matrix variable is a documented, working Azure pattern when both legs
+#    are Microsoft-hosted. The actual obstacle here is narrower: the android
+#    leg needs a *self-hosted* pool (`pool: { name: ... }`, for /dev/kvm)
+#    while the ios leg needs a *Microsoft-hosted* pool (`pool: { vmImage: ...
+#    }`) — two different `pool:` structures, and a single matrix variable
+#    can't toggle between them (you'd need the whole `pool:` block, not just
+#    one scalar inside it, to vary per leg — matrix substitution doesn't
+#    reach that far). Splitting into 4 separate jobs
 #    (`e2e_mobilewright_android_reads/_writes`, `e2e_mobilewright_ios_reads/
-#    _writes`), each pinned to its own real pool, is the only way to make
+#    _writes`), each pinned to its own real pool, is the cleanest way to make
 #    this both valid Azure YAML and actually runnable. The writes-chain
 #    still serializes both platform legs against each other (android leg
 #    then ios leg), preserving the "one global writes queue" property the
@@ -1157,11 +1167,15 @@ stages:
       # -----------------------------------------------------------------
       # Job: Mobilewright (profile `mobilewright`) — GHA's `e2e-mobilewright`
       # is ONE job with `strategy: matrix: {platform:[android,ios]}` and a
-      # computed `runs-on` per leg. Azure's `strategy: matrix:` cannot vary
-      # a job's `pool:`/`container:` per leg (pool selection happens before
-      # any matrix-leg variable exists), so this is split into 4 jobs here
-      # — `_android_reads/_writes` (self-hosted KVM pool) and
-      # `_ios_reads/_writes` (macOS-latest) — see the file-header note.
+      # computed `runs-on` per leg. The obstacle to a single Azure job isn't
+      # that matrix can't drive `vmImage` at all (it can, via `pool: {
+      # vmImage: $(var) }`) — it's that the android leg needs a
+      # *self-hosted* pool (`pool: { name: ... }`) while the ios leg needs a
+      # *Microsoft-hosted* one (`pool: { vmImage: ... }`): two different
+      # `pool:` block shapes, which one matrix variable can't toggle
+      # between. So this is split into 4 jobs here — `_android_reads/_writes`
+      # (self-hosted KVM pool) and `_ios_reads/_writes` (macOS-latest) — see
+      # the file-header note.
       # `mobilewrightNeedsAppiumServer: false` — no Appium daemon is
       # started for this profile (mobilewright drives devices via
       # `mobilecli`, not Appium/WebDriverIO — ci/pipeline.config.json,
