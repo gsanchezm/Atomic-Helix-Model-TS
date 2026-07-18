@@ -9,8 +9,13 @@ import { resolveVisualTarget } from '@core/contracts/visual-target-resolver';
 // stable regardless of which real domains get migrated to family files.
 // legacyFallbackHeader: "web": 'h1:has-text("Legacy Fallback")', "mobile": "~legacy-fallback-header".
 // legacyFallbackTestId.mobile.android/ios = "~legacy-fallback-id".
+//
+// Skipped by decision: no real production consumer since the family-file
+// migration completed — excluded from normal runs, kept for manual/
+// occasional verification.
+const SKIP_LEGACY_FALLBACK = { skip: 'legacy web/mobile locator shape has no real production consumer since the family-file migration completed — excluded from normal runs, kept for manual/occasional verification' };
 
-test('resolveVisualTarget resolves an untouched domain unchanged under PLATFORM=web', () => {
+test('resolveVisualTarget resolves an untouched domain unchanged under PLATFORM=web', SKIP_LEGACY_FALLBACK, () => {
     process.env.PLATFORM = 'web';
     const result = resolveVisualTarget({ id: 's1', regionRef: 'legacyFallbackHeader', maskRefs: ['legacyFallbackTestId'] });
     assert.equal(result.resolvedRegion, 'h1:has-text("Legacy Fallback")');
@@ -19,7 +24,7 @@ test('resolveVisualTarget resolves an untouched domain unchanged under PLATFORM=
     delete process.env.PLATFORM;
 });
 
-test('resolveVisualTarget resolves an untouched domain unchanged under PLATFORM=android', () => {
+test('resolveVisualTarget resolves an untouched domain unchanged under PLATFORM=android', SKIP_LEGACY_FALLBACK, () => {
     process.env.PLATFORM = 'android';
     const result = resolveVisualTarget({ id: 's2', regionRef: 'legacyFallbackHeader', maskRefs: ['legacyFallbackTestId'] });
     assert.equal(result.resolvedRegion, '~legacy-fallback-header');

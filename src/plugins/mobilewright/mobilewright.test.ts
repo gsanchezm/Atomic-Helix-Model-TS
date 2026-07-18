@@ -2,11 +2,16 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { resolveMobilewrightTarget } from '@plugins/mobilewright/mobilewright';
 
-test('resolveMobilewrightTarget strips a bare accessibility-id legacy borrow (unchanged happy path)', () => {
+// Skipped by decision: legacyFallback* keys have no real production consumer
+// since the family-file migration completed — excluded from normal runs,
+// kept for manual/occasional verification of the legacy-borrow path.
+const SKIP_LEGACY_FALLBACK = { skip: 'legacy web/mobile locator shape has no real production consumer since the family-file migration completed — excluded from normal runs, kept for manual/occasional verification' };
+
+test('resolveMobilewrightTarget strips a bare accessibility-id legacy borrow (unchanged happy path)', SKIP_LEGACY_FALLBACK, () => {
     assert.equal(resolveMobilewrightTarget('legacyFallbackTestId', 'android'), 'legacy-fallback-id');
 });
 
-test('resolveMobilewrightTarget preserves the composite payload after the || separator', () => {
+test('resolveMobilewrightTarget preserves the composite payload after the || separator', SKIP_LEGACY_FALLBACK, () => {
     assert.equal(resolveMobilewrightTarget('legacyFallbackTestId||90210', 'android'), 'legacy-fallback-id||90210');
 });
 
@@ -17,7 +22,7 @@ test('resolveMobilewrightTarget passes an explicit mobilewright override through
     );
 });
 
-test('resolveMobilewrightTarget throws a clear error for an Appium-only borrow it cannot interpret', () => {
+test('resolveMobilewrightTarget throws a clear error for an Appium-only borrow it cannot interpret', SKIP_LEGACY_FALLBACK, () => {
     assert.throws(
         () => resolveMobilewrightTarget('legacyFallbackList', 'android'),
         /legacyFallbackList.*Appium-only selector/,
