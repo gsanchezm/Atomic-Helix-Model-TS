@@ -1,0 +1,1334 @@
+# =============================================================================
+# AHM Execution Helix — GitLab CI mirror of .github/workflows/ahm-execution-helix.yml
+#
+# This is a GitLab-native port of the same job inventory described in
+# ci/pipeline.config.json (the single source of truth for profiles/secrets/
+# vars/artifacts) and implemented for GitHub Actions in
+# .github/workflows/ahm-execution-helix.yml. Every job below calls the same
+# five Template Method scripts, in the same fixed order, that the GitHub
+# workflow calls — this file does not reimplement stack bring-up, suite
+# execution, or artifact collection in GitLab-native syntax:
+#
+#   1. ci/steps/setup-environment.sh   — pnpm install --frozen-lockfile
+#   2. ci/steps/start-stack.sh <profile>
+#   3. ci/steps/run-suite.sh <tag-expression> <profile> [<suffix>]
+#   4. ci/steps/collect-artifacts.sh <profile>
+#   5. ci/steps/teardown.sh
+#
+# KNOWN GAP not fixed by this file (mirrors the GH workflow's own note and
+# README's "Known gap — e2e-mobilewright"): src/devices/docker_android.json
+# and src/devices/ci_ios_headless.json only list "appium" in
+# compatibleDrivers, so e2e-mobilewright-* is wired but will fail at
+# DeviceLoader.forWorker() until "mobilewright" is added there. Device JSON
+# files are out of this task's scope (.gitlab-ci.yml only).
+#
+# JUDGMENT CALLS documented inline where a GitHub Actions feature has no
+# exact GitLab equivalent (container `--user 0`, KVM device passthrough,
+# macOS runners, GITHUB_TOKEN auto-injection). Search this file for
+# "JUDGMENT CALL" to find each one. There is no real GitLab runner
+# provisioned for this repo, so none of this has been executed — only
+# structurally validated (see the task report for how).
+#
+# Docs note: docs/plans/2026-07-17-cicd-pipelines-update.md is referenced by
+# ci/steps/start-stack.sh and run-suite.sh's `cypress` arms but does not
+# exist anywhere in this repo's git history or in any sibling worktree
+# branch as of this writing. This file was implemented directly from the
+# ground truth listed above (ci/pipeline.config.json, the GH workflow,
+# ci/steps/*.sh, README.md's CI/CD section), per this task's own
+# instructions that those sources outrank plan prose.
+#
+# --- Required GitLab CI/CD variables (Settings > CI/CD > Variables) -----
+# Mapped 1:1 from README's "Repository secrets"/"Repository variables"
+# tables. None of these are declared in the `variables:` block below —
+# GitLab auto-injects project/group CI/CD variables into every job's shell
+# environment under their own name, so ci/steps/*.sh (and the plugin
+# server processes it starts) pick up $API_BASE_URL/$BASE_URL directly,
+# same as they do locally from a developer's .env. No per-job `env:`
+# passthrough (unlike GH Actions' `${{ secrets.X }}`) is needed or written.
+#
+#   API_BASE_URL   (required, Protected+Masked) — every job. Backend used
+#                  for $S_0$ state injection.
+#   BASE_URL       (required, Protected+Masked) — frontend-touching jobs
+#                  only (e2e-web*, visual-web*, a11y-web, e2e-webdriverio*,
+#                  e2e-cypress, and the ZAP-baseline half of security-zap's
+#                  @security-infra run). Not read by api/android/ios/
+#                  mobilewright/perf jobs.
+#   GITHUB_TOKEN   (optional, Masked) — used by resolve-omnipizza-release.
+#                  JUDGMENT CALL: unlike GH Actions, GitLab does NOT
+#                  auto-inject this — it must be a manually configured PAT
+#                  with public-repo read access. Falls back to an
+#                  unauthenticated GitHub API call if unset (works against
+#                  gsanchezm/OmniPizza since it's public, just at a lower
+#                  rate limit).
+#   IOS_APP_PATH   (optional, Protected) — e2e-ios*, e2e-mobilewright-ios*.
+#                  Overrides the auto-discovered .app bundle path. Omit to
+#                  auto-discover.
+#
+# MOBSF_API_KEY is deliberately NOT a stored CI/CD variable — security-mobsf
+# starts a fresh, pinned MobSF container every run and scrapes its
+# auto-generated API key out of `docker logs mobsf` itself (see
+# ci/steps/start-stack.sh's `mobsf)` arm) — same as the GH workflow.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Pipeline trigger — manual-dispatch-equivalent.
+#
+# The GH workflow's push/pull_request triggers are commented out ("Auto-
+# triggers temporarily disabled — run only via manual dispatch"). Mirrored
+# here by only allowing pipelines started from the "Run pipeline" UI/API/
+# trigger token/another pipeline — NOT on every ordinary git push. The
+# `variables:` block below (TARGET_PLATFORM, ARCHITECTURE_TYPE, ...) supplies the
+# same inputs as workflow_dispatch's `inputs:`, and shows up as a form on
+# the "Run pipeline" page because each declares `description`/`options`.
+# ---------------------------------------------------------------------------
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+    - if: '$CI_PIPELINE_SOURCE == "trigger"'
+    - if: '$CI_PIPELINE_SOURCE == "api"'
+    - if: '$CI_PIPELINE_SOURCE == "pipeline"'
+  # auto_cancel requires GitLab 17.0+. Where unavailable, the nearest
+  # equivalent to GH's top-level `concurrency: group: helix-${{ github.ref
+  # }}; cancel-in-progress: true` is the project setting Settings > CI/CD >
+  # General pipelines > "Auto-cancel redundant pipelines", combined with
+  # `interruptible: true` on jobs (set per-job below).
+  auto_cancel:
+    on_new_commit: interruptible
+
+stages:
+  - test
+
+default:
+  interruptible: true
+
+variables:
+  # --- workflow_dispatch-equivalent inputs (shown on the Run pipeline form) ---
+  # Named TARGET_PLATFORM, not PLATFORM — every job also sets its own
+  # job-level `PLATFORM: <value>` (see .rules: block below for why the two
+  # must not collide).
+  TARGET_PLATFORM:
+    description: 'Platform to test'
+    value: 'all'
+    options:
+      - 'all'
+      - 'api'
+      - 'web'
+      - 'playwright'
+      - 'playwright-desktop'
+      - 'playwright-responsive'
+      - 'pixelmatch'
+      - 'pixelmatch-desktop'
+      - 'pixelmatch-responsive'
+      - 'mobile'
+      - 'android'
+      - 'ios'
+      - 'appium'
+      - 'appium-android'
+      - 'appium-ios'
+      - 'perf'
+      - 'gatling'
+      - 'mobilewright'
+      - 'security'
+      - 'a11y'
+      - 'cypress'
+      - 'webdriverio'
+  ARCHITECTURE_TYPE:
+    description: 'Pipeline identity — selects the reporting/metrics tail'
+    value: 'standard'
+    options:
+      - 'standard'
+      - 'TOM'
+  EXPERIMENT_BATCH_ID:
+    description: 'Experiment batch id (TOM only — groups repeated runs)'
+    value: 'batch-adhoc'
+  RUN_INDEX:
+    description: 'Run index within the batch (TOM only)'
+    value: '001'
+  PERF_PROFILE:
+    description: 'Gatling injection profile (perf only)'
+    value: 'smoke'
+    options:
+      - 'smoke'
+      - 'load'
+      - 'stress'
+  PERF_USERS:
+    description: 'Virtual user count (perf load/stress)'
+    value: '20'
+  PERF_DURATION:
+    description: 'Ramp duration in seconds (perf load only)'
+    value: '120'
+  ANDROID_API_LEVEL:
+    description: 'Android API level'
+    value: '33'
+    options: ['28', '29', '30', '31', '32', '33']
+
+  # --- shared, non-input config (mirrors the GH workflow's top-level env:) ---
+  NODE_VERSION: '22'
+  PNPM_VERSION: '11.1.1'
+  OMNIPIZZA_RELEASES_REPO: 'gsanchezm/OmniPizza'
+  PLAYWRIGHT_VERSION: '1.61.1'
+  PLAYWRIGHT_IMAGE: 'mcr.microsoft.com/playwright:v1.61.1-jammy'
+  # The MobSF image tag itself (opensecurity/mobile-security-framework-mobsf:v3.9.7)
+  # is intentionally NOT re-declared here — ci/steps/start-stack.sh's `mobsf)`
+  # arm already pins and `docker run`s it directly (Template Method: this
+  # file doesn't reimplement that logic), so there is nothing in this file
+  # that would consume a $MOBSF_IMAGE variable.
+  LOG_LEVEL: 'info'
+  # Unique per job/matrix-instance (CI_JOB_ID is per-instance); read by
+  # src/core/contracts/contract-telemetry-writer.ts's resolveRunId() the
+  # same way GH's TOM_RUN_ID env is. Not required — the writer already
+  # falls back to a timestamp+pid identity — set here only for parity /
+  # traceability with the GH workflow's per-job TOM_RUN_ID.
+  TOM_RUN_ID: 'gl-$CI_PIPELINE_ID-$CI_JOB_ID'
+  GIT_DEPTH: '1'
+
+# =============================================================================
+# Reusable rule sets — one YAML anchor per GH `gate-*` job's `if:` condition.
+# There are no standalone gate jobs here (GitLab has no job-skeleton-only
+# "gate" concept worth paying pipeline-graph cost for) — each real job's own
+# `rules:` carries the identical condition its GH `gate-*` counterpart had,
+# and `needs:` is reserved for actual cross-job dependencies (resolver →
+# mobile/security-mobsf, e2e-web → visual-web, etc.) per the review that
+# flagged gate jobs as pure overhead once rules: can do the same gating.
+# =============================================================================
+# NOTE — deliberately named $TARGET_PLATFORM, NOT $PLATFORM: every job below
+# also sets a job-level `PLATFORM: <value>` variable (api/web/android/ios/...)
+# that ci/steps/*.sh and the plugin server processes consume for locator/
+# platform-specific behavior — the exact same name GH's per-job `env.PLATFORM`
+# uses. Reusing that name for the dispatch-input gate too would collide: a
+# job's own `variables:` and the pipeline-run dispatch value would fight over
+# the same `$PLATFORM`, and depending on GitLab's variable-precedence rules,
+# either every job's rule would evaluate against its own hardcoded value
+# (gating silently no-ops — every job always matches itself) or the dispatch
+# value would leak into the job's script/plugin environment and corrupt its
+# actual PLATFORM (breaking locator resolution). GH avoided this the same
+# way, by keeping `inputs.platform` (dispatch) and `env.PLATFORM` (per-job)
+# as two separate names — mirrored here as $TARGET_PLATFORM vs $PLATFORM.
+.rules:
+  api: &rules-api
+    - if: '$TARGET_PLATFORM == "all" || $TARGET_PLATFORM == "api"'
+  web-desktop: &rules-web-desktop
+    - if: '$TARGET_PLATFORM == "all" || $TARGET_PLATFORM == "web" || $TARGET_PLATFORM == "playwright" || $TARGET_PLATFORM == "playwright-desktop" || $TARGET_PLATFORM == "pixelmatch" || $TARGET_PLATFORM == "pixelmatch-desktop"'
+  web-responsive: &rules-web-responsive
+    - if: '$TARGET_PLATFORM == "all" || $TARGET_PLATFORM == "web" || $TARGET_PLATFORM == "playwright" || $TARGET_PLATFORM == "playwright-responsive" || $TARGET_PLATFORM == "pixelmatch" || $TARGET_PLATFORM == "pixelmatch-responsive"'
+  android: &rules-android
+    - if: '$TARGET_PLATFORM == "all" || $TARGET_PLATFORM == "mobile" || $TARGET_PLATFORM == "android" || $TARGET_PLATFORM == "appium" || $TARGET_PLATFORM == "appium-android"'
+  ios: &rules-ios
+    - if: '$TARGET_PLATFORM == "all" || $TARGET_PLATFORM == "mobile" || $TARGET_PLATFORM == "ios" || $TARGET_PLATFORM == "appium" || $TARGET_PLATFORM == "appium-ios"'
+  gatling: &rules-gatling
+    - if: '$TARGET_PLATFORM == "all" || $TARGET_PLATFORM == "perf" || $TARGET_PLATFORM == "gatling"'
+  mobilewright: &rules-mobilewright
+    - if: '$TARGET_PLATFORM == "all" || $TARGET_PLATFORM == "mobilewright"'
+  security: &rules-security
+    - if: '$TARGET_PLATFORM == "all" || $TARGET_PLATFORM == "security"'
+  a11y: &rules-a11y
+    - if: '$TARGET_PLATFORM == "all" || $TARGET_PLATFORM == "a11y"'
+  cypress: &rules-cypress
+    - if: '$TARGET_PLATFORM == "all" || $TARGET_PLATFORM == "cypress"'
+  webdriverio: &rules-webdriverio
+    - if: '$TARGET_PLATFORM == "all" || $TARGET_PLATFORM == "webdriverio"'
+  # resolve-omnipizza-release: same coarse+granular mobile values as GH,
+  # plus mobilewright and security (security-mobsf needs both binaries).
+  resolve: &rules-resolve
+    - if: '$TARGET_PLATFORM == "all" || $TARGET_PLATFORM == "mobile" || $TARGET_PLATFORM == "android" || $TARGET_PLATFORM == "ios" || $TARGET_PLATFORM == "appium" || $TARGET_PLATFORM == "appium-android" || $TARGET_PLATFORM == "appium-ios" || $TARGET_PLATFORM == "mobilewright" || $TARGET_PLATFORM == "security"'
+  # Same condition as web-desktop/web-responsive, but with `when: always` so
+  # visual-web(-responsive) still runs when its e2e counterpart FAILED (not
+  # skipped) — mirrors GH's `if: always() && needs.<job>.result != 'skipped'
+  # && needs.<job>.result != 'cancelled'`. A rule with `when: always` also
+  # makes the job run even if a `needs:` job failed (GitLab's default
+  # on_success would otherwise skip it).
+  web-desktop-always: &rules-web-desktop-always
+    - if: '$TARGET_PLATFORM == "all" || $TARGET_PLATFORM == "web" || $TARGET_PLATFORM == "playwright" || $TARGET_PLATFORM == "playwright-desktop" || $TARGET_PLATFORM == "pixelmatch" || $TARGET_PLATFORM == "pixelmatch-desktop"'
+      when: always
+  web-responsive-always: &rules-web-responsive-always
+    - if: '$TARGET_PLATFORM == "all" || $TARGET_PLATFORM == "web" || $TARGET_PLATFORM == "playwright" || $TARGET_PLATFORM == "playwright-responsive" || $TARGET_PLATFORM == "pixelmatch" || $TARGET_PLATFORM == "pixelmatch-responsive"'
+      when: always
+
+# =============================================================================
+# Base templates
+# =============================================================================
+
+# Node/pnpm toolchain bootstrap. NOT one of the five AHM shared scripts —
+# this is the GitLab-native equivalent of GH's actions/setup-node +
+# pnpm/action-setup + actions/cache steps, which always ran BEFORE any
+# ci/steps/*.sh call in the GH file too.
+.node-base:
+  image: node:$NODE_VERSION-bookworm
+  cache:
+    key:
+      files:
+        - pnpm-lock.yaml
+    paths:
+      - .pnpm-store
+  before_script:
+    - corepack enable
+    - corepack prepare pnpm@$PNPM_VERSION --activate
+    - pnpm config set store-dir .pnpm-store
+
+# Docker-in-Docker template for jobs whose ci/steps/start-stack.sh arm (or,
+# for security-zap, the ZAP plugin process itself via RunZapScan.ts) shells
+# out to `docker run`/`docker compose` for a sibling container (MinIO,
+# selenium-standalone, the MobSF server, the docker-android emulator, the
+# ephemeral ZAP scanner image). `services:`/dind is the GitLab convention
+# named in this task's brief for exactly this container-needs case.
+#
+# JUDGMENT CALL: node:22-bookworm + `apt-get install docker.io` (Debian's
+# packaged Docker CLI) rather than inventing a combined image — there is no
+# single pinned "Node+Docker" image in this repo to mirror, so this is a
+# reasonable, clearly-flagged choice, not a version invention (docker.io's
+# exact version tracks whatever Debian bookworm ships).
+.docker-in-docker:
+  extends: .node-base
+  services:
+    - name: docker:24-dind
+      alias: docker
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ''
+  before_script:
+    - corepack enable
+    - corepack prepare pnpm@$PNPM_VERSION --activate
+    - pnpm config set store-dir .pnpm-store
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends docker.io ca-certificates curl unzip jq && rm -rf /var/lib/apt/lists/*
+
+# =============================================================================
+# Resolver: latest OmniPizza release
+#
+# GitLab equivalent of GH's job `outputs:` — writes a dotenv file that
+# downstream jobs pick up automatically via `needs:` (default
+# `artifacts: true`), exposing $OMNIPIZZA_RELEASE_TAG /
+# $OMNIPIZZA_RELEASE_BASE_URL as plain env vars in those jobs.
+#
+# JUDGMENT CALL — GITHUB_TOKEN: GitLab does not auto-inject a GitHub token
+# the way GH Actions does. `$GITHUB_TOKEN` here must be configured as a
+# masked/protected GitLab CI/CD variable (a PAT with public-repo read
+# access is enough, since gsanchezm/OmniPizza is public) — see README's
+# "Repository secrets" table, mapped 1:1 in this file's variables. If unset,
+# the curl call below falls back to an unauthenticated request (works for a
+# public repo, just at GitHub's lower unauthenticated rate limit).
+# =============================================================================
+resolve-omnipizza-release:
+  extends: .node-base
+  rules: *rules-resolve
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends curl jq ca-certificates && rm -rf /var/lib/apt/lists/*
+  script:
+    # POSIX `sh`-safe deliberately — this is the only inline block in the
+    # whole file that isn't (everything else avoids bash-only syntax).
+    # GitLab's Docker executor is not guaranteed to invoke inline `script:`
+    # blocks with bash (it may use the image's `sh`, e.g. dash on Debian),
+    # so no `set -o pipefail` (dash rejects the `-o pipefail` option
+    # outright and aborts) and no bash arrays (`NAME=(...)`/`"${NAME[@]}"`
+    # is a syntax error under dash) — the two constructs a plain `bash
+    # ci/steps/*.sh` invocation elsewhere in this file never needs, since
+    # those scripts carry their own `#!/usr/bin/env bash` shebang and are
+    # invoked as separate processes.
+    - |
+      set -eu
+      if [ -n "${GITHUB_TOKEN:-}" ]; then
+        RESPONSE=$(curl -fsSL \
+          -H "Accept: application/vnd.github+json" \
+          -H "Authorization: Bearer $GITHUB_TOKEN" \
+          -H "X-GitHub-Api-Version: 2022-11-28" \
+          "https://api.github.com/repos/${OMNIPIZZA_RELEASES_REPO}/releases/latest")
+      else
+        RESPONSE=$(curl -fsSL \
+          -H "Accept: application/vnd.github+json" \
+          -H "X-GitHub-Api-Version: 2022-11-28" \
+          "https://api.github.com/repos/${OMNIPIZZA_RELEASES_REPO}/releases/latest")
+      fi
+      TAG=$(echo "$RESPONSE" | jq -r .tag_name)
+      if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
+        echo "Failed to resolve latest OmniPizza release tag."
+        exit 1
+      fi
+      BASE_URL="https://github.com/${OMNIPIZZA_RELEASES_REPO}/releases/download/${TAG}"
+      echo "Resolved OmniPizza release: $TAG"
+      echo "Download base URL: $BASE_URL"
+      echo "OMNIPIZZA_RELEASE_TAG=$TAG" > release.env
+      echo "OMNIPIZZA_RELEASE_BASE_URL=$BASE_URL" >> release.env
+  artifacts:
+    reports:
+      dotenv: release.env
+
+# =============================================================================
+# Job: API E2E  (profile: api — requiredSecrets: [API_BASE_URL])
+# =============================================================================
+.api-smoke-base:
+  extends: .docker-in-docker
+  rules: *rules-api
+  variables:
+    TOOL_NAME: api
+    PLATFORM: api
+    DRIVER: api
+    MINIO_ENDPOINT: localhost
+    MINIO_PORT: '9000'
+    MINIO_ACCESS_KEY: minioadmin
+    MINIO_SECRET_KEY: minioadmin
+    PLUGIN_API: 'true'
+  script:
+    - bash ci/steps/setup-environment.sh
+    - |
+      docker compose -f infrastructure/minio-compose.yml up -d
+      sleep 5
+    - bash ci/steps/start-stack.sh api
+    - |
+      if [ "$SUITE" = "reads" ]; then
+        TAG_EXPRESSION="@api and not @writes-shared-state"
+      else
+        TAG_EXPRESSION="@api and @writes-shared-state"
+      fi
+      bash ci/steps/run-suite.sh "$TAG_EXPRESSION" api "$SUITE"
+  after_script:
+    - bash ci/steps/collect-artifacts.sh api || true
+    - bash ci/steps/teardown.sh || true
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - artifacts/api/**
+
+api-smoke-reads:
+  extends: .api-smoke-base
+  variables:
+    SUITE: reads
+
+api-smoke-writes:
+  extends: .api-smoke-base
+  resource_group: standard_user_writes
+  variables:
+    SUITE: writes
+
+# =============================================================================
+# Job: Web E2E — Desktop  (profile: playwright-desktop)
+# Pixelmatch off (@visual After hooks self-skip) — functional pass only.
+# Visual capture is the separate visual-web job below.
+#
+# JUDGMENT CALL: GH runs this job in a container with `options: --user 0`
+# (root) because the Playwright image's default non-root user can't write
+# certain cache/npm paths. `.gitlab-ci.yml`'s `image:` keyword has no
+# per-job user override in core CI syntax — that is a Docker-executor
+# `config.toml` setting (`[runners.docker] user = "0:0"`) on the runner
+# itself, out of this file's reach. Flagging rather than silently dropping.
+# =============================================================================
+.e2e-web-base:
+  extends: .node-base
+  rules: *rules-web-desktop
+  image: $PLAYWRIGHT_IMAGE
+  variables:
+    TOOL_NAME: playwright
+    PLATFORM: web
+    VIEWPORT: desktop
+    DRIVER: playwright
+    HEADLESS: 'true'
+    PLAYWRIGHT_ADDRESS: 127.0.0.1:50052
+    API_ADAPTER_ADDRESS: 127.0.0.1:50055
+    PROXY_ADDRESS: 127.0.0.1:50051
+    PLUGIN_PLAYWRIGHT: 'true'
+    PLUGIN_PIXELMATCH: 'false'
+    PLUGIN_API: 'true'
+    CUCUMBER_PARALLEL: '4'
+  script:
+    - bash ci/steps/setup-environment.sh
+    - bash ci/steps/start-stack.sh web
+    - |
+      if [ "$SUITE" = "reads" ]; then
+        TAG_EXPRESSION="@desktop and not @writes-shared-state"
+      else
+        TAG_EXPRESSION="@desktop and @writes-shared-state"
+      fi
+      bash ci/steps/run-suite.sh "$TAG_EXPRESSION" playwright-desktop "$BROWSER"
+  after_script:
+    - bash ci/steps/collect-artifacts.sh playwright-desktop || true
+    - bash ci/steps/teardown.sh || true
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - artifacts/playwright-desktop/**
+      - /tmp/ahm-ci-logs/
+
+e2e-web-reads:
+  extends: .e2e-web-base
+  variables:
+    SUITE: reads
+  parallel:
+    matrix:
+      - BROWSER: [chromium, firefox, webkit]
+
+e2e-web-writes:
+  extends: .e2e-web-base
+  resource_group: standard_user_writes
+  variables:
+    SUITE: writes
+  parallel:
+    matrix:
+      - BROWSER: [chromium, firefox, webkit]
+
+# =============================================================================
+# Job: Web E2E — Responsive  (profile: playwright-responsive) — mirrors above.
+# =============================================================================
+.e2e-web-responsive-base:
+  extends: .node-base
+  rules: *rules-web-responsive
+  image: $PLAYWRIGHT_IMAGE
+  variables:
+    TOOL_NAME: playwright
+    PLATFORM: web
+    VIEWPORT: responsive
+    DRIVER: playwright
+    HEADLESS: 'true'
+    PLAYWRIGHT_ADDRESS: 127.0.0.1:50052
+    API_ADAPTER_ADDRESS: 127.0.0.1:50055
+    PROXY_ADDRESS: 127.0.0.1:50051
+    PLUGIN_PLAYWRIGHT: 'true'
+    PLUGIN_PIXELMATCH: 'false'
+    PLUGIN_API: 'true'
+    CUCUMBER_PARALLEL: '4'
+  script:
+    - bash ci/steps/setup-environment.sh
+    - bash ci/steps/start-stack.sh web
+    - |
+      if [ "$SUITE" = "reads" ]; then
+        TAG_EXPRESSION="@responsive and not @writes-shared-state"
+      else
+        TAG_EXPRESSION="@responsive and @writes-shared-state"
+      fi
+      bash ci/steps/run-suite.sh "$TAG_EXPRESSION" playwright-responsive "$BROWSER"
+  after_script:
+    - bash ci/steps/collect-artifacts.sh playwright-responsive || true
+    - bash ci/steps/teardown.sh || true
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - artifacts/playwright-responsive/**
+      - /tmp/ahm-ci-logs/
+
+e2e-web-responsive-reads:
+  extends: .e2e-web-responsive-base
+  variables:
+    SUITE: reads
+  parallel:
+    matrix:
+      - BROWSER: [chromium, firefox, webkit]
+
+e2e-web-responsive-writes:
+  extends: .e2e-web-responsive-base
+  resource_group: standard_user_writes
+  variables:
+    SUITE: writes
+  parallel:
+    matrix:
+      - BROWSER: [chromium, firefox, webkit]
+
+# =============================================================================
+# Job: Visual — Playwright Desktop (Pixelmatch capture + gate)
+# (profile: playwright-visual-desktop)
+#
+# `needs: [e2e-web-reads, e2e-web-writes]` with `when: always` on the rule —
+# runs sequentially after the functional pass (same shared standard_user
+# race-avoidance rationale as the GH job's header comment) and still runs
+# if the functional pass failed. Joins the standard_user_writes resource
+# group unconditionally (it exercises write-tagged scenarios too).
+# =============================================================================
+visual-web:
+  extends: .node-base
+  rules: *rules-web-desktop-always
+  needs:
+    - e2e-web-reads
+    - e2e-web-writes
+  resource_group: standard_user_writes
+  image: $PLAYWRIGHT_IMAGE
+  variables:
+    TOOL_NAME: pixelmatch
+    PLATFORM: web
+    VIEWPORT: desktop
+    DRIVER: playwright
+    HEADLESS: 'true'
+    PLAYWRIGHT_ADDRESS: 127.0.0.1:50052
+    PIXELMATCH_ADDRESS: 127.0.0.1:50056
+    API_ADAPTER_ADDRESS: 127.0.0.1:50055
+    PROXY_ADDRESS: 127.0.0.1:50051
+    PLUGIN_PLAYWRIGHT: 'true'
+    PLUGIN_PIXELMATCH: 'true'
+    PLUGIN_API: 'true'
+  script:
+    - bash ci/steps/setup-environment.sh
+    - bash ci/steps/start-stack.sh web
+    # The gate must run even if capture itself failed — mirrors GH's `if:
+    # success() || failure()` on the "Visual gate" step (see security-zap's
+    # identical comment for why a plain sequential script: list can't do
+    # this on its own).
+    - |
+      set +e
+      if [ "$ARCHITECTURE_TYPE" = "TOM" ]; then
+        VISUAL_UPDATE_BASELINE=false pnpm test:json:visual:compare:desktop
+      else
+        pnpm test:json:visual:desktop
+      fi
+      CAPTURE_EXIT=$?
+      node scripts/visual-gate.js
+      GATE_EXIT=$?
+      set -e
+      if [ "$CAPTURE_EXIT" -ne 0 ] || [ "$GATE_EXIT" -ne 0 ]; then
+        echo "capture(exit=$CAPTURE_EXIT) / visual-gate(exit=$GATE_EXIT) — failing job"
+        exit 1
+      fi
+  after_script:
+    - bash ci/steps/collect-artifacts.sh playwright-visual-desktop || true
+    - bash ci/steps/teardown.sh || true
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - artifacts/playwright-visual-desktop/**
+      - visual-results/
+      - /tmp/ahm-ci-logs/
+
+# Job: Visual — Playwright Responsive (profile: playwright-visual-responsive)
+visual-web-responsive:
+  extends: .node-base
+  rules: *rules-web-responsive-always
+  needs:
+    - e2e-web-responsive-reads
+    - e2e-web-responsive-writes
+  resource_group: standard_user_writes
+  image: $PLAYWRIGHT_IMAGE
+  variables:
+    TOOL_NAME: pixelmatch
+    PLATFORM: web
+    VIEWPORT: responsive
+    DRIVER: playwright
+    HEADLESS: 'true'
+    PLAYWRIGHT_ADDRESS: 127.0.0.1:50052
+    PIXELMATCH_ADDRESS: 127.0.0.1:50056
+    API_ADAPTER_ADDRESS: 127.0.0.1:50055
+    PROXY_ADDRESS: 127.0.0.1:50051
+    PLUGIN_PLAYWRIGHT: 'true'
+    PLUGIN_PIXELMATCH: 'true'
+    PLUGIN_API: 'true'
+  script:
+    - bash ci/steps/setup-environment.sh
+    - bash ci/steps/start-stack.sh web
+    # See visual-web's identical comment — the gate must run even if
+    # capture itself failed.
+    - |
+      set +e
+      if [ "$ARCHITECTURE_TYPE" = "TOM" ]; then
+        VISUAL_UPDATE_BASELINE=false pnpm test:json:visual:compare:responsive
+      else
+        pnpm test:json:visual:responsive
+      fi
+      CAPTURE_EXIT=$?
+      node scripts/visual-gate.js
+      GATE_EXIT=$?
+      set -e
+      if [ "$CAPTURE_EXIT" -ne 0 ] || [ "$GATE_EXIT" -ne 0 ]; then
+        echo "capture(exit=$CAPTURE_EXIT) / visual-gate(exit=$GATE_EXIT) — failing job"
+        exit 1
+      fi
+  after_script:
+    - bash ci/steps/collect-artifacts.sh playwright-visual-responsive || true
+    - bash ci/steps/teardown.sh || true
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - artifacts/playwright-visual-responsive/**
+      - visual-results/
+      - /tmp/ahm-ci-logs/
+
+# =============================================================================
+# Job: Accessibility (axe)  (profile: a11y)
+# Axe rides the 'web' start-stack.sh arm with PLUGIN_AXE=true forwarded into
+# the Playwright plugin process's own startup env (no dedicated a11y arm).
+# =============================================================================
+a11y-web:
+  extends: .node-base
+  rules: *rules-a11y
+  image: $PLAYWRIGHT_IMAGE
+  variables:
+    TOOL_NAME: playwright
+    PLATFORM: web
+    VIEWPORT: desktop
+    DRIVER: playwright
+    BROWSER: chromium
+    HEADLESS: 'true'
+    PLAYWRIGHT_ADDRESS: 127.0.0.1:50052
+    API_ADAPTER_ADDRESS: 127.0.0.1:50055
+    PROXY_ADDRESS: 127.0.0.1:50051
+    PLUGIN_PLAYWRIGHT: 'true'
+    PLUGIN_PIXELMATCH: 'false'
+    PLUGIN_AXE: 'true'
+    PLUGIN_API: 'true'
+  script:
+    - bash ci/steps/setup-environment.sh
+    - bash ci/steps/start-stack.sh web
+    - bash ci/steps/run-suite.sh "@a11y" a11y
+  after_script:
+    - bash ci/steps/collect-artifacts.sh a11y || true
+    - bash ci/steps/teardown.sh || true
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - artifacts/a11y/**
+
+# =============================================================================
+# Job: Android E2E  (profile: android)
+#
+# JUDGMENT CALL — KVM: `--privileged --device /dev/kvm` (hardware
+# acceleration for the docker-android emulator) needs a self-hosted GitLab
+# Runner whose host actually exposes /dev/kvm AND whose executor is
+# configured to pass it through (this is not something a generic GitLab.com
+# shared runner supports, unlike GH's ubuntu-latest + the udev-rule trick
+# below, which assumes real KVM hardware already present on the runner).
+# `tags: [kvm]` is a placeholder — replace with whatever tag your
+# self-hosted runner registers.
+# =============================================================================
+.e2e-android-base:
+  extends: .docker-in-docker
+  rules: *rules-android
+  needs:
+    - resolve-omnipizza-release
+  tags:
+    - kvm
+  variables:
+    TOOL_NAME: appium-android
+    PLATFORM: android
+    DRIVER: appium
+    CAP_PROFILE: docker_android
+    ANDROID_APP_PATH: assets/apps/android/app-release.apk
+    ANDROID_UDID: 'localhost:5555'
+    APPIUM_HOST: localhost
+    APPIUM_PORT: '4723'
+    MINIO_ENDPOINT: localhost
+    MINIO_PORT: '9000'
+    MINIO_ACCESS_KEY: minioadmin
+    MINIO_SECRET_KEY: minioadmin
+    PLUGIN_APPIUM: 'true'
+    PLUGIN_API: 'true'
+  script:
+    - bash ci/steps/setup-environment.sh
+    - |
+      echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+        > /etc/udev/rules.d/99-kvm4all.rules 2>/dev/null || true
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends android-sdk-platform-tools && rm -rf /var/lib/apt/lists/*
+    - |
+      mkdir -p assets/apps/android
+      curl -fL "$OMNIPIZZA_RELEASE_BASE_URL/omnipizza-release.apk" -o assets/apps/android/app-release.apk
+      ls -lh assets/apps/android/app-release.apk
+    - docker compose -f infrastructure/minio-compose.yml up -d && sleep 5
+    - |
+      docker run -d --name android-emulator --privileged --device /dev/kvm \
+        -p 5554:5554 -p 5555:5555 \
+        -e API_LEVEL="${ANDROID_API_LEVEL:-33}" -e IMG_TYPE=google_apis -e ARCHITECTURE=x86_64 \
+        -e DEVICE_ID=pixel -e MEMORY=4096 -e CORES=2 -e DISABLE_ANIMATION=true \
+        -e DISABLE_HIDDEN_POLICY=true -e SKIP_AUTH=1 \
+        halimqarroum/docker-android:api-${ANDROID_API_LEVEL:-33}
+    - |
+      pnpm exec appium --relaxed-security &
+      sleep 5
+    - |
+      adb connect localhost:5555
+      for i in $(seq 1 40); do
+        if adb -s localhost:5555 shell getprop sys.boot_completed 2>/dev/null | grep -q "1"; then
+          echo "Emulator ready after $((i * 15))s"; break
+        fi
+        echo "  Attempt $i/40 — waiting 15s..."; sleep 15
+      done
+      adb devices
+    - bash ci/steps/start-stack.sh android
+    - |
+      if [ "$SUITE" = "reads" ]; then
+        TAG_EXPRESSION="@android and not @writes-shared-state"
+      else
+        TAG_EXPRESSION="@android and @writes-shared-state"
+      fi
+      bash ci/steps/run-suite.sh "$TAG_EXPRESSION" android "$SUITE"
+  after_script:
+    - '[ "$CI_JOB_STATUS" = "failed" ] && docker logs --tail 200 android-emulator 2>&1 || true'
+    - bash ci/steps/collect-artifacts.sh android || true
+    - docker rm -f android-emulator || true
+    - bash ci/steps/teardown.sh || true
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - artifacts/android/**
+
+e2e-android-reads:
+  extends: .e2e-android-base
+  variables:
+    SUITE: reads
+
+e2e-android-writes:
+  extends: .e2e-android-base
+  resource_group: standard_user_writes
+  variables:
+    SUITE: writes
+
+# =============================================================================
+# Job: iOS E2E  (profile: ios)
+#
+# JUDGMENT CALL — macOS runner: `tags: [saas-macos-medium-m1]` is GitLab.com's
+# documented shared macOS runner tag (requires GitLab Premium/Ultimate, or
+# swap for a self-hosted macOS runner's own tag). xcrun/simctl only exist on
+# a real macOS host — there is no containerized equivalent.
+# =============================================================================
+.e2e-ios-base:
+  extends: .node-base
+  rules: *rules-ios
+  needs:
+    - resolve-omnipizza-release
+  tags:
+    - saas-macos-medium-m1
+  variables:
+    TOOL_NAME: appium-ios
+    PLATFORM: ios
+    DRIVER: appium
+    CAP_PROFILE: ci_ios_headless
+    APPIUM_HOST: localhost
+    APPIUM_PORT: '4723'
+    MINIO_ENDPOINT: localhost
+    MINIO_PORT: '9000'
+    MINIO_ACCESS_KEY: minioadmin
+    MINIO_SECRET_KEY: minioadmin
+    PLUGIN_APPIUM: 'true'
+    PLUGIN_API: 'true'
+  script:
+    - bash ci/steps/setup-environment.sh
+    - |
+      mkdir -p assets/apps/ios
+      curl -fL "$OMNIPIZZA_RELEASE_BASE_URL/OmniPizza-Simulator.zip" -o assets/apps/ios/OmniPizza-Simulator.zip
+    - |
+      rm -rf assets/apps/ios/unpacked
+      mkdir -p assets/apps/ios/unpacked
+      unzip -q assets/apps/ios/OmniPizza-Simulator.zip -d assets/apps/ios/unpacked
+      # Honor a pre-set IOS_APP_PATH CI/CD variable (mirrors GH's
+      # `vars.IOS_APP_PATH || env.IOS_APP_PATH`) — only auto-discover when
+      # the operator hasn't overridden it (ci/pipeline.config.json's `ios`
+      # profile lists IOS_APP_PATH as an optional requiredVars entry).
+      if [ -z "${IOS_APP_PATH:-}" ]; then
+        IOS_APP_PATH=$(find assets/apps/ios/unpacked -maxdepth 3 -name '*.app' -type d | head -n 1)
+        if [ -z "$IOS_APP_PATH" ]; then echo "No .app bundle found"; exit 1; fi
+      fi
+      export IOS_APP_PATH
+      echo "IOS_APP_PATH=$IOS_APP_PATH" >> ios.env
+    - |
+      DEVICE_LINE=$(xcrun simctl list devices available | grep -E 'iPhone .*\([A-F0-9-]+\) \((Shutdown|Booted)\)' | head -n 1)
+      if [ -z "$DEVICE_LINE" ]; then echo "No available iPhone simulator found"; exit 1; fi
+      IOS_DEVICE_NAME=$(echo "$DEVICE_LINE" | sed -E 's/^[[:space:]]*([^()]+)[[:space:]]+\(.*/\1/' | xargs)
+      IOS_UDID=$(echo "$DEVICE_LINE" | sed -E 's/.*\(([A-F0-9-]+)\).*/\1/')
+      xcrun simctl boot "$IOS_UDID" || true
+      xcrun simctl bootstatus "$IOS_UDID" -b
+      echo "IOS_DEVICE_NAME=$IOS_DEVICE_NAME" >> ios.env
+      echo "IOS_UDID=$IOS_UDID" >> ios.env
+    # `set -a` (allexport) so IOS_APP_PATH/IOS_UDID/IOS_DEVICE_NAME actually
+    # get exported into the environment — plain `source ios.env` only sets
+    # them as local shell variables in THIS script's shell session; they
+    # would never reach `bash ci/steps/start-stack.sh ios` (a child
+    # process, which only inherits exported vars) or the appium/
+    # mobilewright plugin process it spawns. Without this, IOS_UDID/
+    # IOS_DEVICE_NAME reach the plugin as empty strings.
+    - |
+      set -a
+      source ios.env
+      set +a
+    - |
+      MACHINE_ARCH=$(uname -m)
+      MINIO_ARCH=$(node -p "({ arm64: 'arm64', x86_64: 'amd64' })[process.argv[1]] || ''" "$MACHINE_ARCH")
+      curl -fL "https://dl.min.io/server/minio/release/darwin-${MINIO_ARCH}/minio" -o /tmp/minio
+      chmod +x /tmp/minio
+      mkdir -p /tmp/ahm-minio-data
+      MINIO_ROOT_USER=minioadmin MINIO_ROOT_PASSWORD=minioadmin \
+        /tmp/minio server /tmp/ahm-minio-data --address ":9000" --console-address ":9001" &
+      for i in $(seq 1 30); do
+        curl -fsS http://localhost:9000/minio/health/live >/dev/null && { echo "MinIO ready"; break; }
+        sleep 1
+      done
+    - |
+      pnpm exec appium --relaxed-security &
+      sleep 5
+    - bash ci/steps/start-stack.sh ios
+    - |
+      if [ "$SUITE" = "reads" ]; then
+        TAG_EXPRESSION="@ios and not @writes-shared-state"
+      else
+        TAG_EXPRESSION="@ios and @writes-shared-state"
+      fi
+      bash ci/steps/run-suite.sh "$TAG_EXPRESSION" ios "$SUITE"
+  after_script:
+    - bash ci/steps/collect-artifacts.sh ios || true
+    - bash ci/steps/teardown.sh || true
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - artifacts/ios/**
+
+e2e-ios-reads:
+  extends: .e2e-ios-base
+  variables:
+    SUITE: reads
+
+e2e-ios-writes:
+  extends: .e2e-ios-base
+  resource_group: standard_user_writes
+  variables:
+    SUITE: writes
+
+# =============================================================================
+# Job: Mobilewright E2E  (profile: mobilewright)
+#
+# mobilewrightNeedsAppiumServer: false (ci/pipeline.config.json) — drives
+# devices via `mobilecli`, not an Appium server/webdriverio remote(), so
+# unlike e2e-android/e2e-ios above, no Appium daemon is started here.
+#
+# Split into separate android/ios job families (rather than one job with a
+# platform matrix, as GH does via `runs-on: matrix.platform == 'ios' &&
+# 'macos-latest' || 'ubuntu-latest'`) because GitLab's `parallel: matrix:`
+# can only vary job *variables*, not `tags:`/`image:` per matrix cell — and
+# android needs the kvm-tagged Linux runner while ios needs the macOS one.
+# =============================================================================
+.e2e-mobilewright-android-base:
+  extends: .docker-in-docker
+  rules: *rules-mobilewright
+  needs:
+    - resolve-omnipizza-release
+  tags:
+    - kvm
+  variables:
+    TOOL_NAME: mobilewright
+    PLATFORM: android
+    DRIVER: mobilewright
+    CAP_PROFILE: docker_android
+    ANDROID_APP_PATH: assets/apps/android/app-release.apk
+    ANDROID_UDID: 'localhost:5555'
+    MINIO_ENDPOINT: localhost
+    MINIO_PORT: '9000'
+    MINIO_ACCESS_KEY: minioadmin
+    MINIO_SECRET_KEY: minioadmin
+    PLUGIN_MOBILEWRIGHT: 'true'
+    PLUGIN_API: 'true'
+  script:
+    - bash ci/steps/setup-environment.sh
+    - |
+      echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+        > /etc/udev/rules.d/99-kvm4all.rules 2>/dev/null || true
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends android-sdk-platform-tools && rm -rf /var/lib/apt/lists/*
+    - |
+      mkdir -p assets/apps/android
+      curl -fL "$OMNIPIZZA_RELEASE_BASE_URL/omnipizza-release.apk" -o assets/apps/android/app-release.apk
+    - docker compose -f infrastructure/minio-compose.yml up -d && sleep 5
+    - |
+      docker run -d --name android-emulator --privileged --device /dev/kvm \
+        -p 5554:5554 -p 5555:5555 \
+        -e API_LEVEL="${ANDROID_API_LEVEL:-33}" -e IMG_TYPE=google_apis -e ARCHITECTURE=x86_64 \
+        -e DEVICE_ID=pixel -e MEMORY=4096 -e CORES=2 -e DISABLE_ANIMATION=true \
+        -e DISABLE_HIDDEN_POLICY=true -e SKIP_AUTH=1 \
+        halimqarroum/docker-android:api-${ANDROID_API_LEVEL:-33}
+    - |
+      adb connect localhost:5555
+      for i in $(seq 1 40); do
+        if adb -s localhost:5555 shell getprop sys.boot_completed 2>/dev/null | grep -q "1"; then break; fi
+        sleep 15
+      done
+      adb devices
+    - bash ci/steps/start-stack.sh mobilewright
+    - |
+      if [ "$SUITE" = "reads" ]; then
+        TAG_EXPRESSION="@android and not @writes-shared-state"
+      else
+        TAG_EXPRESSION="@android and @writes-shared-state"
+      fi
+      bash ci/steps/run-suite.sh "$TAG_EXPRESSION" mobilewright "android-$SUITE"
+  after_script:
+    - '[ "$CI_JOB_STATUS" = "failed" ] && docker logs --tail 200 android-emulator 2>&1 || true'
+    - bash ci/steps/collect-artifacts.sh mobilewright || true
+    - docker rm -f android-emulator || true
+    - bash ci/steps/teardown.sh || true
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - artifacts/mobilewright/**
+
+e2e-mobilewright-android-reads:
+  extends: .e2e-mobilewright-android-base
+  variables:
+    SUITE: reads
+
+e2e-mobilewright-android-writes:
+  extends: .e2e-mobilewright-android-base
+  resource_group: standard_user_writes
+  variables:
+    SUITE: writes
+
+.e2e-mobilewright-ios-base:
+  extends: .node-base
+  rules: *rules-mobilewright
+  needs:
+    - resolve-omnipizza-release
+  tags:
+    - saas-macos-medium-m1
+  variables:
+    TOOL_NAME: mobilewright
+    PLATFORM: ios
+    DRIVER: mobilewright
+    CAP_PROFILE: ci_ios_headless
+    MINIO_ENDPOINT: localhost
+    MINIO_PORT: '9000'
+    MINIO_ACCESS_KEY: minioadmin
+    MINIO_SECRET_KEY: minioadmin
+    PLUGIN_MOBILEWRIGHT: 'true'
+    PLUGIN_API: 'true'
+  script:
+    - bash ci/steps/setup-environment.sh
+    - |
+      mkdir -p assets/apps/ios
+      curl -fL "$OMNIPIZZA_RELEASE_BASE_URL/OmniPizza-Simulator.zip" -o assets/apps/ios/OmniPizza-Simulator.zip
+    - |
+      rm -rf assets/apps/ios/unpacked
+      mkdir -p assets/apps/ios/unpacked
+      unzip -q assets/apps/ios/OmniPizza-Simulator.zip -d assets/apps/ios/unpacked
+      # Honor a pre-set IOS_APP_PATH CI/CD variable — see e2e-ios-base's
+      # identical comment above.
+      if [ -z "${IOS_APP_PATH:-}" ]; then
+        IOS_APP_PATH=$(find assets/apps/ios/unpacked -maxdepth 3 -name '*.app' -type d | head -n 1)
+        if [ -z "$IOS_APP_PATH" ]; then echo "No .app bundle found"; exit 1; fi
+      fi
+      echo "IOS_APP_PATH=$IOS_APP_PATH" >> ios.env
+    - |
+      DEVICE_LINE=$(xcrun simctl list devices available | grep -E 'iPhone .*\([A-F0-9-]+\) \((Shutdown|Booted)\)' | head -n 1)
+      if [ -z "$DEVICE_LINE" ]; then echo "No available iPhone simulator found"; exit 1; fi
+      IOS_DEVICE_NAME=$(echo "$DEVICE_LINE" | sed -E 's/^[[:space:]]*([^()]+)[[:space:]]+\(.*/\1/' | xargs)
+      IOS_UDID=$(echo "$DEVICE_LINE" | sed -E 's/.*\(([A-F0-9-]+)\).*/\1/')
+      xcrun simctl boot "$IOS_UDID" || true
+      xcrun simctl bootstatus "$IOS_UDID" -b
+      echo "IOS_DEVICE_NAME=$IOS_DEVICE_NAME" >> ios.env
+      echo "IOS_UDID=$IOS_UDID" >> ios.env
+    # `set -a` (allexport) so IOS_APP_PATH/IOS_UDID/IOS_DEVICE_NAME actually
+    # get exported into the environment — plain `source ios.env` only sets
+    # them as local shell variables in THIS script's shell session; they
+    # would never reach `bash ci/steps/start-stack.sh ios` (a child
+    # process, which only inherits exported vars) or the appium/
+    # mobilewright plugin process it spawns. Without this, IOS_UDID/
+    # IOS_DEVICE_NAME reach the plugin as empty strings.
+    - |
+      set -a
+      source ios.env
+      set +a
+    - |
+      MACHINE_ARCH=$(uname -m)
+      MINIO_ARCH=$(node -p "({ arm64: 'arm64', x86_64: 'amd64' })[process.argv[1]] || ''" "$MACHINE_ARCH")
+      curl -fL "https://dl.min.io/server/minio/release/darwin-${MINIO_ARCH}/minio" -o /tmp/minio
+      chmod +x /tmp/minio
+      mkdir -p /tmp/ahm-minio-data
+      MINIO_ROOT_USER=minioadmin MINIO_ROOT_PASSWORD=minioadmin \
+        /tmp/minio server /tmp/ahm-minio-data --address ":9000" --console-address ":9001" &
+      for i in $(seq 1 30); do
+        curl -fsS http://localhost:9000/minio/health/live >/dev/null && break
+        sleep 1
+      done
+    - bash ci/steps/start-stack.sh mobilewright
+    - |
+      if [ "$SUITE" = "reads" ]; then
+        TAG_EXPRESSION="@ios and not @writes-shared-state"
+      else
+        TAG_EXPRESSION="@ios and @writes-shared-state"
+      fi
+      bash ci/steps/run-suite.sh "$TAG_EXPRESSION" mobilewright "ios-$SUITE"
+  after_script:
+    - bash ci/steps/collect-artifacts.sh mobilewright || true
+    - bash ci/steps/teardown.sh || true
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - artifacts/mobilewright/**
+
+e2e-mobilewright-ios-reads:
+  extends: .e2e-mobilewright-ios-base
+  variables:
+    SUITE: reads
+
+e2e-mobilewright-ios-writes:
+  extends: .e2e-mobilewright-ios-base
+  resource_group: standard_user_writes
+  variables:
+    SUITE: writes
+
+# =============================================================================
+# Job: Security — ZAP  (profile: zap)
+# No @mobsf/@zap tag exists — @security is the hard-gating active-scan
+# suite; @security-infra (ZAP baseline+TLS+MobSF) runs from both this job
+# and security-mobsf below, split by which plugin is live in each — do not
+# "fix" this back to a nonexistent @mobsf tag (see ci/pipeline.config.json's
+# own note on the zap profile).
+# =============================================================================
+security-zap:
+  extends: .docker-in-docker
+  rules: *rules-security
+  variables:
+    TOOL_NAME: zap
+    PLATFORM: api
+    DRIVER: api
+    PLUGIN_ZAP: 'true'
+    PLUGIN_API: 'true'
+  script:
+    - bash ci/steps/setup-environment.sh
+    - bash ci/steps/start-stack.sh zap
+    # Both suites must run regardless of the first's outcome — mirrors GH's
+    # `if: success() || failure()` on the security-infra step. A plain
+    # `script:` list aborts at the first failing line (GitLab's default is
+    # "stop on first error", same as GH's implicit `if: success()` between
+    # steps), so both suites are run inside one block with `set +e` to
+    # capture each exit code independently, then the job is failed
+    # afterward if EITHER suite failed — same net effect as GH (a step
+    # with `if: success() || failure()` that itself fails still fails the
+    # job; it just isn't skipped by the earlier step's failure).
+    - |
+      set +e
+      bash ci/steps/run-suite.sh "@security" zap security
+      SECURITY_EXIT=$?
+      bash ci/steps/run-suite.sh "@security-infra" zap security-infra
+      INFRA_EXIT=$?
+      set -e
+      if [ "$SECURITY_EXIT" -ne 0 ] || [ "$INFRA_EXIT" -ne 0 ]; then
+        echo "security(exit=$SECURITY_EXIT) / security-infra(exit=$INFRA_EXIT) — failing job"
+        exit 1
+      fi
+  after_script:
+    - bash ci/steps/collect-artifacts.sh zap || true
+    - bash ci/steps/teardown.sh || true
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - artifacts/zap/**
+
+# =============================================================================
+# Job: Security — MobSF  (profile: mobsf)
+# Downloads both platform binaries fresh every run (no caching), matching
+# support.security.json's mobile.mobsf[] filePath entries exactly. Runs on
+# ubuntu — MobSF only reads the static .app bundle, no simulator needed.
+# =============================================================================
+security-mobsf:
+  extends: .docker-in-docker
+  rules: *rules-security
+  needs:
+    - resolve-omnipizza-release
+  variables:
+    TOOL_NAME: mobsf
+    PLATFORM: api
+    DRIVER: api
+    PLUGIN_MOBSF: 'true'
+    PLUGIN_API: 'true'
+    MOBSF_URL: http://127.0.0.1:8000
+  script:
+    - bash ci/steps/setup-environment.sh
+    - |
+      mkdir -p assets/apps/android
+      curl -fL "$OMNIPIZZA_RELEASE_BASE_URL/omnipizza-release.apk" -o assets/apps/android/omnipizza-release.apk
+    - |
+      mkdir -p assets/apps/ios
+      curl -fL "$OMNIPIZZA_RELEASE_BASE_URL/OmniPizza-Simulator.zip" -o assets/apps/ios/OmniPizza-Simulator.zip
+      rm -rf assets/apps/ios/unpacked assets/apps/ios/OmniPizza.app
+      mkdir -p assets/apps/ios/unpacked
+      unzip -q assets/apps/ios/OmniPizza-Simulator.zip -d assets/apps/ios/unpacked
+      APP_PATH=$(find assets/apps/ios/unpacked -maxdepth 3 -name '*.app' -type d | head -n 1)
+      if [ -z "$APP_PATH" ]; then echo "No .app bundle found"; exit 1; fi
+      cp -R "$APP_PATH" assets/apps/ios/OmniPizza.app
+    - bash ci/steps/start-stack.sh mobsf
+    - bash ci/steps/run-suite.sh "@security-infra" mobsf security-infra
+  after_script:
+    - bash ci/steps/collect-artifacts.sh mobsf || true
+    - docker rm -f mobsf 2>/dev/null || true
+    - bash ci/steps/teardown.sh || true
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - artifacts/mobsf/**
+
+# =============================================================================
+# Job: Perf — Gatling  (profile: gatling)
+# start-stack.sh's `gatling` arm is a documented no-op — kept for Template
+# Method symmetry with every other job. Runs `pnpm perf:<profile>` directly,
+# not run-suite.sh (Gatling has no cucumber/gRPC plugin stack).
+# =============================================================================
+perf-gatling:
+  extends: .node-base
+  rules: *rules-gatling
+  cache:
+    - key:
+        files:
+          - pnpm-lock.yaml
+      paths:
+        - .pnpm-store
+    - key: gatling-jre-$CI_JOB_IMAGE
+      paths:
+        - node_modules/@gatling.io/cli/.gatling
+  variables:
+    TOOL_NAME: gatling
+    PLATFORM: performance
+    DRIVER: gatling
+    LANGUAGE: en
+  script:
+    - bash ci/steps/setup-environment.sh
+    - bash ci/steps/start-stack.sh gatling
+    - pnpm perf:${PERF_PROFILE:-smoke}
+  after_script:
+    - bash ci/steps/collect-artifacts.sh gatling || true
+    - bash ci/steps/teardown.sh || true
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - artifacts/gatling/**
+      - target/gatling/
+
+# =============================================================================
+# Job: WebdriverIO E2E  (profile: webdriverio)
+# Alternate web engine to Playwright — genuinely independent, no shared
+# session. Single browser (chromium) — no per-browser Selenium service is
+# declared in docker-compose.yml, so no browser matrix is invented here.
+# =============================================================================
+.e2e-webdriverio-base:
+  extends: .docker-in-docker
+  rules: *rules-webdriverio
+  variables:
+    TOOL_NAME: webdriverio
+    PLATFORM: web
+    VIEWPORT: desktop
+    DRIVER: webdriverio
+    BROWSER: chromium
+    PROXY_ADDRESS: 127.0.0.1:50051
+    PLUGIN_WEBDRIVERIO: 'true'
+    PLUGIN_API: 'true'
+  script:
+    - bash ci/steps/setup-environment.sh
+    - bash ci/steps/start-stack.sh webdriverio
+    - |
+      if [ "$SUITE" = "reads" ]; then
+        TAG_EXPRESSION="@desktop and not @writes-shared-state"
+      else
+        TAG_EXPRESSION="@desktop and @writes-shared-state"
+      fi
+      bash ci/steps/run-suite.sh "$TAG_EXPRESSION" webdriverio "$SUITE"
+  after_script:
+    - bash ci/steps/collect-artifacts.sh webdriverio || true
+    - bash ci/steps/teardown.sh || true
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - artifacts/webdriverio/**
+
+e2e-webdriverio-reads:
+  extends: .e2e-webdriverio-base
+  variables:
+    SUITE: reads
+
+e2e-webdriverio-writes:
+  extends: .e2e-webdriverio-base
+  resource_group: standard_user_writes
+  variables:
+    SUITE: writes
+
+# =============================================================================
+# Job: Cypress E2E  (profile: cypress)
+# Not a gRPC plugin peer — no start-stack.sh/run-suite.sh/collect-
+# artifacts.sh call at all (collect-artifacts.sh's non-TOM branch exits 1 on
+# an empty results/, which Cypress never populates). Runs entirely outside
+# the chaos-proxy; uploads its own screenshots/videos folders directly.
+# =============================================================================
+e2e-cypress:
+  extends: .node-base
+  rules: *rules-cypress
+  variables:
+    TOOL_NAME: cypress
+    PLATFORM: web
+  script:
+    - bash ci/steps/setup-environment.sh
+    - pnpm run test:cypress:desktop
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - src/plugins/cypress/screenshots/
+      - src/plugins/cypress/videos/
+
+# =============================================================================
+# Job: Consolidate — Experiment metrics (TOM only)
+#
+# Every `needs:` entry is `optional: true` because, unlike this job's own
+# rules (ARCHITECTURE_TYPE only, no TARGET_PLATFORM restriction — mirrors
+# GH's `if: always() && inputs.architecture_type == 'TOM'`), a narrower
+# TARGET_PLATFORM dispatch value legitimately excludes most of these jobs
+# from the pipeline entirely, not just from having run.
+#
+# JUDGMENT CALL — path flattening: GH's `actions/upload-artifact` with
+# `path: artifacts/<profile>/` uploads that directory's *contents* as the
+# archive root, so `download-artifact` + `path: .` reconstructs bare
+# `metrics/`, `logs/`, etc. at the repo root. GitLab job artifacts instead
+# always preserve the original project-relative path
+# (`artifacts/<profile>/metrics/...`), so `needs:` alone would leave every
+# job's metrics nested under its own profile folder instead of merged. The
+# loop below reproduces GH's flattening explicitly before calling
+# `metrics:experiment`, which expects the flat layout.
+# =============================================================================
+consolidate:
+  extends: .node-base
+  rules:
+    - if: '$ARCHITECTURE_TYPE == "TOM"'
+      when: always
+  needs:
+    - job: api-smoke-reads
+      optional: true
+    - job: api-smoke-writes
+      optional: true
+    - job: e2e-web-reads
+      optional: true
+    - job: e2e-web-writes
+      optional: true
+    - job: e2e-web-responsive-reads
+      optional: true
+    - job: e2e-web-responsive-writes
+      optional: true
+    - job: visual-web
+      optional: true
+    - job: visual-web-responsive
+      optional: true
+    - job: e2e-android-reads
+      optional: true
+    - job: e2e-android-writes
+      optional: true
+    - job: e2e-ios-reads
+      optional: true
+    - job: e2e-ios-writes
+      optional: true
+    - job: perf-gatling
+      optional: true
+  variables:
+    TOOL_NAME: ALL
+    PLATFORM: ALL
+    DRIVER: none
+  script:
+    - bash ci/steps/setup-environment.sh
+    - |
+      mkdir -p metrics logs
+      for d in artifacts/*/metrics; do
+        [ -d "$d" ] && cp -rf "$d"/. metrics/ 2>/dev/null || true
+      done
+      for d in artifacts/*/logs; do
+        [ -d "$d" ] && cp -rf "$d"/. logs/ 2>/dev/null || true
+      done
+    - pnpm run metrics:experiment
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - metrics/
