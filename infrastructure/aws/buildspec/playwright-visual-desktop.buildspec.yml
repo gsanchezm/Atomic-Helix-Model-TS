@@ -1,0 +1,72 @@
+# AWS CodeBuild buildspec for the "playwright-visual-desktop" profile
+# (ci/pipeline.config.json). Static translation of the `visual-web` job in
+# .github/workflows/ahm-execution-helix.yml.
+#
+# Runs under mcr.microsoft.com/playwright:v1.61.1-jammy on the CodeBuild project side
+# (see pipeline-stack.ts) — same pinned container as playwright-desktop.buildspec.yml.
+#
+# Scoping note: this buildspec only models GHA's `standard` reporting path (the
+# `pnpm test:json:visual:desktop` step, gated in GHA on
+# `inputs.architecture_type != 'TOM'`). It deliberately omits the `architecture_type ==
+# 'TOM'` branch (`pnpm test:json:visual:compare:desktop`) — ci/pipeline.config.json, the
+# source of truth this task mirrors, has no TOM/architecture_type concept at all; that's
+# a GHA-only experimental overlay layered on top of the shared job steps.
+#
+# No batch build-matrix — ci/pipeline.config.json's playwright-visual-desktop entry has
+# an empty `matrix: {}`, matching visual-web's single-cell (no strategy.matrix) job.
+
+version: 0.2
+
+env:
+  variables:
+    PLATFORM: web
+    VIEWPORT: desktop
+    DRIVER: playwright
+    HEADLESS: 'true'
+    PLAYWRIGHT_ADDRESS: 127.0.0.1:50052
+    PIXELMATCH_ADDRESS: 127.0.0.1:50056
+    API_ADAPTER_ADDRESS: 127.0.0.1:50055
+    PLUGIN_PLAYWRIGHT: 'true'
+    PLUGIN_PIXELMATCH: 'true'
+    PLUGIN_API: 'true'
+    PROXY_ADDRESS: 127.0.0.1:50051
+  secrets-manager:
+    API_BASE_URL: "ahm/ci:API_BASE_URL"
+    BASE_URL: "ahm/ci:BASE_URL"
+
+phases:
+  install:
+    commands:
+      - bash ci/steps/setup-environment.sh
+
+  build:
+    # GHA's "Visual gate" step uses `if: success() || failure()` — it must still run
+    # (and fail the build) even though the visual-capture step above it may have
+    # reported failures. Per AWS's own buildspec reference, `on-failure: CONTINUE`
+    # means "continue to the next phase" — it does NOT keep later commands in *this*
+    # phase's `commands:` list running after an earlier one fails (that's what
+    # `finally:` is for: "commands in a finally block are run even if a command in the
+    # commands block fails"). So the visual gate belongs in `finally:`.
+    commands:
+      # GHA step "Start proxy + plugins".
+      - bash ci/steps/start-stack.sh web
+
+      # GHA step "Run visual capture (standard)".
+      - pnpm test:json:visual:desktop
+    finally:
+      # GHA step "Visual gate — fail the job if any snapshot drifted" — runs even if
+      # start-stack.sh or the visual capture step above failed.
+      - node scripts/visual-gate.js
+
+  post_build:
+    # teardown.sh must run even if collect-artifacts.sh fails — see
+    # api.buildspec.yml for why this needs `finally:`.
+    commands:
+      - bash ci/steps/collect-artifacts.sh playwright-visual-desktop
+    finally:
+      - bash ci/steps/teardown.sh
+
+artifacts:
+  files:
+    - 'artifacts/playwright-visual-desktop/**/*'
+    - 'visual-results/**/*'

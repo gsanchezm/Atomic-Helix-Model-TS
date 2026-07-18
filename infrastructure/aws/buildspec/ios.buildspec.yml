@@ -1,0 +1,150 @@
+# AWS CodeBuild buildspec for the "ios" profile (ci/pipeline.config.json).
+# Static translation of the `e2e-ios` job in .github/workflows/ahm-execution-helix.yml.
+#
+# CAVEAT: needs an AWS CodeBuild macOS build environment (dedicated EC2 Mac fleet,
+# separately billed/provisioned) — see plan §3.6/§4, and the CDK stack's own comment on
+# this. Not solved by this buildspec; it assumes it's running on such an environment
+# already.
+#
+# Shell-state note: unlike a single GHA job (one long-lived shell environment across
+# `$GITHUB_ENV`-appending steps), each entry below is a SEPARATE shell invocation.
+# IOS_APP_PATH/IOS_UDID/IOS_DEVICE_NAME are computed in early commands and persisted to
+# /tmp/ahm-ci-env.sh; every later command that needs them sources that file first.
+#
+# Batch build-matrix (SUITE: [reads, writes]) is the CodeBuild equivalent of that job's
+# `strategy.matrix.suite`.
+
+version: 0.2
+
+env:
+  variables:
+    PLATFORM: ios
+    DRIVER: appium
+    APPIUM_HOST: localhost
+    APPIUM_PORT: '4723'
+    CAP_PROFILE: ci_ios_headless
+    PLUGIN_APPIUM: 'true'
+    PLUGIN_API: 'true'
+    MINIO_ENDPOINT: localhost
+    MINIO_PORT: '9000'
+    MINIO_ACCESS_KEY: minioadmin
+    MINIO_SECRET_KEY: minioadmin
+    # IOS_APP_PATH is a `requiredVars` optional override (ci/pipeline.config.json).
+    # Deliberately NOT set here — leaving it unset lets the auto-discovered value
+    # (computed below and persisted to /tmp/ahm-ci-env.sh) win, matching GHA's
+    # `vars.IOS_APP_PATH || env.IOS_APP_PATH` fallback where env.IOS_APP_PATH is the
+    # auto-discovered default. A project-level IOS_APP_PATH override env var can be
+    # layered on top of this buildspec by the CDK stack if a fixed path is ever needed.
+  secrets-manager:
+    API_BASE_URL: "ahm/ci:API_BASE_URL"
+
+batch:
+  fast-fail: false
+  build-matrix:
+    static:
+      ignore-failure: false
+    dynamic:
+      env:
+        variables:
+          SUITE: [reads, writes]
+
+phases:
+  install:
+    commands:
+      - bash ci/steps/setup-environment.sh
+
+  build:
+    commands:
+      # GHA step "Download iOS simulator artifact". OMNIPIZZA_RELEASE_BASE_URL comes
+      # from the pipeline's Resolve stage — a CodePipeline variable, injected as a
+      # CodeBuild plaintext env var by the CDK stack, NOT declared in this buildspec's
+      # own env: block (same note as android.buildspec.yml).
+      - |
+          mkdir -p assets/apps/ios
+          curl -fL "$OMNIPIZZA_RELEASE_BASE_URL/OmniPizza-Simulator.zip" -o assets/apps/ios/OmniPizza-Simulator.zip
+          ls -lh assets/apps/ios/OmniPizza-Simulator.zip
+
+      # GHA step "Unpack iOS simulator app". Persists IOS_APP_PATH for later,
+      # separate commands: entries.
+      - |
+          rm -rf assets/apps/ios/unpacked
+          mkdir -p assets/apps/ios/unpacked
+          unzip -q assets/apps/ios/OmniPizza-Simulator.zip -d assets/apps/ios/unpacked
+          IOS_APP_PATH=$(find assets/apps/ios/unpacked -maxdepth 3 -name '*.app' -type d | head -n 1)
+          if [ -z "$IOS_APP_PATH" ]; then
+            echo "No .app bundle found inside OmniPizza-Simulator.zip"
+            exit 1
+          fi
+          echo "export IOS_APP_PATH=\"$IOS_APP_PATH\"" >> /tmp/ahm-ci-env.sh
+
+      # GHA step "Select and boot iOS simulator". Persists IOS_DEVICE_NAME/IOS_UDID
+      # for later, separate commands: entries.
+      - |
+          DEVICE_LINE=$(xcrun simctl list devices available | grep -E 'iPhone .*\([A-F0-9-]+\) \((Shutdown|Booted)\)' | head -n 1)
+          if [ -z "$DEVICE_LINE" ]; then
+            echo "No available iPhone simulator found"
+            exit 1
+          fi
+          IOS_DEVICE_NAME=$(echo "$DEVICE_LINE" | sed -E 's/^[[:space:]]*([^()]+)[[:space:]]+\(.*/\1/' | xargs)
+          IOS_UDID=$(echo "$DEVICE_LINE" | sed -E 's/.*\(([A-F0-9-]+)\).*/\1/')
+          echo "export IOS_DEVICE_NAME=\"$IOS_DEVICE_NAME\"" >> /tmp/ahm-ci-env.sh
+          echo "export IOS_UDID=\"$IOS_UDID\"" >> /tmp/ahm-ci-env.sh
+          xcrun simctl boot "$IOS_UDID" || true
+          xcrun simctl bootstatus "$IOS_UDID" -b
+
+      # GHA step "Start MinIO Telemetry Storage" (macOS leg — downloads and runs the
+      # `minio` binary directly, no docker-compose on macOS). Placed before the Appium
+      # server step, matching GHA's own step order.
+      - |
+          MACHINE_ARCH=$(uname -m)
+          MINIO_ARCH=$(node -p "({ arm64: 'arm64', x86_64: 'amd64' })[process.argv[1]] || ''" "$MACHINE_ARCH")
+          if [ -z "$MINIO_ARCH" ]; then
+            echo "Unsupported macOS architecture: $MACHINE_ARCH"
+            exit 1
+          fi
+          curl -fL "https://dl.min.io/server/minio/release/darwin-${MINIO_ARCH}/minio" -o /tmp/minio
+          chmod +x /tmp/minio
+          mkdir -p /tmp/ahm-minio-data
+          MINIO_ROOT_USER=minioadmin MINIO_ROOT_PASSWORD=minioadmin /tmp/minio server /tmp/ahm-minio-data --address ":9000" --console-address ":9001" &
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:9000/minio/health/live >/dev/null; then
+              echo "MinIO ready"; exit 0
+            fi
+            sleep 1
+          done
+          echo "MinIO did not become healthy"; exit 1
+
+      # GHA step "Start Appium server".
+      - |
+          pnpm exec appium --relaxed-security &
+          sleep 5
+
+      # GHA step "Start proxy + Appium plugin". Sources the persisted env file for
+      # IOS_APP_PATH/IOS_UDID/IOS_DEVICE_NAME, computed in earlier, separate commands.
+      - |
+          source /tmp/ahm-ci-env.sh
+          bash ci/steps/start-stack.sh ios
+
+      # GHA step "Run E2E tests" — one run: block, one commands: entry. Sources the
+      # same persisted env file; $SUITE comes from the batch build-matrix dynamic env
+      # variable declared above (same key as GHA's matrix.suite).
+      - |
+          source /tmp/ahm-ci-env.sh
+          if [ "$SUITE" = "reads" ]; then
+            TAG_EXPRESSION="@ios and not @writes-shared-state"
+          else
+            TAG_EXPRESSION="@ios and @writes-shared-state"
+          fi
+          bash ci/steps/run-suite.sh "$TAG_EXPRESSION" ios "$SUITE"
+
+  post_build:
+    # teardown.sh must run even if collect-artifacts.sh fails — see
+    # api.buildspec.yml for why this needs `finally:`.
+    commands:
+      - bash ci/steps/collect-artifacts.sh ios
+    finally:
+      - bash ci/steps/teardown.sh
+
+artifacts:
+  files:
+    - 'artifacts/ios/**/*'

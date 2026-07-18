@@ -1,0 +1,47 @@
+# AWS CodeBuild buildspec for the "cypress" profile (ci/pipeline.config.json).
+# Static translation of the `e2e-cypress` job in .github/workflows/ahm-execution-helix.yml.
+#
+# Cypress is not a gRPC plugin peer (Option A default, see
+# docs/plans/2026-07-17-cypress-webdriverio-plugins.md §4) — no port, no
+# start-stack.sh/run-suite.sh case arm, and it must NEVER call
+# ci/steps/collect-artifacts.sh (that script's non-TOM branch exits 1 when results/ is
+# empty, and Cypress never populates results/ since it runs entirely outside the
+# chaos-proxy). This buildspec therefore has no start-stack/collect-artifacts/teardown
+# phases at all, matching e2e-cypress in ahm-execution-helix.yml exactly.
+#
+# Secrets discrepancy note: ci/pipeline.config.json's cypress entry declares
+# requiredSecrets: [API_BASE_URL, BASE_URL], but the actual e2e-cypress GHA job only
+# ever sets/reads BASE_URL in its one `run` step (`pnpm run test:cypress:desktop`).
+# This buildspec deliberately only wires BASE_URL as a secrets-manager entry — it does
+# not invent an API_BASE_URL usage the real job doesn't have. ci/pipeline.config.json
+# itself is out of this task's file scope to edit, so the discrepancy is left as-is and
+# flagged here rather than silently "fixed" in either direction.
+#
+# No batch build-matrix — ci/pipeline.config.json's cypress entry has an empty
+# `matrix: {}`, matching e2e-cypress's single-cell (no strategy.matrix) job.
+
+version: 0.2
+
+env:
+  secrets-manager:
+    BASE_URL: "ahm/ci:BASE_URL"
+
+phases:
+  install:
+    commands:
+      - bash ci/steps/setup-environment.sh
+
+  build:
+    commands:
+      # GHA step "Run Cypress suite".
+      - pnpm run test:cypress:desktop
+
+artifacts:
+  files:
+    # NOT artifacts/cypress/** — ci/pipeline.config.json's own note says that glob is
+    # "descriptive metadata only"; the real GHA job uploads straight from Cypress's own
+    # screenshots/videos folders (src/plugins/cypress/cypress.config.ts pins
+    # screenshotsFolder/videosFolder under its own directory), so these are the real
+    # paths.
+    - 'src/plugins/cypress/screenshots/**/*'
+    - 'src/plugins/cypress/videos/**/*'

@@ -1,0 +1,67 @@
+# AWS CodeBuild buildspec for the "webdriverio" profile (ci/pipeline.config.json).
+# Static translation of the `e2e-webdriverio` job in .github/workflows/ahm-execution-helix.yml.
+#
+# Brings up selenium-standalone (docker run -d, shm-size 2g, port 4444) before proxy +
+# webdriverio plugin + api plugin — see ci/steps/start-stack.sh's `webdriverio)` arm.
+# Needs Docker (privilegedMode: true on the CodeBuild project side).
+#
+# Batch build-matrix (SUITE: [reads, writes]) is the CodeBuild equivalent of that job's
+# `strategy.matrix.suite`.
+
+version: 0.2
+
+env:
+  variables:
+    BROWSER: chromium
+    PLATFORM: web
+    VIEWPORT: desktop
+    DRIVER: webdriverio
+    PLUGIN_WEBDRIVERIO: 'true'
+    PLUGIN_API: 'true'
+    PROXY_ADDRESS: 127.0.0.1:50051
+  secrets-manager:
+    API_BASE_URL: "ahm/ci:API_BASE_URL"
+    BASE_URL: "ahm/ci:BASE_URL"
+
+batch:
+  fast-fail: false
+  build-matrix:
+    static:
+      ignore-failure: false
+    dynamic:
+      env:
+        variables:
+          SUITE: [reads, writes]
+
+phases:
+  install:
+    commands:
+      - bash ci/steps/setup-environment.sh
+
+  build:
+    commands:
+      # GHA step "Start proxy + plugins".
+      - bash ci/steps/start-stack.sh webdriverio
+
+      # GHA step "Run E2E tests" — one run: block, one commands: entry. $SUITE comes
+      # from the batch build-matrix dynamic env variable declared above (same key as
+      # GHA's matrix.suite).
+      - |
+          if [ "$SUITE" = "reads" ]; then
+            TAG_EXPRESSION="@desktop and not @writes-shared-state"
+          else
+            TAG_EXPRESSION="@desktop and @writes-shared-state"
+          fi
+          bash ci/steps/run-suite.sh "$TAG_EXPRESSION" webdriverio "$SUITE"
+
+  post_build:
+    # teardown.sh must run even if collect-artifacts.sh fails — see
+    # api.buildspec.yml for why this needs `finally:`.
+    commands:
+      - bash ci/steps/collect-artifacts.sh webdriverio
+    finally:
+      - bash ci/steps/teardown.sh
+
+artifacts:
+  files:
+    - 'artifacts/webdriverio/**/*'
