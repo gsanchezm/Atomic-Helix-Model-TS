@@ -77,7 +77,9 @@
     "dashboard": "pnpm --filter dashboard dev",
     "dashboard:build": "pnpm --filter dashboard build",
     "dashboard:fixtures": "pnpm --filter dashboard fixtures:generate",
-    "dashboard:ingest": "pnpm --filter dashboard ingest"
+    "dashboard:ingest": "pnpm --filter dashboard ingest",
+    "test:ci-steps": "bash ci/steps/test/run-all.sh",
+    "ci:validate-config": "ts-node -r tsconfig-paths/register -e \"require('./ci/pipeline.config.validate').validatePipelineConfig(require('./ci/pipeline.config.json')); console.log('ci/pipeline.config.json is valid')\""
   },
   "keywords": [],
   "author": "",
