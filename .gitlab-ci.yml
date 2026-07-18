@@ -812,7 +812,17 @@ e2e-android-writes:
       xcrun simctl bootstatus "$IOS_UDID" -b
       echo "IOS_DEVICE_NAME=$IOS_DEVICE_NAME" >> ios.env
       echo "IOS_UDID=$IOS_UDID" >> ios.env
-    - source ios.env
+    # `set -a` (allexport) so IOS_APP_PATH/IOS_UDID/IOS_DEVICE_NAME actually
+    # get exported into the environment — plain `source ios.env` only sets
+    # them as local shell variables in THIS script's shell session; they
+    # would never reach `bash ci/steps/start-stack.sh ios` (a child
+    # process, which only inherits exported vars) or the appium/
+    # mobilewright plugin process it spawns. Without this, IOS_UDID/
+    # IOS_DEVICE_NAME reach the plugin as empty strings.
+    - |
+      set -a
+      source ios.env
+      set +a
     - |
       MACHINE_ARCH=$(uname -m)
       MINIO_ARCH=$(node -p "({ arm64: 'arm64', x86_64: 'amd64' })[process.argv[1]] || ''" "$MACHINE_ARCH")
@@ -986,7 +996,17 @@ e2e-mobilewright-android-writes:
       xcrun simctl bootstatus "$IOS_UDID" -b
       echo "IOS_DEVICE_NAME=$IOS_DEVICE_NAME" >> ios.env
       echo "IOS_UDID=$IOS_UDID" >> ios.env
-    - source ios.env
+    # `set -a` (allexport) so IOS_APP_PATH/IOS_UDID/IOS_DEVICE_NAME actually
+    # get exported into the environment — plain `source ios.env` only sets
+    # them as local shell variables in THIS script's shell session; they
+    # would never reach `bash ci/steps/start-stack.sh ios` (a child
+    # process, which only inherits exported vars) or the appium/
+    # mobilewright plugin process it spawns. Without this, IOS_UDID/
+    # IOS_DEVICE_NAME reach the plugin as empty strings.
+    - |
+      set -a
+      source ios.env
+      set +a
     - |
       MACHINE_ARCH=$(uname -m)
       MINIO_ARCH=$(node -p "({ arm64: 'arm64', x86_64: 'amd64' })[process.argv[1]] || ''" "$MACHINE_ARCH")
