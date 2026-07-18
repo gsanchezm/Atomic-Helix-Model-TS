@@ -127,17 +127,16 @@ const TEST_PROFILES: readonly TestProfileSpec[] = [
     buildspecFile: 'infrastructure/aws/buildspec/api.buildspec.yml',
     runOrder: 1,
     batch: true,
-    // DISCREPANCY, left as-is rather than silently "fixed": this profile's own
-    // buildspec runs `docker compose -f infrastructure/minio-compose.yml up -d` in its
-    // build phase (for MinIO telemetry storage), which needs the Docker daemon and so
-    // arguably needs privileged:true — but this task's own brief enumerates the
-    // privileged set as "android, ios, mobilewright, zap, mobsf, webdriverio" by name
-    // and does not include `api`. That enumeration's own stated criterion ("shells out
-    // to `docker run`") is narrower than its evident intent ("needs Docker"), since
-    // `api` shells out to `docker compose`, not `docker run`, yet still needs a Docker
-    // daemon. Kept false here to match the brief's explicit, literal list rather than
-    // silently overriding it — flagged for reconciliation by whoever owns this stack.
-    privileged: false,
+    // RECONCILED: this profile's own buildspec runs
+    // `docker compose -f infrastructure/minio-compose.yml up -d` in its build phase
+    // (for MinIO telemetry storage), which needs the CodeBuild container to have Docker
+    // daemon access — on CodeBuild that requires privilegedMode:true regardless of
+    // whether the command is `docker run` or `docker compose` (AWS's own guidance: any
+    // Docker command in a build needs Privileged enabled, not just `docker run`
+    // specifically). An earlier pass here left this false because a prior enumeration
+    // of "profiles needing Docker" was scoped to `docker run` usage only and missed
+    // `api`'s `docker compose` call — corrected to true.
+    privileged: true,
     usesReleaseUrl: false,
     needsMacFleet: false,
   },
@@ -182,7 +181,11 @@ const TEST_PROFILES: readonly TestProfileSpec[] = [
     buildspecFile: 'infrastructure/aws/buildspec/ios.buildspec.yml',
     runOrder: 1,
     batch: true,
-    privileged: true,
+    // No Docker usage in this profile's buildspec — it brings up MinIO via a native
+    // macOS `minio` binary and drives the simulator via `xcrun simctl`, unlike the
+    // android leg (docker-android emulator + docker-compose MinIO). GHA's e2e-ios job
+    // has no docker step either. privilegedMode is unneeded here.
+    privileged: false,
     usesReleaseUrl: true,
     needsMacFleet: true,
   },
