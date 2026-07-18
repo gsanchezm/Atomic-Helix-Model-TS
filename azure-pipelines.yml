@@ -99,6 +99,17 @@ variables:
     value: ''
   - name: NODE_VERSION
     value: '22.x'
+  # PLAYWRIGHT_IMAGE is intentionally declared but not substituted into any
+  # job's `container:` block below (those hardcode the literal tag instead).
+  # This mirrors the reference workflow's own quirk: ahm-execution-helix.yml
+  # declares `env.PLAYWRIGHT_IMAGE` at the top level and never references it
+  # either — every job there hardcodes the same image literal directly. Job-
+  # level `container:` is a compile-time-resolved resource in Azure Pipelines,
+  # so wiring a runtime `$(...)` variable into it is not the well-established,
+  # verifiable pattern that `versionSpec: '$(NODE_VERSION)'` is for task
+  # inputs above; left as a hardcoded literal per job rather than risk an
+  # unverifiable substitution in a file with no real Azure DevOps project to
+  # validate it against.
   - name: PLAYWRIGHT_IMAGE
     value: 'mcr.microsoft.com/playwright:v1.61.1-jammy'
 
@@ -160,7 +171,7 @@ stages:
           - checkout: self
           - task: NodeTool@0
             displayName: 'Set up Node'
-            inputs: { versionSpec: '22.x' }
+            inputs: { versionSpec: '$(NODE_VERSION)' }
           - script: corepack enable && corepack prepare pnpm@latest --activate
             displayName: 'Enable pnpm (corepack)'
           - script: bash ci/steps/setup-environment.sh
@@ -200,7 +211,7 @@ stages:
           - checkout: self
           - task: NodeTool@0
             displayName: 'Set up Node'
-            inputs: { versionSpec: '22.x' }
+            inputs: { versionSpec: '$(NODE_VERSION)' }
           - script: corepack enable && corepack prepare pnpm@latest --activate
             displayName: 'Enable pnpm (corepack)'
           - script: bash ci/steps/setup-environment.sh
@@ -255,7 +266,7 @@ stages:
           - checkout: self
           - task: NodeTool@0
             displayName: 'Set up Node'
-            inputs: { versionSpec: '22.x' }
+            inputs: { versionSpec: '$(NODE_VERSION)' }
           - script: corepack enable && corepack prepare pnpm@latest --activate
             displayName: 'Enable pnpm (corepack)'
           - script: bash ci/steps/setup-environment.sh
@@ -320,7 +331,7 @@ stages:
           - checkout: self
           - task: NodeTool@0
             displayName: 'Set up Node'
-            inputs: { versionSpec: '22.x' }
+            inputs: { versionSpec: '$(NODE_VERSION)' }
           - script: corepack enable && corepack prepare pnpm@latest --activate
             displayName: 'Enable pnpm (corepack)'
           - script: bash ci/steps/setup-environment.sh
@@ -390,7 +401,7 @@ stages:
           - checkout: self
           - task: NodeTool@0
             displayName: 'Set up Node'
-            inputs: { versionSpec: '22.x' }
+            inputs: { versionSpec: '$(NODE_VERSION)' }
           - script: corepack enable && corepack prepare pnpm@latest --activate
             displayName: 'Enable pnpm (corepack)'
           - script: bash ci/steps/setup-environment.sh
@@ -459,7 +470,7 @@ stages:
           - checkout: self
           - task: NodeTool@0
             displayName: 'Set up Node'
-            inputs: { versionSpec: '22.x' }
+            inputs: { versionSpec: '$(NODE_VERSION)' }
           - script: corepack enable && corepack prepare pnpm@latest --activate
             displayName: 'Enable pnpm (corepack)'
           - script: bash ci/steps/setup-environment.sh
@@ -524,7 +535,7 @@ stages:
           - checkout: self
           - task: NodeTool@0
             displayName: 'Set up Node'
-            inputs: { versionSpec: '22.x' }
+            inputs: { versionSpec: '$(NODE_VERSION)' }
           - script: corepack enable && corepack prepare pnpm@latest --activate
             displayName: 'Enable pnpm (corepack)'
           - script: bash ci/steps/setup-environment.sh
@@ -588,7 +599,7 @@ stages:
           - checkout: self
           - task: NodeTool@0
             displayName: 'Set up Node'
-            inputs: { versionSpec: '22.x' }
+            inputs: { versionSpec: '$(NODE_VERSION)' }
           - script: corepack enable && corepack prepare pnpm@latest --activate
             displayName: 'Enable pnpm (corepack)'
           - script: bash ci/steps/setup-environment.sh
@@ -654,7 +665,7 @@ stages:
           - checkout: self
           - task: NodeTool@0
             displayName: 'Set up Node'
-            inputs: { versionSpec: '22.x' }
+            inputs: { versionSpec: '$(NODE_VERSION)' }
           - script: corepack enable && corepack prepare pnpm@latest --activate
             displayName: 'Enable pnpm (corepack)'
           - script: bash ci/steps/setup-environment.sh
@@ -739,7 +750,7 @@ stages:
             displayName: 'Enable KVM'
           - task: NodeTool@0
             displayName: 'Set up Node'
-            inputs: { versionSpec: '22.x' }
+            inputs: { versionSpec: '$(NODE_VERSION)' }
           - script: corepack enable && corepack prepare pnpm@latest --activate
             displayName: 'Enable pnpm (corepack)'
           - script: bash ci/steps/setup-environment.sh
@@ -860,7 +871,7 @@ stages:
             displayName: 'Enable KVM'
           - task: NodeTool@0
             displayName: 'Set up Node'
-            inputs: { versionSpec: '22.x' }
+            inputs: { versionSpec: '$(NODE_VERSION)' }
           - script: corepack enable && corepack prepare pnpm@latest --activate
             displayName: 'Enable pnpm (corepack)'
           - script: bash ci/steps/setup-environment.sh
@@ -980,7 +991,7 @@ stages:
           - checkout: self
           - task: NodeTool@0
             displayName: 'Set up Node'
-            inputs: { versionSpec: '22.x' }
+            inputs: { versionSpec: '$(NODE_VERSION)' }
           - script: corepack enable && corepack prepare pnpm@latest --activate
             displayName: 'Enable pnpm (corepack)'
           - script: bash ci/steps/setup-environment.sh
@@ -1078,7 +1089,7 @@ stages:
           - checkout: self
           - task: NodeTool@0
             displayName: 'Set up Node'
-            inputs: { versionSpec: '22.x' }
+            inputs: { versionSpec: '$(NODE_VERSION)' }
           - script: corepack enable && corepack prepare pnpm@latest --activate
             displayName: 'Enable pnpm (corepack)'
           - script: bash ci/steps/setup-environment.sh
@@ -1207,7 +1218,7 @@ stages:
             displayName: 'Enable KVM'
           - task: NodeTool@0
             displayName: 'Set up Node'
-            inputs: { versionSpec: '22.x' }
+            inputs: { versionSpec: '$(NODE_VERSION)' }
           - script: corepack enable && corepack prepare pnpm@latest --activate
             displayName: 'Enable pnpm (corepack)'
           - script: bash ci/steps/setup-environment.sh
@@ -1321,7 +1332,7 @@ stages:
             displayName: 'Enable KVM'
           - task: NodeTool@0
             displayName: 'Set up Node'
-            inputs: { versionSpec: '22.x' }
+            inputs: { versionSpec: '$(NODE_VERSION)' }
           - script: corepack enable && corepack prepare pnpm@latest --activate
             displayName: 'Enable pnpm (corepack)'
           - script: bash ci/steps/setup-environment.sh
@@ -1427,7 +1438,7 @@ stages:
           - checkout: self
           - task: NodeTool@0
             displayName: 'Set up Node'
-            inputs: { versionSpec: '22.x' }
+            inputs: { versionSpec: '$(NODE_VERSION)' }
           - script: corepack enable && corepack prepare pnpm@latest --activate
             displayName: 'Enable pnpm (corepack)'
           - script: bash ci/steps/setup-environment.sh
@@ -1518,7 +1529,7 @@ stages:
           - checkout: self
           - task: NodeTool@0
             displayName: 'Set up Node'
-            inputs: { versionSpec: '22.x' }
+            inputs: { versionSpec: '$(NODE_VERSION)' }
           - script: corepack enable && corepack prepare pnpm@latest --activate
             displayName: 'Enable pnpm (corepack)'
           - script: bash ci/steps/setup-environment.sh
@@ -1615,7 +1626,7 @@ stages:
           - checkout: self
           - task: NodeTool@0
             displayName: 'Set up Node'
-            inputs: { versionSpec: '22.x' }
+            inputs: { versionSpec: '$(NODE_VERSION)' }
           - script: corepack enable && corepack prepare pnpm@latest --activate
             displayName: 'Enable pnpm (corepack)'
           - script: bash ci/steps/setup-environment.sh
@@ -1682,7 +1693,7 @@ stages:
           - checkout: self
           - task: NodeTool@0
             displayName: 'Set up Node'
-            inputs: { versionSpec: '22.x' }
+            inputs: { versionSpec: '$(NODE_VERSION)' }
           - script: corepack enable && corepack prepare pnpm@latest --activate
             displayName: 'Enable pnpm (corepack)'
           - script: bash ci/steps/setup-environment.sh
@@ -1765,7 +1776,7 @@ stages:
           - checkout: self
           - task: NodeTool@0
             displayName: 'Set up Node'
-            inputs: { versionSpec: '22.x' }
+            inputs: { versionSpec: '$(NODE_VERSION)' }
           - script: corepack enable && corepack prepare pnpm@latest --activate
             displayName: 'Enable pnpm (corepack)'
           - script: bash ci/steps/setup-environment.sh
@@ -1817,7 +1828,7 @@ stages:
           - checkout: self
           - task: NodeTool@0
             displayName: 'Set up Node'
-            inputs: { versionSpec: '22.x' }
+            inputs: { versionSpec: '$(NODE_VERSION)' }
           - script: corepack enable && corepack prepare pnpm@latest --activate
             displayName: 'Enable pnpm (corepack)'
           - script: bash ci/steps/setup-environment.sh
@@ -1866,7 +1877,7 @@ stages:
           - checkout: self
           - task: NodeTool@0
             displayName: 'Set up Node'
-            inputs: { versionSpec: '22.x' }
+            inputs: { versionSpec: '$(NODE_VERSION)' }
           - script: corepack enable && corepack prepare pnpm@latest --activate
             displayName: 'Enable pnpm (corepack)'
           - script: bash ci/steps/setup-environment.sh
@@ -1923,7 +1934,7 @@ stages:
           - checkout: self
           - task: NodeTool@0
             displayName: 'Set up Node'
-            inputs: { versionSpec: '22.x' }
+            inputs: { versionSpec: '$(NODE_VERSION)' }
           - script: corepack enable && corepack prepare pnpm@latest --activate
             displayName: 'Enable pnpm (corepack)'
           - script: bash ci/steps/setup-environment.sh
