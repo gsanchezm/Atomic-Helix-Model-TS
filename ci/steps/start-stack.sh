@@ -128,7 +128,16 @@ case "$PROFILE" in
         sleep 1
     done
     [ "$MOBSF_READY" = "true" ] || fail "mobsf did not answer 200|302 on :8000"
-    MOBSF_API_KEY="$(docker logs mobsf 2>&1 | grep -iaE 'REST API Key' | grep -oiE '[a-f0-9]{64}' | tail -1 || true)"
+    # MobSF's own startup does a few Django autoreload cycles after the HTTP
+    # port first answers 200|302, so the "REST API Key" line can still be a
+    # beat behind `docker logs` at the instant health-polling succeeds —
+    # retry the scrape instead of taking a single snapshot.
+    MOBSF_API_KEY=""
+    for _ in $(seq 1 10); do
+        MOBSF_API_KEY="$(docker logs mobsf 2>&1 | grep -iaE 'REST API Key' | grep -oiE '[a-f0-9]{64}' | tail -1 || true)"
+        [ -n "$MOBSF_API_KEY" ] && break
+        sleep 1
+    done
     [ -n "$MOBSF_API_KEY" ] || fail "could not scrape MOBSF_API_KEY from 'docker logs mobsf'"
     export MOBSF_API_KEY
     run_bg proxy.log src/kernel/chaos-proxy.ts

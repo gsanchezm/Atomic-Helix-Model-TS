@@ -109,4 +109,4 @@ cucumber.focused.js
 OMNIPIZZA-PLATFORM-BUGS.md
 OMNIPIZZA-FOLLOWUP-*.md
 bugs/
-design_handoff_ahm_landing/
+design_handoff_*/

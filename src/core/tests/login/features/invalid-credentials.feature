@@ -1,9 +1,11 @@
 Feature: Invalid login credentials surface the same auth error
-  The OmniPizza login form rejects every authentication failure with a single,
-  user-facing message. Whether the username, password, or both are missing, or
-  the credentials simply do not match, or the user is locked out, the UI must
-  always surface a message that contains "Invalid credentials" — never leak
-  which side of the comparison failed.
+  The OmniPizza login form rejects a bad or missing username/password with a
+  single, generic message so a caller cannot enumerate valid usernames by
+  reading error text. The one deliberate exception is a locked-out account:
+  that state is surfaced explicitly (not folded into the generic message) —
+  an intentional design decision for this test/practice platform, confirmed
+  with the app owner on 2026-07-16, since a locked-out account is not itself
+  a secret worth hiding behind enumeration-safe wording.
 
     As an OmniPizza user,
     I want a consistent error when login fails,
@@ -15,12 +17,12 @@ Feature: Invalid login credentials surface the same auth error
   @desktop @responsive @android @ios @api @performance @visual @invalid
   Scenario Outline: Login rejected when <case>
     When the user attempts to log in with username "<username>" and password "<password>"
-    Then the login error message contains "Invalid credentials"
+    Then the login error message contains "<errorMessage>"
 
     Examples:
-      | case                  | username        | password    |
-      | username is missing   |                 | pizza123    |
-      | password is missing   | standard_user   |             |
-      | both fields are empty |                 |             |
-      | credentials are wrong | not_a_user      | not_a_pass  |
-      | user is locked out    | locked_out_user | pizza123    |
+      | case                  | username        | password   | errorMessage        |
+      | username is missing   |                 | pizza123   | Invalid credentials |
+      | password is missing   | standard_user   |            | Invalid credentials |
+      | both fields are empty |                 |            | Invalid credentials |
+      | credentials are wrong | not_a_user      | not_a_pass | Invalid credentials |
+      | user is locked out    | locked_out_user | pizza123   | locked out          |
