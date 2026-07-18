@@ -501,10 +501,22 @@ export class AhmPipelineStack extends cdk.Stack {
       actionEnvironmentVariables.OMNIPIZZA_RELEASE_BASE_URL = { value: ctx.omnipizzaReleaseBaseUrl };
     }
 
+    // Output artifact: every one of the 14 buildspecs declares its own `artifacts.files`
+    // block (reports/**, artifacts/<profile>/**, or — for cypress — its screenshots/
+    // videos folders directly), matching GHA's per-job `upload-artifact` step. Without
+    // an `outputs` entry here, CodeBuild has nothing to package those matched files
+    // into and CodePipeline has nothing to persist into `ArtifactBucket` — the run's
+    // test reports/screenshots would simply be discarded when the build container
+    // tears down, unlike GHA's 30-day-retained artifacts. Declaring the output here is
+    // what makes the S3 artifact bucket this stack creates actually hold build output,
+    // not just serve as CodePipeline's internal stage-to-stage passing store.
+    const output = new codepipeline.Artifact(`${id}Output`);
+
     return new actions.CodeBuildAction({
       actionName: id,
       project,
       input: ctx.sourceOutput,
+      outputs: [output],
       runOrder: spec.runOrder,
       executeBatchBuild: spec.batch ? true : undefined,
       combineBatchBuildArtifacts: spec.batch ? true : undefined,
