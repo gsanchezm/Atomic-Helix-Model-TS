@@ -29,7 +29,7 @@ on:
         required: false
         default: all
         type: choice
-        options: [all, api, web, playwright, playwright-desktop, playwright-responsive, pixelmatch, pixelmatch-desktop, pixelmatch-responsive, mobile, android, ios, appium, appium-android, appium-ios, perf, gatling]
+        options: [all, api, web, playwright, playwright-desktop, playwright-responsive, pixelmatch, pixelmatch-desktop, pixelmatch-responsive, mobile, android, ios, appium, appium-android, appium-ios, perf, gatling, mobilewright, security, a11y, cypress, webdriverio]
       architecture_type:
         description: 'Pipeline identity — selects the reporting/metrics tail'
         required: false
@@ -178,6 +178,59 @@ jobs:
     steps:
       - run: echo "Gatling selected"
 
+  gate-mobilewright:
+    name: Gate — Mobilewright
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name != 'workflow_dispatch'
+      || inputs.platform == 'all'
+      || inputs.platform == 'mobilewright'
+    steps:
+      - run: echo "Mobilewright selected"
+
+  # Coarse platform value only — there is no finer-grained `zap`/`mobsf`
+  # dispatch value. Both security-zap and security-mobsf gate on this same
+  # 'security' value (see README's CI/CD section for the tag/job rationale).
+  gate-security:
+    name: Gate — Security
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name != 'workflow_dispatch'
+      || inputs.platform == 'all'
+      || inputs.platform == 'security'
+    steps:
+      - run: echo "Security selected"
+
+  gate-a11y:
+    name: Gate — Accessibility
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name != 'workflow_dispatch'
+      || inputs.platform == 'all'
+      || inputs.platform == 'a11y'
+    steps:
+      - run: echo "Accessibility selected"
+
+  gate-cypress:
+    name: Gate — Cypress
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name != 'workflow_dispatch'
+      || inputs.platform == 'all'
+      || inputs.platform == 'cypress'
+    steps:
+      - run: echo "Cypress selected"
+
+  gate-webdriverio:
+    name: Gate — WebdriverIO
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name != 'workflow_dispatch'
+      || inputs.platform == 'all'
+      || inputs.platform == 'webdriverio'
+    steps:
+      - run: echo "WebdriverIO selected"
+
   # ---------------------------------------------------------------------------
   # Resolver: latest OmniPizza release
   #
@@ -188,7 +241,13 @@ jobs:
   # editing this file each release. Gated on mobile being selected (either
   # by the coarse `mobile`/`android`/`ios` values or the granular
   # `appium`/`appium-android`/`appium-ios` values TOM's dispatch used) so the
-  # API call is skipped when only API/Web/Perf are dispatched.
+  # API call is skipped when only API/Web/Perf are dispatched. `mobilewright`
+  # is included here too — e2e-mobilewright downloads the same OmniPizza
+  # APK/simulator bundle as e2e-android/e2e-ios and consumes this job's
+  # outputs the same way. `security` is included too — security-mobsf needs
+  # this job's outputs to download both platform binaries for its static
+  # scan; without this, a `platform=security` dispatch would skip this
+  # resolver and cascade-skip security-mobsf (which `needs:` it).
   # ---------------------------------------------------------------------------
   resolve-omnipizza-release:
     name: Resolve — OmniPizza latest release
@@ -202,6 +261,8 @@ jobs:
       || inputs.platform == 'appium'
       || inputs.platform == 'appium-android'
       || inputs.platform == 'appium-ios'
+      || inputs.platform == 'mobilewright'
+      || inputs.platform == 'security'
     outputs:
       tag: ${{ steps.fetch.outputs.tag }}
       base_url: ${{ steps.fetch.outputs.base_url }}
@@ -906,6 +967,120 @@ jobs:
         run: bash ci/steps/teardown.sh
 
   # ---------------------------------------------------------------------------
+  # Job: Accessibility (axe) — web-job variant, not a standalone service
+  #
+  # Axe is co-located inside the Playwright plugin process (same pattern as
+  # Pixelmatch) — there is no dedicated a11y port or start-stack.sh case arm.
+  # This job calls the existing `web` arm with PLUGIN_AXE=true forwarded into
+  # THAT call's env, because axe's actions are only registered into the
+  # Playwright action registry when PLUGIN_AXE=true is set at the plugin
+  # process's own startup (see registerPlaywrightActions.ts / plugins.config.ts) —
+  # setting it only on the test-runner step (as package.json's `test:a11y`
+  # script does locally) would not reach the already-running plugin process.
+  # Single cell, no browser/suite matrix: `@a11y` currently tags exactly one
+  # read-only scenario (browse-catalog.feature), so a matrix would just
+  # re-run the identical scenario N times and collide on reports/a11y.json.
+  # ---------------------------------------------------------------------------
+  a11y-web:
+    name: A11y — Playwright Desktop (axe)
+    needs: gate-a11y
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ format('a11y-{0}-{1}', github.run_id, github.run_attempt) }}
+      cancel-in-progress: false
+      queue: max
+
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-jammy
+      options: --user 0
+
+    env:
+      TOOL_NAME: playwright
+      PLATFORM: web
+      VIEWPORT: desktop
+      DRIVER: playwright
+      TOM_RUN_ID: >-
+        ${{ inputs.architecture_type == 'TOM'
+            && format('tom-{0}-{1}-{2}-a11y', github.run_id, github.run_attempt, inputs.run_index || github.run_attempt)
+            || format('gh-{0}-{1}-a11y', github.run_id, github.run_attempt) }}
+
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+      - name: Cache pnpm store
+        uses: actions/cache@v5
+        with:
+          path: ~/.pnpm-store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Start proxy + plugins
+        shell: bash
+        run: bash ci/steps/start-stack.sh web
+        env:
+          BASE_URL: ${{ secrets.BASE_URL }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          BROWSER: chromium
+          PLATFORM: web
+          VIEWPORT: desktop
+          DRIVER: playwright
+          HEADLESS: 'true'
+          PLAYWRIGHT_ADDRESS: 127.0.0.1:50052
+          API_ADAPTER_ADDRESS: 127.0.0.1:50055
+          PLUGIN_PLAYWRIGHT: 'true'
+          PLUGIN_PIXELMATCH: 'false'
+          # Must reach the plugin process's own startup env — see the job
+          # header comment above.
+          PLUGIN_AXE: 'true'
+          PLUGIN_API: 'true'
+
+      - name: Capture run start time
+        if: always()
+        run: echo "RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Run accessibility suite
+        shell: bash
+        run: bash ci/steps/run-suite.sh "@a11y" a11y
+        env:
+          BASE_URL: ${{ secrets.BASE_URL }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          BROWSER: chromium
+          PLATFORM: web
+          VIEWPORT: desktop
+          DRIVER: playwright
+          PROXY_ADDRESS: 127.0.0.1:50051
+          HEADLESS: 'true'
+          PLUGIN_AXE: 'true'
+
+      - name: Capture run end time
+        if: always()
+        run: echo "RUN_ENDED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Collect artifacts
+        if: always()
+        run: bash ci/steps/collect-artifacts.sh a11y
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ahm-artifacts-${{ github.job }}-${{ github.run_id }}
+          path: artifacts/a11y/
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Teardown
+        if: always()
+        run: bash ci/steps/teardown.sh
+
+  # ---------------------------------------------------------------------------
   # Job 4: Android E2E
   # ---------------------------------------------------------------------------
   e2e-android:
@@ -1271,6 +1446,545 @@ jobs:
         run: bash ci/steps/teardown.sh
 
   # ---------------------------------------------------------------------------
+  # Job: Mobilewright E2E (Android + iOS)
+  #
+  # KNOWN GAP — do not "fix" by editing src/devices/*.json (out of this
+  # task's file scope): docker_android.json and ci_ios_headless.json need
+  # "mobilewright" added to their compatibleDrivers array before this job can
+  # pass — mobilewright-adapter.ts tolerates a passport with no mobilewright
+  # config block (it spreads passport.mobilewright ?? {}), so the array
+  # entry alone is sufficient, no other device-file changes needed. Today
+  # this job is structurally wired (proxy + mobilewright plugin + api plugin
+  # all start fine) but WILL FAIL at DeviceLoader.forWorker() with "device
+  # 'docker_android'/'ci_ios_headless' ... is not compatible with
+  # DRIVER='mobilewright'" — only the non-CI, named-physical-device
+  # passports (galaxy_s25_ultra.json, iphone_16_pro.json, iphone_17_pro.json,
+  # z_flip_6.json) currently list "mobilewright" as compatible, and none of
+  # those are usable in a headless CI runner. It is manual-dispatch-only
+  # today (push/PR triggers are commented out above), so a job that fails
+  # when someone actually dispatches platform=mobilewright does not pollute
+  # any automatic run.
+  # ---------------------------------------------------------------------------
+  e2e-mobilewright:
+    name: E2E — Mobilewright ${{ matrix.platform }} ${{ matrix.suite }}
+    needs: [gate-mobilewright, resolve-omnipizza-release]
+    runs-on: ${{ matrix.platform == 'ios' && 'macos-latest' || 'ubuntu-latest' }}
+    concurrency:
+      group: ${{ matrix.suite == 'writes' && 'standard-user-writes' || format('mobilewright-reads-{0}-{1}-{2}', github.run_id, github.run_attempt, matrix.platform) }}
+      cancel-in-progress: false
+      queue: max
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [android, ios]
+        suite: [reads, writes]
+    env:
+      TOOL_NAME: mobilewright
+      PLATFORM: ${{ matrix.platform }}
+      DRIVER: mobilewright
+      TOM_RUN_ID: >-
+        ${{ inputs.architecture_type == 'TOM'
+            && format('tom-{0}-{1}-{2}-mobilewright-{3}-{4}', github.run_id, github.run_attempt, inputs.run_index || github.run_attempt, matrix.platform, matrix.suite)
+            || format('gh-{0}-{1}-mobilewright-{2}-{3}', github.run_id, github.run_attempt, matrix.platform, matrix.suite) }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Enable KVM
+        if: matrix.platform == 'android'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+      - name: Cache pnpm store
+        if: matrix.platform == 'android'
+        uses: actions/cache@v5
+        with:
+          path: ~/.pnpm-store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Android platform tools
+        if: matrix.platform == 'android'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y android-sdk-platform-tools
+          adb version
+
+      - name: Download Android app artifact
+        if: matrix.platform == 'android'
+        env:
+          OMNIPIZZA_RELEASE_BASE_URL: ${{ needs.resolve-omnipizza-release.outputs.base_url }}
+          OMNIPIZZA_RELEASE_TAG: ${{ needs.resolve-omnipizza-release.outputs.tag }}
+        run: |
+          mkdir -p assets/apps/android
+          echo "Downloading OmniPizza Android APK from release ${OMNIPIZZA_RELEASE_TAG}"
+          curl -fL "$OMNIPIZZA_RELEASE_BASE_URL/omnipizza-release.apk" \
+            -o assets/apps/android/app-release.apk
+          ls -lh assets/apps/android/app-release.apk
+
+      - name: Download iOS simulator artifact
+        if: matrix.platform == 'ios'
+        env:
+          OMNIPIZZA_RELEASE_BASE_URL: ${{ needs.resolve-omnipizza-release.outputs.base_url }}
+          OMNIPIZZA_RELEASE_TAG: ${{ needs.resolve-omnipizza-release.outputs.tag }}
+        run: |
+          mkdir -p assets/apps/ios
+          echo "Downloading OmniPizza iOS simulator bundle from release ${OMNIPIZZA_RELEASE_TAG}"
+          curl -fL "$OMNIPIZZA_RELEASE_BASE_URL/OmniPizza-Simulator.zip" \
+            -o assets/apps/ios/OmniPizza-Simulator.zip
+          ls -lh assets/apps/ios/OmniPizza-Simulator.zip
+
+      - name: Unpack iOS simulator app
+        if: matrix.platform == 'ios'
+        run: |
+          rm -rf assets/apps/ios/unpacked
+          mkdir -p assets/apps/ios/unpacked
+          unzip -q assets/apps/ios/OmniPizza-Simulator.zip -d assets/apps/ios/unpacked
+          IOS_APP_PATH=$(find assets/apps/ios/unpacked -maxdepth 3 -name '*.app' -type d | head -n 1)
+          if [ -z "$IOS_APP_PATH" ]; then
+            echo "No .app bundle found inside OmniPizza-Simulator.zip"
+            exit 1
+          fi
+          echo "IOS_APP_PATH=$IOS_APP_PATH" >> "$GITHUB_ENV"
+
+      - name: Select and boot iOS simulator
+        if: matrix.platform == 'ios'
+        run: |
+          DEVICE_LINE=$(xcrun simctl list devices available | grep -E 'iPhone .*\([A-F0-9-]+\) \((Shutdown|Booted)\)' | head -n 1)
+          if [ -z "$DEVICE_LINE" ]; then
+            echo "No available iPhone simulator found"
+            exit 1
+          fi
+          IOS_DEVICE_NAME=$(echo "$DEVICE_LINE" | sed -E 's/^[[:space:]]*([^()]+)[[:space:]]+\(.*/\1/' | xargs)
+          IOS_UDID=$(echo "$DEVICE_LINE" | sed -E 's/.*\(([A-F0-9-]+)\).*/\1/')
+          echo "IOS_DEVICE_NAME=$IOS_DEVICE_NAME" >> "$GITHUB_ENV"
+          echo "IOS_UDID=$IOS_UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$IOS_UDID" || true
+          xcrun simctl bootstatus "$IOS_UDID" -b
+
+      - name: Start MinIO Telemetry Storage (Linux)
+        if: matrix.platform == 'android'
+        run: |
+          if docker compose version >/dev/null 2>&1; then
+            docker compose -f infrastructure/minio-compose.yml up -d
+          else
+            docker-compose -f infrastructure/minio-compose.yml up -d
+          fi
+          sleep 5
+
+      - name: Start MinIO Telemetry Storage (macOS)
+        if: matrix.platform == 'ios'
+        run: |
+          MACHINE_ARCH=$(uname -m)
+          MINIO_ARCH=$(node -p "({ arm64: 'arm64', x86_64: 'amd64' })[process.argv[1]] || ''" "$MACHINE_ARCH")
+          if [ -z "$MINIO_ARCH" ]; then
+            echo "Unsupported macOS architecture: $MACHINE_ARCH"
+            exit 1
+          fi
+
+          curl -fL "https://dl.min.io/server/minio/release/darwin-${MINIO_ARCH}/minio" \
+            -o /tmp/minio
+          chmod +x /tmp/minio
+
+          mkdir -p /tmp/ahm-minio-data
+          MINIO_ROOT_USER=minioadmin \
+          MINIO_ROOT_PASSWORD=minioadmin \
+            /tmp/minio server /tmp/ahm-minio-data --address ":9000" --console-address ":9001" &
+
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:9000/minio/health/live >/dev/null; then
+              echo "MinIO ready"
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "MinIO did not become healthy"
+          exit 1
+
+      - name: Start Android emulator (docker-android)
+        if: matrix.platform == 'android'
+        run: |
+          docker run -d \
+            --name android-emulator \
+            --privileged \
+            --device /dev/kvm \
+            -p 5554:5554 \
+            -p 5555:5555 \
+            -e API_LEVEL=${{ inputs.android_api_level || '33' }} \
+            -e IMG_TYPE=google_apis \
+            -e ARCHITECTURE=x86_64 \
+            -e DEVICE_ID=pixel \
+            -e MEMORY=4096 \
+            -e CORES=2 \
+            -e DISABLE_ANIMATION=true \
+            -e DISABLE_HIDDEN_POLICY=true \
+            -e SKIP_AUTH=1 \
+            halimqarroum/docker-android:api-${{ inputs.android_api_level || '33' }}
+
+      - name: Wait for emulator to be ready
+        if: matrix.platform == 'android'
+        run: |
+          echo "Waiting for ADB device to appear..."
+          adb connect localhost:5555
+          for i in $(seq 1 40); do
+            if adb -s localhost:5555 shell getprop sys.boot_completed 2>/dev/null | grep -q "1"; then
+              echo "Emulator ready after $((i * 15))s"
+              break
+            fi
+            echo "  Attempt $i/40 — waiting 15s..."
+            sleep 15
+          done
+          adb devices
+
+      # No Appium server is started here — mobilewright drives devices via
+      # `mobilecli`, not Appium/WebDriverIO remote() (mobilewrightNeedsAppiumServer:
+      # false — see ci/pipeline.config.json). start-stack.sh's `mobilewright`
+      # arm only waits on the gRPC ports below.
+      - name: Start proxy + Mobilewright plugin
+        run: bash ci/steps/start-stack.sh mobilewright
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          PLATFORM: ${{ matrix.platform }}
+          DRIVER: mobilewright
+          CAP_PROFILE: ${{ matrix.platform == 'android' && 'docker_android' || 'ci_ios_headless' }}
+          ANDROID_APP_PATH: assets/apps/android/app-release.apk
+          ANDROID_UDID: localhost:5555
+          IOS_APP_PATH: ${{ vars.IOS_APP_PATH || env.IOS_APP_PATH }}
+          IOS_UDID: ${{ env.IOS_UDID }}
+          IOS_DEVICE_NAME: ${{ env.IOS_DEVICE_NAME }}
+          PLUGIN_MOBILEWRIGHT: 'true'
+          PLUGIN_API: 'true'
+
+      - name: Capture run start time
+        if: always()
+        run: echo "RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Run E2E tests
+        shell: bash
+        run: |
+          if [ "${{ matrix.platform }}" = "android" ]; then
+            BASE_TAG="@android"
+          else
+            BASE_TAG="@ios"
+          fi
+          if [ "${{ matrix.suite }}" = "reads" ]; then
+            TAG_EXPRESSION="$BASE_TAG and not @writes-shared-state"
+          else
+            TAG_EXPRESSION="$BASE_TAG and @writes-shared-state"
+          fi
+          bash ci/steps/run-suite.sh "$TAG_EXPRESSION" mobilewright "${{ matrix.platform }}-${{ matrix.suite }}"
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          PLATFORM: ${{ matrix.platform }}
+          DRIVER: mobilewright
+          CAP_PROFILE: ${{ matrix.platform == 'android' && 'docker_android' || 'ci_ios_headless' }}
+          ANDROID_APP_PATH: assets/apps/android/app-release.apk
+          ANDROID_UDID: localhost:5555
+          IOS_APP_PATH: ${{ vars.IOS_APP_PATH || env.IOS_APP_PATH }}
+          IOS_UDID: ${{ env.IOS_UDID }}
+          IOS_DEVICE_NAME: ${{ env.IOS_DEVICE_NAME }}
+          MINIO_ENDPOINT: localhost
+          MINIO_PORT: '9000'
+          MINIO_ACCESS_KEY: minioadmin
+          MINIO_SECRET_KEY: minioadmin
+
+      - name: Capture run end time
+        if: always()
+        run: echo "RUN_ENDED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Show Android emulator logs
+        if: failure() && matrix.platform == 'android'
+        run: |
+          docker ps -a --filter name=android-emulator
+          if docker ps -a --format '{{.Names}}' | grep -qx android-emulator; then
+            docker logs --tail 200 android-emulator
+          else
+            echo "android-emulator container was not created."
+          fi
+
+      - name: Collect artifacts
+        if: always()
+        run: bash ci/steps/collect-artifacts.sh mobilewright
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ahm-artifacts-${{ github.job }}-${{ matrix.platform }}-${{ matrix.suite }}-${{ github.run_id }}
+          path: artifacts/mobilewright/
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Stop emulator
+        if: always() && matrix.platform == 'android'
+        run: docker rm -f android-emulator || true
+
+      - name: Teardown
+        if: always()
+        run: bash ci/steps/teardown.sh
+
+  # ---------------------------------------------------------------------------
+  # Job: Security — ZAP (active API scan gate + baseline/TLS half of infra scan)
+  #
+  # No `@mobsf` tag exists in this codebase (grepped every .feature file).
+  # `@security` (login/features/api-security.feature) is the hard-gating ZAP
+  # active-scan + schema-fuzz suite. `@security-infra`
+  # (support/features/security-infra.feature) is ONE scenario that does ZAP
+  # baseline crawl + TLS check + MobSF static analysis in sequence — it is
+  # deliberately run from BOTH this job and security-mobsf below, split by
+  # which plugin is actually live in each. security-infra.route.ts's own
+  # per-plugin enabled checks (PLUGIN_ZAP/PLUGIN_MOBSF) make the unused half
+  # a non-fatal log.warn, not a failure, so running the same tag twice here
+  # is safe, not a bug. Do not "fix" this back to a `@mobsf` tag that does
+  # not exist.
+  # ---------------------------------------------------------------------------
+  security-zap:
+    name: Security — ZAP
+    needs: gate-security
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ format('security-zap-{0}-{1}', github.run_id, github.run_attempt) }}
+      cancel-in-progress: false
+      queue: max
+    env:
+      TOOL_NAME: zap
+      PLATFORM: api
+      DRIVER: api
+      TOM_RUN_ID: >-
+        ${{ inputs.architecture_type == 'TOM'
+            && format('tom-{0}-{1}-{2}-security-zap', github.run_id, github.run_attempt, inputs.run_index || github.run_attempt)
+            || format('gh-{0}-{1}-security-zap', github.run_id, github.run_attempt) }}
+
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+      - name: Cache pnpm store
+        uses: actions/cache@v5
+        with:
+          path: ~/.pnpm-store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # RunZapScan.ts shells out to `docker run --rm ghcr.io/zaproxy/zaproxy:stable`
+      # itself, per-scan — Docker just needs to be available (already true on
+      # ubuntu-latest), no separate `docker run` step needed here.
+      - name: Start proxy + API + ZAP plugin
+        run: bash ci/steps/start-stack.sh zap
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          PLATFORM: api
+          DRIVER: api
+          PLUGIN_ZAP: 'true'
+          PLUGIN_API: 'true'
+
+      - name: Capture run start time
+        if: always()
+        run: echo "RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Run security suite (API gate)
+        shell: bash
+        run: bash ci/steps/run-suite.sh "@security" zap security
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          PLATFORM: api
+          DRIVER: api
+          PLUGIN_ZAP: 'true'
+
+      # `if: success() || failure()` — without this, GitHub's implicit
+      # `success()` on the previous (hard-gating) @security step would skip
+      # this record-only suite entirely whenever the gate trips, losing the
+      # infra recording on exactly the runs where it matters most. Ground
+      # truth §1 calls for running BOTH suites against this one stack
+      # unconditionally; this guard is what makes that true even on a
+      # @security failure (still skips on job cancellation).
+      - name: Run security-infra suite (ZAP baseline + TLS; MobSF self-skips)
+        if: success() || failure()
+        shell: bash
+        run: bash ci/steps/run-suite.sh "@security-infra" zap security-infra
+        env:
+          BASE_URL: ${{ secrets.BASE_URL }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          PLATFORM: api
+          DRIVER: api
+          PLUGIN_ZAP: 'true'
+
+      - name: Capture run end time
+        if: always()
+        run: echo "RUN_ENDED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Collect artifacts
+        if: always()
+        run: bash ci/steps/collect-artifacts.sh zap
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ahm-artifacts-${{ github.job }}-${{ github.run_id }}
+          path: artifacts/zap/
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Teardown
+        if: always()
+        run: bash ci/steps/teardown.sh
+
+  # ---------------------------------------------------------------------------
+  # Job: Security — MobSF (long-lived server, MobSF half of the infra scan)
+  #
+  # Downloads both the Android APK and the iOS .app bundle fresh every run
+  # (no caching) so support.security.json's `mobile.mobsf[]` entries resolve
+  # to real files — see the two download steps below. Runs entirely on
+  # ubuntu-latest: MobSF only needs the static .app bundle on disk, not a
+  # booted simulator, so the iOS leg needs no macOS runner.
+  # ---------------------------------------------------------------------------
+  security-mobsf:
+    name: Security — MobSF
+    needs: [gate-security, resolve-omnipizza-release]
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ format('security-mobsf-{0}-{1}', github.run_id, github.run_attempt) }}
+      cancel-in-progress: false
+      queue: max
+    env:
+      TOOL_NAME: mobsf
+      PLATFORM: api
+      DRIVER: api
+      TOM_RUN_ID: >-
+        ${{ inputs.architecture_type == 'TOM'
+            && format('tom-{0}-{1}-{2}-security-mobsf', github.run_id, github.run_attempt, inputs.run_index || github.run_attempt)
+            || format('gh-{0}-{1}-security-mobsf', github.run_id, github.run_attempt) }}
+
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+      - name: Cache pnpm store
+        uses: actions/cache@v5
+        with:
+          path: ~/.pnpm-store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # filePath must match support.security.json's `mobile.mobsf[]` entries
+      # exactly: "assets/apps/android/omnipizza-release.apk" — NOT renamed to
+      # app-release.apk the way e2e-android's own copy is.
+      - name: Download Android APK for MobSF scan
+        env:
+          OMNIPIZZA_RELEASE_BASE_URL: ${{ needs.resolve-omnipizza-release.outputs.base_url }}
+          OMNIPIZZA_RELEASE_TAG: ${{ needs.resolve-omnipizza-release.outputs.tag }}
+        run: |
+          mkdir -p assets/apps/android
+          echo "Downloading OmniPizza Android APK from release ${OMNIPIZZA_RELEASE_TAG}"
+          curl -fL "$OMNIPIZZA_RELEASE_BASE_URL/omnipizza-release.apk" \
+            -o assets/apps/android/omnipizza-release.apk
+          ls -lh assets/apps/android/omnipizza-release.apk
+
+      # support.security.json's ios mobsf entry expects a literal .app
+      # DIRECTORY at "assets/apps/ios/OmniPizza.app" (security-infra.route.ts's
+      # resolveArtifact()/packageIpa() check `statSync(abs).isDirectory() &&
+      # abs.endsWith('.app')`). No booted simulator or macOS runner needed —
+      # MobSF only reads the static bundle on disk.
+      - name: Download + unpack iOS app for MobSF scan
+        env:
+          OMNIPIZZA_RELEASE_BASE_URL: ${{ needs.resolve-omnipizza-release.outputs.base_url }}
+          OMNIPIZZA_RELEASE_TAG: ${{ needs.resolve-omnipizza-release.outputs.tag }}
+        run: |
+          mkdir -p assets/apps/ios
+          echo "Downloading OmniPizza iOS simulator bundle from release ${OMNIPIZZA_RELEASE_TAG}"
+          curl -fL "$OMNIPIZZA_RELEASE_BASE_URL/OmniPizza-Simulator.zip" \
+            -o assets/apps/ios/OmniPizza-Simulator.zip
+          rm -rf assets/apps/ios/unpacked assets/apps/ios/OmniPizza.app
+          mkdir -p assets/apps/ios/unpacked
+          unzip -q assets/apps/ios/OmniPizza-Simulator.zip -d assets/apps/ios/unpacked
+          APP_PATH=$(find assets/apps/ios/unpacked -maxdepth 3 -name '*.app' -type d | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            echo "No .app bundle found inside OmniPizza-Simulator.zip"
+            exit 1
+          fi
+          cp -R "$APP_PATH" assets/apps/ios/OmniPizza.app
+          ls -ld assets/apps/ios/OmniPizza.app
+
+      # Brings up its own MobSF container (docker run -d --name mobsf ...,
+      # pinned image opensecurity/mobile-security-framework-mobsf:v3.9.7),
+      # health-polls :8000, scrapes MOBSF_API_KEY from the container's own
+      # startup logs, then starts proxy + API + mobsf plugin. See
+      # ci/steps/start-stack.sh's `mobsf)` arm.
+      - name: Start proxy + API + MobSF plugin
+        run: bash ci/steps/start-stack.sh mobsf
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          PLATFORM: api
+          DRIVER: api
+          PLUGIN_MOBSF: 'true'
+          PLUGIN_API: 'true'
+          MOBSF_URL: http://127.0.0.1:8000
+
+      - name: Capture run start time
+        if: always()
+        run: echo "RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Run security-infra suite (MobSF static scan)
+        shell: bash
+        run: bash ci/steps/run-suite.sh "@security-infra" mobsf security-infra
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          PLATFORM: api
+          DRIVER: api
+          PLUGIN_MOBSF: 'true'
+          MOBSF_URL: http://127.0.0.1:8000
+
+      - name: Capture run end time
+        if: always()
+        run: echo "RUN_ENDED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Collect artifacts
+        if: always()
+        run: bash ci/steps/collect-artifacts.sh mobsf
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ahm-artifacts-${{ github.job }}-${{ github.run_id }}
+          path: artifacts/mobsf/
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Stop MobSF container
+        if: always()
+        run: docker rm -f mobsf 2>/dev/null || true
+
+      - name: Teardown
+        if: always()
+        run: bash ci/steps/teardown.sh
+
+  # ---------------------------------------------------------------------------
   # Job 6: Perf — Gatling Simulation
   # ---------------------------------------------------------------------------
   perf-gatling:
@@ -1357,6 +2071,192 @@ jobs:
         run: bash ci/steps/teardown.sh
 
   # ---------------------------------------------------------------------------
+  # Job: WebdriverIO E2E (alternate web engine to Playwright — genuinely
+  # independent, does not replace or share sessions with the playwright
+  # plugin). Exercises the same `@desktop`-tagged feature files as e2e-web,
+  # just routed through DRIVER=webdriverio instead of DRIVER=playwright.
+  # Single browser (chromium) — docker-compose.yml's `webdriverio` profile
+  # and .env.example both default BROWSER to chromium and there is no
+  # per-browser Selenium service declared, so no browser matrix is invented
+  # here that ci/pipeline.config.json doesn't also declare.
+  # ---------------------------------------------------------------------------
+  e2e-webdriverio:
+    name: E2E — WebdriverIO ${{ matrix.suite }}
+    needs: gate-webdriverio
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ matrix.suite == 'writes' && 'standard-user-writes' || format('webdriverio-reads-{0}-{1}', github.run_id, github.run_attempt) }}
+      cancel-in-progress: false
+      queue: max
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [reads, writes]
+    env:
+      TOOL_NAME: webdriverio
+      PLATFORM: web
+      VIEWPORT: desktop
+      DRIVER: webdriverio
+      TOM_RUN_ID: >-
+        ${{ inputs.architecture_type == 'TOM'
+            && format('tom-{0}-{1}-{2}-webdriverio-{3}', github.run_id, github.run_attempt, inputs.run_index || github.run_attempt, matrix.suite)
+            || format('gh-{0}-{1}-webdriverio-{2}', github.run_id, github.run_attempt, matrix.suite) }}
+
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+      - name: Cache pnpm store
+        uses: actions/cache@v5
+        with:
+          path: ~/.pnpm-store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Brings up selenium-standalone (docker run -d, shm-size 2g, port
+      # 4444) before proxy + webdriverio plugin + api plugin — see
+      # ci/steps/start-stack.sh's `webdriverio)` arm.
+      - name: Start proxy + plugins
+        shell: bash
+        run: bash ci/steps/start-stack.sh webdriverio
+        env:
+          BASE_URL: ${{ secrets.BASE_URL }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          BROWSER: chromium
+          PLATFORM: web
+          VIEWPORT: desktop
+          DRIVER: webdriverio
+          PLUGIN_WEBDRIVERIO: 'true'
+          PLUGIN_API: 'true'
+
+      - name: Capture run start time
+        if: always()
+        run: echo "RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Run E2E tests
+        shell: bash
+        run: |
+          if [ "${{ matrix.suite }}" = "reads" ]; then
+            TAG_EXPRESSION="@desktop and not @writes-shared-state"
+          else
+            TAG_EXPRESSION="@desktop and @writes-shared-state"
+          fi
+          bash ci/steps/run-suite.sh "$TAG_EXPRESSION" webdriverio ${{ matrix.suite }}
+        env:
+          BASE_URL: ${{ secrets.BASE_URL }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          BROWSER: chromium
+          PLATFORM: web
+          VIEWPORT: desktop
+          DRIVER: webdriverio
+          PROXY_ADDRESS: 127.0.0.1:50051
+
+      - name: Capture run end time
+        if: always()
+        run: echo "RUN_ENDED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Collect artifacts
+        if: always()
+        run: bash ci/steps/collect-artifacts.sh webdriverio
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ahm-artifacts-${{ github.job }}-${{ matrix.suite }}-${{ github.run_id }}
+          path: artifacts/webdriverio/
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Teardown
+        if: always()
+        run: bash ci/steps/teardown.sh
+
+  # ---------------------------------------------------------------------------
+  # Job: Cypress E2E — non-gRPC parallel track
+  #
+  # Cypress is not a gRPC plugin peer (Option A default): no port, no
+  # start-stack.sh/run-suite.sh case arm, and it must NEVER call
+  # ci/steps/collect-artifacts.sh — that script's non-TOM branch exits 1
+  # when results/ is empty, and Cypress (running outside the chaos-proxy
+  # entirely) never populates results/. So, unlike every other job in this
+  # file, this job has no start-stack/collect-artifacts/teardown steps at
+  # all — it runs `pnpm run test:cypress:desktop` directly and uploads
+  # whatever Cypress itself writes to its own screenshots/videos folders
+  # (src/plugins/cypress/cypress.config.ts pins screenshotsFolder/
+  # videosFolder under its own directory).
+  # ---------------------------------------------------------------------------
+  e2e-cypress:
+    name: E2E — Cypress Desktop
+    needs: gate-cypress
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ format('cypress-{0}-{1}', github.run_id, github.run_attempt) }}
+      cancel-in-progress: false
+      queue: max
+    env:
+      TOOL_NAME: cypress
+      PLATFORM: web
+      TOM_RUN_ID: >-
+        ${{ inputs.architecture_type == 'TOM'
+            && format('tom-{0}-{1}-{2}-cypress', github.run_id, github.run_attempt, inputs.run_index || github.run_attempt)
+            || format('gh-{0}-{1}-cypress', github.run_id, github.run_attempt) }}
+
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+      - name: Cache pnpm store
+        uses: actions/cache@v5
+        with:
+          path: ~/.pnpm-store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Capture run start time
+        if: always()
+        run: echo "RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Run Cypress suite
+        run: pnpm run test:cypress:desktop
+        env:
+          BASE_URL: ${{ secrets.BASE_URL }}
+
+      - name: Capture run end time
+        if: always()
+        run: echo "RUN_ENDED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Upload Cypress screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ahm-artifacts-${{ github.job }}-${{ github.run_id }}-screenshots
+          path: src/plugins/cypress/screenshots/
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Upload Cypress videos
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ahm-artifacts-${{ github.job }}-${{ github.run_id }}-videos
+          path: src/plugins/cypress/videos/
+          if-no-files-found: ignore
+          retention-days: 30
+
+  # ---------------------------------------------------------------------------
   # Job 7: Consolidate — merge every per-tool TOM metrics artifact and run the
   # full operational + quality metrics pipeline over the combined inputs.
   # Copied from the now-folded-in tom-quantitative-execution.yml's own
@@ -1364,6 +2264,13 @@ jobs:
   # path has no equivalent merge step — each job's own telemetry upload is
   # the final word there). `needs:` targets the shared job keys above rather
   # than TOM's original per-tool job names.
+  #
+  # NOT extended by this task: a11y-web, security-zap, security-mobsf,
+  # e2e-mobilewright, e2e-webdriverio, e2e-cypress are absent from the
+  # `needs:` list below, so their artifacts (and, for e2e-cypress, its
+  # complete lack of a metrics/TOM upload — see that job's own header
+  # comment) do not feed this consolidated run. Left as-is; out of this
+  # task's scope to change.
   # ---------------------------------------------------------------------------
   consolidate:
     name: Consolidate — Experiment metrics

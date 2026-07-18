@@ -5,7 +5,7 @@
   "udid": null,
   "model": "iPhone 16 Pro",
   "screen": null,
-  "compatibleDrivers": ["appium"],
+  "compatibleDrivers": ["appium", "mobilewright"],
   "app": {
     "bundleId": "com.omnipizza.app"
   },
