@@ -1,0 +1,57 @@
+# AWS CodeBuild buildspec for the "zap" profile (ci/pipeline.config.json).
+# Static translation of the `security-zap` job in .github/workflows/ahm-execution-helix.yml.
+#
+# RunZapScan.ts shells out to `docker run --rm ghcr.io/zaproxy/zaproxy:stable` itself
+# per-scan — this CodeBuild project just needs Docker available (privilegedMode: true
+# in the CDK stack), no separate `docker run` step here (matches GHA's own comment).
+#
+# No batch build-matrix — ci/pipeline.config.json's zap entry has an empty
+# `matrix: {}`, matching security-zap's single-cell (no strategy.matrix) job.
+
+version: 0.2
+
+env:
+  variables:
+    PLATFORM: api
+    DRIVER: api
+    PLUGIN_ZAP: 'true'
+    PLUGIN_API: 'true'
+  secrets-manager:
+    API_BASE_URL: "ahm/ci:API_BASE_URL"
+    BASE_URL: "ahm/ci:BASE_URL"
+
+phases:
+  install:
+    commands:
+      - bash ci/steps/setup-environment.sh
+
+  build:
+    # GHA's "Run security-infra suite" step uses `if: success() || failure()` — it must
+    # still run even if the preceding @security step (or the start-stack.sh call before
+    # it) failed. Per AWS's own buildspec reference, `on-failure: CONTINUE` means
+    # "continue to the next phase" — it does NOT keep later commands in *this* phase's
+    # `commands:` list running after an earlier one fails (that's what `finally:` is
+    # for: "commands in a finally block are run even if a command in the commands block
+    # fails"). So @security-infra belongs in `finally:`, not a plain `commands:` entry.
+    commands:
+      # GHA step "Start proxy + API + ZAP plugin".
+      - bash ci/steps/start-stack.sh zap
+
+      # GHA step "Run security suite (API gate)".
+      - bash ci/steps/run-suite.sh "@security" zap security
+    finally:
+      # GHA step "Run security-infra suite (ZAP baseline + TLS; MobSF self-skips)" —
+      # runs even if start-stack.sh or the @security run above failed.
+      - bash ci/steps/run-suite.sh "@security-infra" zap security-infra
+
+  post_build:
+    # teardown.sh must run even if collect-artifacts.sh fails — see
+    # api.buildspec.yml for why this needs `finally:`.
+    commands:
+      - bash ci/steps/collect-artifacts.sh zap
+    finally:
+      - bash ci/steps/teardown.sh
+
+artifacts:
+  files:
+    - 'artifacts/zap/**/*'

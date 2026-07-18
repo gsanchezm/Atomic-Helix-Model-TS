@@ -1,0 +1,58 @@
+# AWS CodeBuild buildspec for the "a11y" profile (ci/pipeline.config.json).
+# Static translation of the `a11y-web` job in .github/workflows/ahm-execution-helix.yml.
+#
+# Runs under mcr.microsoft.com/playwright:v1.61.1-jammy (CDK stack's CodeBuild project
+# image) — axe rides the existing `web` start-stack.sh arm via PLUGIN_AXE=true
+# forwarded into the Playwright plugin process's own startup env; there is no dedicated
+# a11y port/case-arm (see ci/pipeline.config.json's a11y entry).
+#
+# No batch build-matrix — ci/pipeline.config.json's a11y entry has an empty
+# `matrix: {}`, matching a11y-web's single-cell (no strategy.matrix) job.
+
+version: 0.2
+
+env:
+  variables:
+    BROWSER: chromium
+    PLATFORM: web
+    VIEWPORT: desktop
+    DRIVER: playwright
+    HEADLESS: 'true'
+    PLAYWRIGHT_ADDRESS: 127.0.0.1:50052
+    API_ADAPTER_ADDRESS: 127.0.0.1:50055
+    PLUGIN_PLAYWRIGHT: 'true'
+    PLUGIN_PIXELMATCH: 'false'
+    PLUGIN_AXE: 'true'
+    PLUGIN_API: 'true'
+    PROXY_ADDRESS: 127.0.0.1:50051
+  secrets-manager:
+    API_BASE_URL: "ahm/ci:API_BASE_URL"
+    BASE_URL: "ahm/ci:BASE_URL"
+
+phases:
+  install:
+    commands:
+      - bash ci/steps/setup-environment.sh
+
+  build:
+    commands:
+      # GHA step "Start proxy + plugins". PLUGIN_AXE must reach the plugin process's
+      # own startup env here — setting it only on the test-runner step (as
+      # package.json's `test:a11y` script does locally) would not reach the
+      # already-running plugin process.
+      - bash ci/steps/start-stack.sh web
+
+      # GHA step "Run accessibility suite".
+      - bash ci/steps/run-suite.sh "@a11y" a11y
+
+  post_build:
+    # teardown.sh must run even if collect-artifacts.sh fails — see
+    # api.buildspec.yml for why this needs `finally:`.
+    commands:
+      - bash ci/steps/collect-artifacts.sh a11y
+    finally:
+      - bash ci/steps/teardown.sh
+
+artifacts:
+  files:
+    - 'artifacts/a11y/**/*'

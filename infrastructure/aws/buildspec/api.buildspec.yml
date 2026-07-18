@@ -1,0 +1,75 @@
+# AWS CodeBuild buildspec for the "api" profile (ci/pipeline.config.json).
+# Static translation of the `api-smoke` job in .github/workflows/ahm-execution-helix.yml.
+# Batch build-matrix (SUITE: [reads, writes]) is the CodeBuild equivalent of that job's
+# `strategy.matrix.suite`.
+
+version: 0.2
+
+env:
+  variables:
+    PLATFORM: api
+    DRIVER: api
+    PLUGIN_API: 'true'
+    MINIO_ENDPOINT: localhost
+    MINIO_PORT: '9000'
+    MINIO_ACCESS_KEY: minioadmin
+    MINIO_SECRET_KEY: minioadmin
+  secrets-manager:
+    API_BASE_URL: "ahm/ci:API_BASE_URL"
+
+batch:
+  fast-fail: false
+  build-matrix:
+    static:
+      ignore-failure: false
+    dynamic:
+      env:
+        variables:
+          SUITE: [reads, writes]
+
+phases:
+  install:
+    commands:
+      - bash ci/steps/setup-environment.sh
+
+  build:
+    commands:
+      # GHA step "Start MinIO Telemetry Storage" — one run: block, one commands: entry.
+      - |
+          if docker compose version >/dev/null 2>&1; then
+            docker compose -f infrastructure/minio-compose.yml up -d
+          else
+            docker-compose -f infrastructure/minio-compose.yml up -d
+          fi
+          sleep 5
+
+      # GHA step "Start proxy + API plugin".
+      - bash ci/steps/start-stack.sh api
+
+      # GHA step "Run Cucumber suite (API layer)". $SUITE comes from the batch
+      # build-matrix dynamic env variable declared above (same key as GHA's
+      # matrix.suite).
+      - |
+          if [ "$SUITE" = "reads" ]; then
+            TAG_EXPRESSION="@api and not @writes-shared-state"
+          else
+            TAG_EXPRESSION="@api and @writes-shared-state"
+          fi
+          bash ci/steps/run-suite.sh "$TAG_EXPRESSION" api "$SUITE"
+
+  post_build:
+    # GHA's "Collect artifacts" / "Teardown" steps both use `if: always()` —
+    # independently of each other, so Teardown must still run even if Collect
+    # artifacts itself fails. CodeBuild already runs post_build regardless of the
+    # build phase's outcome, but WITHIN this phase a failing first command would
+    # skip a later plain `commands:` entry — so teardown.sh goes in `finally:`,
+    # which (per AWS's buildspec reference) runs even if an earlier command in this
+    # same phase's `commands:` block fails.
+    commands:
+      - bash ci/steps/collect-artifacts.sh api
+    finally:
+      - bash ci/steps/teardown.sh
+
+artifacts:
+  files:
+    - 'artifacts/api/**/*'
