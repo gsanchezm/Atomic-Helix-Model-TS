@@ -21,3 +21,13 @@ Feature: Market-driven language localization across login + post-login UI
       | CH     | French   | Déconnexion |
       | JP     | Japanese | ログアウト    |
       | SA     | Arabic   | تسجيل الخروج |
+
+  # Contract-shaped security (login.security.json). The authenticated backend
+  # origin is the natural "front door" for the active API scan + schema fuzz —
+  # it is the one surface every domain's api.contract.json already targets. A
+  # single, non-outline scenario (not folded into the Outline above) so the
+  # (expensive) scan runs exactly once, not once per market/language example.
+  @security @api
+  Scenario: The authenticated API surface passes the automated security gate
+    Given the OmniPizza user is logged in as "standard_user"
+    Then the API surface passes the automated security gate

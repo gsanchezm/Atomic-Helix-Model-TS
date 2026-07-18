@@ -1739,7 +1739,8 @@ jobs:
   # Job: Security — ZAP (active API scan gate + baseline/TLS half of infra scan)
   #
   # No `@mobsf` tag exists in this codebase (grepped every .feature file).
-  # `@security` (login/features/api-security.feature) is the hard-gating ZAP
+  # `@security` (login/features/market-language-localization.feature's standalone
+  # security Scenario, not its localization Outline) is the hard-gating ZAP
   # active-scan + schema-fuzz suite. `@security-infra`
   # (support/features/security-infra.feature) is ONE scenario that does ZAP
   # baseline crawl + TLS check + MobSF static analysis in sequence — it is
