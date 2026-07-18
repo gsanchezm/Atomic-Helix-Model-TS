@@ -127,6 +127,16 @@ const TEST_PROFILES: readonly TestProfileSpec[] = [
     buildspecFile: 'infrastructure/aws/buildspec/api.buildspec.yml',
     runOrder: 1,
     batch: true,
+    // DISCREPANCY, left as-is rather than silently "fixed": this profile's own
+    // buildspec runs `docker compose -f infrastructure/minio-compose.yml up -d` in its
+    // build phase (for MinIO telemetry storage), which needs the Docker daemon and so
+    // arguably needs privileged:true — but this task's own brief enumerates the
+    // privileged set as "android, ios, mobilewright, zap, mobsf, webdriverio" by name
+    // and does not include `api`. That enumeration's own stated criterion ("shells out
+    // to `docker run`") is narrower than its evident intent ("needs Docker"), since
+    // `api` shells out to `docker compose`, not `docker run`, yet still needs a Docker
+    // daemon. Kept false here to match the brief's explicit, literal list rather than
+    // silently overriding it — flagged for reconciliation by whoever owns this stack.
     privileged: false,
     usesReleaseUrl: false,
     needsMacFleet: false,
