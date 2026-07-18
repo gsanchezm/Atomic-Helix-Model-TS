@@ -225,6 +225,7 @@ pipeline {
                                                 sh 'bash ci/steps/start-stack.sh api'
                                             }
                                             withEnv([
+                                                'PLATFORM=api', 'DRIVER=api',
                                                 'MINIO_ENDPOINT=localhost', 'MINIO_PORT=9000',
                                                 'MINIO_ACCESS_KEY=minioadmin', 'MINIO_SECRET_KEY=minioadmin'
                                             ]) {
@@ -288,7 +289,7 @@ pipeline {
                                             ]) {
                                                 sh 'bash ci/steps/start-stack.sh web'
                                             }
-                                            withEnv(['PLUGIN_PIXELMATCH=false']) {
+                                            withEnv(['PLATFORM=web', 'VIEWPORT=desktop', 'DRIVER=playwright', 'PLUGIN_PIXELMATCH=false']) {
                                                 sh '''
                                                     if [ "$SUITE" = "reads" ]; then
                                                         TAG_EXPRESSION="@desktop and not @writes-shared-state"
@@ -349,7 +350,7 @@ pipeline {
                                             ]) {
                                                 sh 'bash ci/steps/start-stack.sh web'
                                             }
-                                            withEnv(['PLUGIN_PIXELMATCH=false']) {
+                                            withEnv(['PLATFORM=web', 'VIEWPORT=responsive', 'DRIVER=playwright', 'PLUGIN_PIXELMATCH=false']) {
                                                 sh '''
                                                     if [ "$SUITE" = "reads" ]; then
                                                         TAG_EXPRESSION="@responsive and not @writes-shared-state"
@@ -594,7 +595,21 @@ pipeline {
                                             ]) {
                                                 sh 'bash ci/steps/start-stack.sh ios'
                                             }
+                                            // Re-declares PLATFORM/DRIVER/APPIUM_HOST/APPIUM_PORT/CAP_PROFILE
+                                            // here too, symmetric with the Appium Android stage's own
+                                            // run-suite.sh withEnv above -- those are read again at
+                                            // Cucumber scenario-runtime (device/driver selection), not
+                                            // just at plugin-process startup. PLUGIN_APPIUM/PLUGIN_API
+                                            // are deliberately NOT repeated here: Android's own
+                                            // run-suite.sh withEnv above doesn't carry them either (they
+                                            // only appear on ITS start-stack.sh call), and the reference
+                                            // workflow's e2e-ios "Run E2E tests" step env block doesn't
+                                            // declare them -- they're plugin-registration flags read only
+                                            // at process startup, so repeating them here would NOT match
+                                            // the real symmetry this fix is restoring.
                                             withEnv([
+                                                'PLATFORM=ios', 'DRIVER=appium', 'APPIUM_HOST=localhost', 'APPIUM_PORT=4723',
+                                                'CAP_PROFILE=ci_ios_headless',
                                                 "IOS_APP_PATH=${iosAppPath}", "IOS_UDID=${iosUdid}", "IOS_DEVICE_NAME=${iosDeviceName}",
                                                 'MINIO_ENDPOINT=localhost', 'MINIO_PORT=9000',
                                                 'MINIO_ACCESS_KEY=minioadmin', 'MINIO_SECRET_KEY=minioadmin'
@@ -871,8 +886,21 @@ pipeline {
                             // exit code with returnStatus, always run the
                             // second call, then fail the stage afterwards if
                             // the first one failed.
-                            int securityStatus = sh(script: 'bash ci/steps/run-suite.sh "@security" zap security', returnStatus: true)
-                            sh 'bash ci/steps/run-suite.sh "@security-infra" zap security-infra'
+                            //
+                            // Both run-suite.sh calls need PLATFORM/DRIVER/
+                            // PLUGIN_ZAP re-declared here (not just on the
+                            // earlier start-stack.sh call above) -- read
+                            // again at Cucumber scenario-runtime, matching
+                            // the reference workflow's "Run security suite
+                            // (API gate)" and "Run security-infra suite" step
+                            // env blocks. BASE_URL/API_BASE_URL don't need
+                            // re-declaring here; they're already in scope via
+                            // this stage's environment{} block above.
+                            int securityStatus
+                            withEnv(['PLATFORM=api', 'DRIVER=api', 'PLUGIN_ZAP=true']) {
+                                securityStatus = sh(script: 'bash ci/steps/run-suite.sh "@security" zap security', returnStatus: true)
+                                sh 'bash ci/steps/run-suite.sh "@security-infra" zap security-infra'
+                            }
                             if (securityStatus != 0) {
                                 error("Security ZAP: '@security' suite failed (exit ${securityStatus})")
                             }
@@ -944,7 +972,13 @@ pipeline {
                             withEnv(['PLATFORM=api', 'DRIVER=api', 'PLUGIN_MOBSF=true', 'PLUGIN_API=true', 'MOBSF_URL=http://127.0.0.1:8000']) {
                                 sh 'bash ci/steps/start-stack.sh mobsf'
                             }
-                            sh 'bash ci/steps/run-suite.sh "@security-infra" mobsf security-infra'
+                            // Re-declared for the run-suite.sh call too --
+                            // read again at Cucumber scenario-runtime, per
+                            // the reference workflow's "Run security-infra
+                            // suite (MobSF static scan)" step env block.
+                            withEnv(['PLATFORM=api', 'DRIVER=api', 'PLUGIN_MOBSF=true', 'MOBSF_URL=http://127.0.0.1:8000']) {
+                                sh 'bash ci/steps/run-suite.sh "@security-infra" mobsf security-infra'
+                            }
                         }
                     }
                     post {
@@ -984,7 +1018,18 @@ pipeline {
                         ]) {
                             sh 'bash ci/steps/start-stack.sh web'
                         }
-                        sh 'bash ci/steps/run-suite.sh "@a11y" a11y'
+                        // Re-declared for run-suite.sh too -- axe's After
+                        // hook reads BROWSER/PLATFORM/VIEWPORT/DRIVER/
+                        // PLUGIN_AXE again at Cucumber scenario-runtime, not
+                        // just at the plugin process's own startup above.
+                        // Matches the reference workflow's "Run accessibility
+                        // suite" step env block exactly.
+                        withEnv([
+                            'BROWSER=chromium', 'PLATFORM=web', 'VIEWPORT=desktop', 'DRIVER=playwright',
+                            'PLUGIN_AXE=true'
+                        ]) {
+                            sh 'bash ci/steps/run-suite.sh "@a11y" a11y'
+                        }
                     }
                     post {
                         always {
@@ -1028,14 +1073,23 @@ pipeline {
                                             ]) {
                                                 sh 'bash ci/steps/start-stack.sh webdriverio'
                                             }
-                                            sh '''
-                                                if [ "$SUITE" = "reads" ]; then
-                                                    TAG_EXPRESSION="@desktop and not @writes-shared-state"
-                                                else
-                                                    TAG_EXPRESSION="@desktop and @writes-shared-state"
-                                                fi
-                                                bash ci/steps/run-suite.sh "$TAG_EXPRESSION" webdriverio "$SUITE"
-                                            '''
+                                            // Re-declared for run-suite.sh too -- matches the
+                                            // reference workflow's e2e-webdriverio job's "Run E2E
+                                            // tests" step env block (read again at Cucumber
+                                            // scenario-runtime, not just at start-stack.sh's
+                                            // plugin-process startup above).
+                                            withEnv([
+                                                'BROWSER=chromium', 'PLATFORM=web', 'VIEWPORT=desktop', 'DRIVER=webdriverio'
+                                            ]) {
+                                                sh '''
+                                                    if [ "$SUITE" = "reads" ]; then
+                                                        TAG_EXPRESSION="@desktop and not @writes-shared-state"
+                                                    else
+                                                        TAG_EXPRESSION="@desktop and @writes-shared-state"
+                                                    fi
+                                                    bash ci/steps/run-suite.sh "$TAG_EXPRESSION" webdriverio "$SUITE"
+                                                '''
+                                            }
                                         }
                                     }
                                 }
@@ -1180,16 +1234,29 @@ pipeline {
                                 'PLUGIN_PLAYWRIGHT=true', 'PLUGIN_PIXELMATCH=true', 'PLUGIN_API=true'
                             ]) {
                                 sh 'bash ci/steps/start-stack.sh web'
+                                // Own pnpm script, not run-suite.sh -- wraps
+                                // cucumber with the @desktop and @visual tag AND
+                                // regenerates baselines. Pre-existing quirk in
+                                // the reference pipeline, mirrored as-is, not
+                                // fixed. Kept inside this same withEnv (widened
+                                // rather than a second, narrower block) so
+                                // PLATFORM/VIEWPORT/DRIVER stay in scope here too
+                                // -- those are read again at Cucumber
+                                // scenario-runtime, matching the reference
+                                // workflow's visual-web job's "Run visual
+                                // capture (standard)" step env block.
+                                // PLUGIN_PLAYWRIGHT/PLUGIN_API tag along as a
+                                // harmless side effect of widening rather than
+                                // opening a second block -- the reference's
+                                // capture step doesn't re-declare those two
+                                // either (they're plugin-registration flags
+                                // read only at process startup), but nothing
+                                // reads them differently here.
+                                sh 'pnpm test:json:visual:desktop'
+                                // Fails the stage if any snapshot drifted
+                                // (cucumber itself stays green on drift).
+                                sh 'node scripts/visual-gate.js'
                             }
-                            // Own pnpm script, not run-suite.sh -- wraps
-                            // cucumber with the @desktop and @visual tag AND
-                            // regenerates baselines. Pre-existing quirk in
-                            // the reference pipeline, mirrored as-is, not
-                            // fixed.
-                            sh 'pnpm test:json:visual:desktop'
-                            // Fails the stage if any snapshot drifted
-                            // (cucumber itself stays green on drift).
-                            sh 'node scripts/visual-gate.js'
                         }
                     }
                     post {
@@ -1233,9 +1300,19 @@ pipeline {
                                 'PLUGIN_PLAYWRIGHT=true', 'PLUGIN_PIXELMATCH=true', 'PLUGIN_API=true'
                             ]) {
                                 sh 'bash ci/steps/start-stack.sh web'
+                                // Kept inside this same withEnv (widened rather
+                                // than a second, narrower block) so
+                                // VIEWPORT=responsive (and PLATFORM/DRIVER) stay
+                                // in scope for the pnpm run too -- previously
+                                // this call ran with only the 'web'/'desktop'
+                                // client-side defaults in effect, silently
+                                // capturing desktop-shaped output under the
+                                // responsive stage. Matches the reference
+                                // workflow's visual-web-responsive job's "Run
+                                // visual capture (standard)" step env block.
+                                sh 'pnpm test:json:visual:responsive'
+                                sh 'node scripts/visual-gate.js'
                             }
-                            sh 'pnpm test:json:visual:responsive'
-                            sh 'node scripts/visual-gate.js'
                         }
                     }
                     post {
