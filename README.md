@@ -325,6 +325,8 @@ The `mobile` profile chains: `android-emulator (docker-android)` → `appium-ser
 | `update-visual-baselines.yml` | Regenerates Pixelmatch baselines per viewport, opens a refresh PR.     |
 | `deploy-pages.yml`          | Static site deploy when `web/**` changes (GitHub Pages).                 |
 
+A Jenkins declarative-pipeline equivalent of `ahm-execution-helix.yml` (same 14-profile job inventory, container image pins, and matrix dimensions, translated to Jenkins' `matrix`/`lock()` DSL) is available at the repo root as `Jenkinsfile`.
+
 `experiment_batch_id` and `run_index` are additional dispatch inputs, honored only when `architecture_type=TOM` (they group repeated runs into an experiment batch and number each run within it); both are ignored when `architecture_type=standard`. `ahm-execution-helix.yml` used to coexist with a separate `tom-quantitative-execution.yml` workflow that duplicated most of its job/step shape — the two were consolidated behind the `architecture_type` input above, and `tom-quantitative-execution.yml` was deleted.
 
 `azure-pipelines.yml` at the repo root is an authored-but-unprovisioned Azure Pipelines equivalent of `ahm-execution-helix.yml`'s `standard` (non-TOM) job inventory — no Azure DevOps organization/project exists yet to run it against.
