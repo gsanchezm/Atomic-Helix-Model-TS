@@ -1,0 +1,1934 @@
+# =============================================================================
+# AHM — Azure Pipelines equivalent of .github/workflows/ahm-execution-helix.yml
+#
+# This is a hand-authored, tool-agnostic-layer translation of the real,
+# executed GitHub Actions workflow (`ahm-execution-helix.yml`) into Azure
+# Pipelines YAML. It targets the same job inventory as `ci/pipeline.config.json`
+# and calls the same shared `ci/steps/*.sh` scripts GHA already uses
+# (setup-environment.sh -> start-stack.sh <profile> -> run-suite.sh <tags>
+# <profile> [<suffix>] -> collect-artifacts.sh <profile> -> teardown.sh),
+# NOT a re-implementation of GHA's own inline Node/pnpm marketplace actions.
+#
+# No real Azure DevOps organization/project exists for this repo yet — this
+# file has been validated by parsing it with a generic YAML parser and by
+# manual cross-reference against ci/pipeline.config.json and the reference
+# workflow; it has NOT been validated with `az pipelines validate` or a real
+# run. See .superpowers/sdd/task-4-report.md for the full validation writeup.
+#
+# --------------------------------------------------------------------------
+# Deliberate scope decisions (documented, not silent):
+#
+# 1. TOM / architecture_type / experimentBatchId / runIndex / the
+#    `consolidate` job are OUT of scope for this adapter — TOM is explicitly
+#    a GHA-only reporting concern (see ground truth §7). Every job below
+#    only implements the `standard` architecture_type path.
+# 2. Trimmed relative to the reference workflow, since they are peripheral to
+#    the actual job/profile/script/secret contract this task is graded
+#    against (ground truth §11): MinIO telemetry-storage bring-up
+#    (docker-compose minio, a GHA-inlined step, not one of the 5 shared
+#    scripts), the `actions/cache@v5` pnpm-store cache step (
+#    setup-environment.sh's own header comment explicitly says caching is
+#    each adapter's own concern to add or skip), the RUN_STARTED_AT/
+#    RUN_ENDED_AT timestamp bookkeeping steps, and the extra
+#    `/tmp/ahm-ci-logs/` "service logs" artifact upload used by the
+#    Playwright-family jobs in GHA. None of these are part of the 5-script
+#    Template Method contract or the §10 artifacts contract this file is
+#    checked against. Device/emulator/simulator bring-up (KVM, docker
+#    android emulator, Appium server, iOS simulator boot, OmniPizza asset
+#    download) is NOT trimmed — those are load-bearing, kept in full.
+# 3. `e2e-mobilewright` (GHA: one job, `matrix: platform:[android,ios]`,
+#    `runs-on: ${{ matrix.platform == 'ios' && 'macos-latest' || 'ubuntu-latest' }}`)
+#    has NO clean Azure equivalent: Azure's `strategy: matrix:` cannot vary a
+#    job's `pool:`/`container:` per leg — all legs of one job share one pool
+#    block, and pool selection is resolved before an agent (and therefore
+#    any matrix-leg variable) exists. Splitting into 4 separate jobs
+#    (`e2e_mobilewright_android_reads/_writes`, `e2e_mobilewright_ios_reads/
+#    _writes`), each pinned to its own real pool, is the only way to make
+#    this both valid Azure YAML and actually runnable. The writes-chain
+#    still serializes both platform legs against each other (android leg
+#    then ios leg), preserving the "one global writes queue" property the
+#    ground truth's §4 chain design requires — it's just 2 chain links
+#    instead of 1. Flagged as a concern in the task report.
+# 4. Self-hosted pool name (`self-hosted-android-kvm`) below is a
+#    placeholder — no such pool is provisioned. See the Docker/KVM/macOS
+#    caveat block near the android jobs.
+# =============================================================================
+
+# Auto-triggers are currently commented out in the reference workflow too
+# (manual dispatch only, while the job surface continues to evolve) — mirror
+# that here rather than silently enabling CI on every push/PR.
+trigger: none
+pr: none
+
+parameters:
+  - name: platform
+    type: string
+    default: all
+    values: [all, api, web, playwright, playwright-desktop, playwright-responsive, pixelmatch, pixelmatch-desktop, pixelmatch-responsive, mobile, android, ios, appium, appium-android, appium-ios, perf, gatling, mobilewright, security, a11y, cypress, webdriverio]
+  - name: perfProfile
+    type: string
+    default: smoke
+    values: [smoke, load, stress]
+  - name: perfUsers
+    type: string
+    default: '20'
+  - name: perfDuration
+    type: string
+    default: '120'
+  - name: androidApiLevel
+    type: string
+    default: '33'
+    values: ['28', '29', '30', '31', '32', '33']
+
+variables:
+  - group: ahm-secrets   # Azure DevOps Library group (Key Vault-backed or plain):
+                          # API_BASE_URL, BASE_URL, GH_TOKEN. NOT MOBSF_API_KEY
+                          # (ephemeral, scraped at runtime — see start-stack.sh's
+                          # mobsf arm) and NOT IOS_APP_PATH (non-secret, below).
+  - name: IOS_APP_PATH
+    value: ''
+  - name: NODE_VERSION
+    value: '22.x'
+  - name: PLAYWRIGHT_IMAGE
+    value: 'mcr.microsoft.com/playwright:v1.61.1-jammy'
+
+# Single stage containing every job (ground truth §6) — Azure's top-level
+# `stages:` run sequentially by default, so one stage per job/profile (as the
+# plan brief's illustrative Step 2 snippet shows) would silently serialize the
+# whole pipeline and break the resolver's same-stage output-variable
+# consumption. Per-job `condition:` is each job's own gate (mirroring the
+# GitLab adapter's per-job `rules:` — no separate `gate-*` no-op jobs here
+# either). `dependsOn` expresses the real ordering within this one stage.
+stages:
+  - stage: Helix
+    displayName: 'AHM — Execution Helix'
+    jobs:
+
+      # -----------------------------------------------------------------
+      # Resolver: latest OmniPizza release (ground truth §5)
+      # Gated on platform being one of the mobile-ish values OR `security`
+      # (security-mobsf needs the release too) — copied exactly from the
+      # reference workflow's resolver job.
+      # -----------------------------------------------------------------
+      - job: resolve_omnipizza_release
+        displayName: 'Resolve — OmniPizza latest release'
+        pool: { vmImage: 'ubuntu-latest' }
+        condition: "or(eq('${{ parameters.platform }}', 'all'), eq('${{ parameters.platform }}', 'mobile'), eq('${{ parameters.platform }}', 'android'), eq('${{ parameters.platform }}', 'ios'), eq('${{ parameters.platform }}', 'appium'), eq('${{ parameters.platform }}', 'appium-android'), eq('${{ parameters.platform }}', 'appium-ios'), eq('${{ parameters.platform }}', 'mobilewright'), eq('${{ parameters.platform }}', 'security'))"
+        steps:
+          - checkout: self
+          - task: Bash@3
+            name: fetch
+            displayName: 'Fetch latest OmniPizza release tag'
+            inputs:
+              targetType: inline
+              script: |
+                set -euo pipefail
+                TAG=$(curl -fsSL -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GH_TOKEN" \
+                  -H "X-GitHub-Api-Version: 2022-11-28" \
+                  "https://api.github.com/repos/gsanchezm/OmniPizza/releases/latest" | jq -r .tag_name)
+                if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
+                  echo "Failed to resolve latest OmniPizza release tag."
+                  exit 1
+                fi
+                BASE_URL="https://github.com/gsanchezm/OmniPizza/releases/download/${TAG}"
+                echo "Resolved OmniPizza release: $TAG"
+                echo "##vso[task.setvariable variable=tag;isOutput=true]$TAG"
+                echo "##vso[task.setvariable variable=base_url;isOutput=true]$BASE_URL"
+            env:
+              GH_TOKEN: $(GH_TOKEN)
+
+      # -----------------------------------------------------------------
+      # Job: API (profile `api`) — split reads/writes (ground truth §4).
+      # `_reads` runs independently; `_writes` is the first link in the
+      # global standard-user-writes chain (no predecessor).
+      # -----------------------------------------------------------------
+      - job: api_reads
+        displayName: 'E2E — API reads'
+        condition: "or(eq('${{ parameters.platform }}', 'all'), eq('${{ parameters.platform }}', 'api'))"
+        pool: { vmImage: 'ubuntu-latest' }
+        steps:
+          - checkout: self
+          - task: NodeTool@0
+            displayName: 'Set up Node'
+            inputs: { versionSpec: '22.x' }
+          - script: corepack enable && corepack prepare pnpm@latest --activate
+            displayName: 'Enable pnpm (corepack)'
+          - script: bash ci/steps/setup-environment.sh
+            displayName: 'Install dependencies (setup-environment.sh)'
+          - script: bash ci/steps/start-stack.sh api
+            displayName: 'Start proxy + API plugin'
+            env:
+              API_BASE_URL: $(API_BASE_URL)
+              PLATFORM: api
+              DRIVER: api
+              PLUGIN_API: 'true'
+          - script: bash ci/steps/run-suite.sh "@api and not @writes-shared-state" api reads
+            displayName: 'Run Cucumber suite (API layer)'
+            env:
+              API_BASE_URL: $(API_BASE_URL)
+              PLATFORM: api
+              DRIVER: api
+          - script: bash ci/steps/collect-artifacts.sh api
+            displayName: 'Collect artifacts'
+            condition: always()
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload artifacts'
+            condition: always()
+            continueOnError: true
+            inputs:
+              targetPath: artifacts/api
+              artifact: ahm-artifacts-api-reads
+          - script: bash ci/steps/teardown.sh
+            displayName: 'Teardown'
+            condition: always()
+
+      - job: api_writes
+        displayName: 'E2E — API writes'
+        condition: "or(eq('${{ parameters.platform }}', 'all'), eq('${{ parameters.platform }}', 'api'))"
+        pool: { vmImage: 'ubuntu-latest' }
+        steps:
+          - checkout: self
+          - task: NodeTool@0
+            displayName: 'Set up Node'
+            inputs: { versionSpec: '22.x' }
+          - script: corepack enable && corepack prepare pnpm@latest --activate
+            displayName: 'Enable pnpm (corepack)'
+          - script: bash ci/steps/setup-environment.sh
+            displayName: 'Install dependencies (setup-environment.sh)'
+          - script: bash ci/steps/start-stack.sh api
+            displayName: 'Start proxy + API plugin'
+            env:
+              API_BASE_URL: $(API_BASE_URL)
+              PLATFORM: api
+              DRIVER: api
+              PLUGIN_API: 'true'
+          - script: bash ci/steps/run-suite.sh "@api and @writes-shared-state" api writes
+            displayName: 'Run Cucumber suite (API layer)'
+            env:
+              API_BASE_URL: $(API_BASE_URL)
+              PLATFORM: api
+              DRIVER: api
+          - script: bash ci/steps/collect-artifacts.sh api
+            displayName: 'Collect artifacts'
+            condition: always()
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload artifacts'
+            condition: always()
+            continueOnError: true
+            inputs:
+              targetPath: artifacts/api
+              artifact: ahm-artifacts-api-writes
+          - script: bash ci/steps/teardown.sh
+            displayName: 'Teardown'
+            condition: always()
+
+      # -----------------------------------------------------------------
+      # Job: Playwright Desktop (profile `playwright-desktop`) — split
+      # reads/writes; each keeps its own browser matrix. `_writes` uses
+      # maxParallel: 1 (its 3 browser legs share the standard_user fixture
+      # and must serialize against each other too) and is the second link
+      # in the writes chain.
+      # -----------------------------------------------------------------
+      - job: e2e_web_reads
+        displayName: 'E2E — Playwright Desktop reads ($(BROWSER))'
+        condition: "or(eq('${{ parameters.platform }}', 'all'), eq('${{ parameters.platform }}', 'web'), eq('${{ parameters.platform }}', 'playwright'), eq('${{ parameters.platform }}', 'playwright-desktop'), eq('${{ parameters.platform }}', 'pixelmatch'), eq('${{ parameters.platform }}', 'pixelmatch-desktop'))"
+        pool: { vmImage: 'ubuntu-latest' }
+        container:
+          image: mcr.microsoft.com/playwright:v1.61.1-jammy
+          options: --user 0
+        strategy:
+          matrix:
+            chromium: { BROWSER: chromium }
+            firefox: { BROWSER: firefox }
+            webkit: { BROWSER: webkit }
+        steps:
+          - checkout: self
+          - task: NodeTool@0
+            displayName: 'Set up Node'
+            inputs: { versionSpec: '22.x' }
+          - script: corepack enable && corepack prepare pnpm@latest --activate
+            displayName: 'Enable pnpm (corepack)'
+          - script: bash ci/steps/setup-environment.sh
+            displayName: 'Install dependencies (setup-environment.sh)'
+          - script: bash ci/steps/start-stack.sh web
+            displayName: 'Start proxy + plugins'
+            env:
+              BASE_URL: $(BASE_URL)
+              API_BASE_URL: $(API_BASE_URL)
+              BROWSER: $(BROWSER)
+              PLATFORM: web
+              VIEWPORT: desktop
+              DRIVER: playwright
+              HEADLESS: 'true'
+              PLAYWRIGHT_ADDRESS: 127.0.0.1:50052
+              API_ADAPTER_ADDRESS: 127.0.0.1:50055
+              PLUGIN_PLAYWRIGHT: 'true'
+              PLUGIN_PIXELMATCH: 'false'
+              PLUGIN_API: 'true'
+          - script: bash ci/steps/run-suite.sh "@desktop and not @writes-shared-state" playwright-desktop $(BROWSER)
+            displayName: 'Run E2E tests'
+            env:
+              BASE_URL: $(BASE_URL)
+              API_BASE_URL: $(API_BASE_URL)
+              BROWSER: $(BROWSER)
+              CUCUMBER_PARALLEL: '4'
+              PLATFORM: web
+              VIEWPORT: desktop
+              DRIVER: playwright
+              PROXY_ADDRESS: 127.0.0.1:50051
+              HEADLESS: 'true'
+              PLUGIN_PIXELMATCH: 'false'
+          - script: bash ci/steps/collect-artifacts.sh playwright-desktop
+            displayName: 'Collect artifacts'
+            condition: always()
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload artifacts'
+            condition: always()
+            continueOnError: true
+            inputs:
+              targetPath: artifacts/playwright-desktop
+              artifact: ahm-artifacts-e2e-web-reads-$(BROWSER)
+          - script: bash ci/steps/teardown.sh
+            displayName: 'Teardown'
+            condition: always()
+
+      - job: e2e_web_writes
+        displayName: 'E2E — Playwright Desktop writes ($(BROWSER))'
+        condition: "and(or(eq('${{ parameters.platform }}', 'all'), eq('${{ parameters.platform }}', 'web'), eq('${{ parameters.platform }}', 'playwright'), eq('${{ parameters.platform }}', 'playwright-desktop'), eq('${{ parameters.platform }}', 'pixelmatch'), eq('${{ parameters.platform }}', 'pixelmatch-desktop')), in(dependencies.api_writes.result, 'Succeeded', 'SucceededWithIssues', 'Skipped'))"
+        dependsOn: api_writes
+        pool: { vmImage: 'ubuntu-latest' }
+        container:
+          image: mcr.microsoft.com/playwright:v1.61.1-jammy
+          options: --user 0
+        strategy:
+          matrix:
+            chromium: { BROWSER: chromium }
+            firefox: { BROWSER: firefox }
+            webkit: { BROWSER: webkit }
+          maxParallel: 1
+        steps:
+          - checkout: self
+          - task: NodeTool@0
+            displayName: 'Set up Node'
+            inputs: { versionSpec: '22.x' }
+          - script: corepack enable && corepack prepare pnpm@latest --activate
+            displayName: 'Enable pnpm (corepack)'
+          - script: bash ci/steps/setup-environment.sh
+            displayName: 'Install dependencies (setup-environment.sh)'
+          - script: bash ci/steps/start-stack.sh web
+            displayName: 'Start proxy + plugins'
+            env:
+              BASE_URL: $(BASE_URL)
+              API_BASE_URL: $(API_BASE_URL)
+              BROWSER: $(BROWSER)
+              PLATFORM: web
+              VIEWPORT: desktop
+              DRIVER: playwright
+              HEADLESS: 'true'
+              PLAYWRIGHT_ADDRESS: 127.0.0.1:50052
+              API_ADAPTER_ADDRESS: 127.0.0.1:50055
+              PLUGIN_PLAYWRIGHT: 'true'
+              PLUGIN_PIXELMATCH: 'false'
+              PLUGIN_API: 'true'
+          - script: bash ci/steps/run-suite.sh "@desktop and @writes-shared-state" playwright-desktop $(BROWSER)
+            displayName: 'Run E2E tests'
+            env:
+              BASE_URL: $(BASE_URL)
+              API_BASE_URL: $(API_BASE_URL)
+              BROWSER: $(BROWSER)
+              CUCUMBER_PARALLEL: '4'
+              PLATFORM: web
+              VIEWPORT: desktop
+              DRIVER: playwright
+              PROXY_ADDRESS: 127.0.0.1:50051
+              HEADLESS: 'true'
+              PLUGIN_PIXELMATCH: 'false'
+          - script: bash ci/steps/collect-artifacts.sh playwright-desktop
+            displayName: 'Collect artifacts'
+            condition: always()
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload artifacts'
+            condition: always()
+            continueOnError: true
+            inputs:
+              targetPath: artifacts/playwright-desktop
+              artifact: ahm-artifacts-e2e-web-writes-$(BROWSER)
+          - script: bash ci/steps/teardown.sh
+            displayName: 'Teardown'
+            condition: always()
+
+      # -----------------------------------------------------------------
+      # Job: Visual — Playwright Desktop / Pixelmatch (profile
+      # `playwright-visual-desktop`). No matrix. Waits for BOTH e2e_web
+      # legs (mirrors GHA's `needs: e2e-web`, which waits for the whole
+      # matrixed job) and runs unless both are Skipped (ground truth §4).
+      # Third link in the writes chain (it sits directly in the chain via
+      # its dependsOn on e2e_web_writes, no separate chain-only edge
+      # needed). Deviates from the vanilla 5-script sequence: runs
+      # `pnpm test:json:visual:desktop` directly instead of run-suite.sh,
+      # plus a `visual-gate.js` gate step (ground truth §3).
+      # -----------------------------------------------------------------
+      - job: visual_web
+        displayName: 'Visual — Playwright Desktop (Pixelmatch)'
+        dependsOn: [e2e_web_reads, e2e_web_writes]
+        condition: "not(and(eq(dependencies.e2e_web_reads.result, 'Skipped'), eq(dependencies.e2e_web_writes.result, 'Skipped')))"
+        pool: { vmImage: 'ubuntu-latest' }
+        container:
+          image: mcr.microsoft.com/playwright:v1.61.1-jammy
+          options: --user 0
+        steps:
+          - checkout: self
+          - task: NodeTool@0
+            displayName: 'Set up Node'
+            inputs: { versionSpec: '22.x' }
+          - script: corepack enable && corepack prepare pnpm@latest --activate
+            displayName: 'Enable pnpm (corepack)'
+          - script: bash ci/steps/setup-environment.sh
+            displayName: 'Install dependencies (setup-environment.sh)'
+          - script: bash ci/steps/start-stack.sh web
+            displayName: 'Start proxy + plugins'
+            env:
+              BASE_URL: $(BASE_URL)
+              API_BASE_URL: $(API_BASE_URL)
+              PLATFORM: web
+              VIEWPORT: desktop
+              DRIVER: playwright
+              HEADLESS: 'true'
+              PLAYWRIGHT_ADDRESS: 127.0.0.1:50052
+              PIXELMATCH_ADDRESS: 127.0.0.1:50056
+              API_ADAPTER_ADDRESS: 127.0.0.1:50055
+              PLUGIN_PLAYWRIGHT: 'true'
+              PLUGIN_PIXELMATCH: 'true'
+              PLUGIN_API: 'true'
+          - script: pnpm test:json:visual:desktop
+            displayName: 'Run visual capture'
+            env:
+              BASE_URL: $(BASE_URL)
+              API_BASE_URL: $(API_BASE_URL)
+              PLATFORM: web
+              VIEWPORT: desktop
+              DRIVER: playwright
+              PROXY_ADDRESS: 127.0.0.1:50051
+              HEADLESS: 'true'
+              PLUGIN_PIXELMATCH: 'true'
+          - script: node scripts/visual-gate.js
+            displayName: 'Visual gate — fail the job if any snapshot drifted'
+            condition: succeededOrFailed()
+          - script: bash ci/steps/collect-artifacts.sh playwright-visual-desktop
+            displayName: 'Collect artifacts'
+            condition: always()
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload artifacts'
+            condition: always()
+            continueOnError: true
+            inputs:
+              targetPath: artifacts/playwright-visual-desktop
+              artifact: ahm-artifacts-visual-web
+          - script: bash ci/steps/teardown.sh
+            displayName: 'Teardown'
+            condition: always()
+
+      # -----------------------------------------------------------------
+      # Job: Playwright Responsive (profile `playwright-responsive`) —
+      # mirrors the Desktop job pair above. `_writes` is the fourth link
+      # in the chain (depends on visual_web).
+      # -----------------------------------------------------------------
+      - job: e2e_web_responsive_reads
+        displayName: 'E2E — Playwright Responsive reads ($(BROWSER))'
+        condition: "or(eq('${{ parameters.platform }}', 'all'), eq('${{ parameters.platform }}', 'web'), eq('${{ parameters.platform }}', 'playwright'), eq('${{ parameters.platform }}', 'playwright-responsive'), eq('${{ parameters.platform }}', 'pixelmatch'), eq('${{ parameters.platform }}', 'pixelmatch-responsive'))"
+        pool: { vmImage: 'ubuntu-latest' }
+        container:
+          image: mcr.microsoft.com/playwright:v1.61.1-jammy
+          options: --user 0
+        strategy:
+          matrix:
+            chromium: { BROWSER: chromium }
+            firefox: { BROWSER: firefox }
+            webkit: { BROWSER: webkit }
+        steps:
+          - checkout: self
+          - task: NodeTool@0
+            displayName: 'Set up Node'
+            inputs: { versionSpec: '22.x' }
+          - script: corepack enable && corepack prepare pnpm@latest --activate
+            displayName: 'Enable pnpm (corepack)'
+          - script: bash ci/steps/setup-environment.sh
+            displayName: 'Install dependencies (setup-environment.sh)'
+          - script: bash ci/steps/start-stack.sh web
+            displayName: 'Start proxy + plugins'
+            env:
+              BASE_URL: $(BASE_URL)
+              API_BASE_URL: $(API_BASE_URL)
+              BROWSER: $(BROWSER)
+              PLATFORM: web
+              VIEWPORT: responsive
+              DRIVER: playwright
+              HEADLESS: 'true'
+              PLAYWRIGHT_ADDRESS: 127.0.0.1:50052
+              API_ADAPTER_ADDRESS: 127.0.0.1:50055
+              PLUGIN_PLAYWRIGHT: 'true'
+              PLUGIN_PIXELMATCH: 'false'
+              PLUGIN_API: 'true'
+          - script: bash ci/steps/run-suite.sh "@responsive and not @writes-shared-state" playwright-responsive $(BROWSER)
+            displayName: 'Run E2E tests'
+            env:
+              BASE_URL: $(BASE_URL)
+              API_BASE_URL: $(API_BASE_URL)
+              BROWSER: $(BROWSER)
+              CUCUMBER_PARALLEL: '4'
+              PLATFORM: web
+              VIEWPORT: responsive
+              DRIVER: playwright
+              PROXY_ADDRESS: 127.0.0.1:50051
+              HEADLESS: 'true'
+              PLUGIN_PIXELMATCH: 'false'
+          - script: bash ci/steps/collect-artifacts.sh playwright-responsive
+            displayName: 'Collect artifacts'
+            condition: always()
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload artifacts'
+            condition: always()
+            continueOnError: true
+            inputs:
+              targetPath: artifacts/playwright-responsive
+              artifact: ahm-artifacts-e2e-web-responsive-reads-$(BROWSER)
+          - script: bash ci/steps/teardown.sh
+            displayName: 'Teardown'
+            condition: always()
+
+      - job: e2e_web_responsive_writes
+        displayName: 'E2E — Playwright Responsive writes ($(BROWSER))'
+        condition: "and(or(eq('${{ parameters.platform }}', 'all'), eq('${{ parameters.platform }}', 'web'), eq('${{ parameters.platform }}', 'playwright'), eq('${{ parameters.platform }}', 'playwright-responsive'), eq('${{ parameters.platform }}', 'pixelmatch'), eq('${{ parameters.platform }}', 'pixelmatch-responsive')), in(dependencies.visual_web.result, 'Succeeded', 'SucceededWithIssues', 'Skipped'))"
+        dependsOn: visual_web
+        pool: { vmImage: 'ubuntu-latest' }
+        container:
+          image: mcr.microsoft.com/playwright:v1.61.1-jammy
+          options: --user 0
+        strategy:
+          matrix:
+            chromium: { BROWSER: chromium }
+            firefox: { BROWSER: firefox }
+            webkit: { BROWSER: webkit }
+          maxParallel: 1
+        steps:
+          - checkout: self
+          - task: NodeTool@0
+            displayName: 'Set up Node'
+            inputs: { versionSpec: '22.x' }
+          - script: corepack enable && corepack prepare pnpm@latest --activate
+            displayName: 'Enable pnpm (corepack)'
+          - script: bash ci/steps/setup-environment.sh
+            displayName: 'Install dependencies (setup-environment.sh)'
+          - script: bash ci/steps/start-stack.sh web
+            displayName: 'Start proxy + plugins'
+            env:
+              BASE_URL: $(BASE_URL)
+              API_BASE_URL: $(API_BASE_URL)
+              BROWSER: $(BROWSER)
+              PLATFORM: web
+              VIEWPORT: responsive
+              DRIVER: playwright
+              HEADLESS: 'true'
+              PLAYWRIGHT_ADDRESS: 127.0.0.1:50052
+              API_ADAPTER_ADDRESS: 127.0.0.1:50055
+              PLUGIN_PLAYWRIGHT: 'true'
+              PLUGIN_PIXELMATCH: 'false'
+              PLUGIN_API: 'true'
+          - script: bash ci/steps/run-suite.sh "@responsive and @writes-shared-state" playwright-responsive $(BROWSER)
+            displayName: 'Run E2E tests'
+            env:
+              BASE_URL: $(BASE_URL)
+              API_BASE_URL: $(API_BASE_URL)
+              BROWSER: $(BROWSER)
+              CUCUMBER_PARALLEL: '4'
+              PLATFORM: web
+              VIEWPORT: responsive
+              DRIVER: playwright
+              PROXY_ADDRESS: 127.0.0.1:50051
+              HEADLESS: 'true'
+              PLUGIN_PIXELMATCH: 'false'
+          - script: bash ci/steps/collect-artifacts.sh playwright-responsive
+            displayName: 'Collect artifacts'
+            condition: always()
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload artifacts'
+            condition: always()
+            continueOnError: true
+            inputs:
+              targetPath: artifacts/playwright-responsive
+              artifact: ahm-artifacts-e2e-web-responsive-writes-$(BROWSER)
+          - script: bash ci/steps/teardown.sh
+            displayName: 'Teardown'
+            condition: always()
+
+      # -----------------------------------------------------------------
+      # Job: Visual — Playwright Responsive / Pixelmatch (profile
+      # `playwright-visual-responsive`). Mirrors visual_web. Fifth link
+      # in the writes chain (via dependsOn on e2e_web_responsive_writes).
+      # -----------------------------------------------------------------
+      - job: visual_web_responsive
+        displayName: 'Visual — Playwright Responsive (Pixelmatch)'
+        dependsOn: [e2e_web_responsive_reads, e2e_web_responsive_writes]
+        condition: "not(and(eq(dependencies.e2e_web_responsive_reads.result, 'Skipped'), eq(dependencies.e2e_web_responsive_writes.result, 'Skipped')))"
+        pool: { vmImage: 'ubuntu-latest' }
+        container:
+          image: mcr.microsoft.com/playwright:v1.61.1-jammy
+          options: --user 0
+        steps:
+          - checkout: self
+          - task: NodeTool@0
+            displayName: 'Set up Node'
+            inputs: { versionSpec: '22.x' }
+          - script: corepack enable && corepack prepare pnpm@latest --activate
+            displayName: 'Enable pnpm (corepack)'
+          - script: bash ci/steps/setup-environment.sh
+            displayName: 'Install dependencies (setup-environment.sh)'
+          - script: bash ci/steps/start-stack.sh web
+            displayName: 'Start proxy + plugins'
+            env:
+              BASE_URL: $(BASE_URL)
+              API_BASE_URL: $(API_BASE_URL)
+              PLATFORM: web
+              VIEWPORT: responsive
+              DRIVER: playwright
+              HEADLESS: 'true'
+              PLAYWRIGHT_ADDRESS: 127.0.0.1:50052
+              PIXELMATCH_ADDRESS: 127.0.0.1:50056
+              API_ADAPTER_ADDRESS: 127.0.0.1:50055
+              PLUGIN_PLAYWRIGHT: 'true'
+              PLUGIN_PIXELMATCH: 'true'
+              PLUGIN_API: 'true'
+          - script: pnpm test:json:visual:responsive
+            displayName: 'Run visual capture'
+            env:
+              BASE_URL: $(BASE_URL)
+              API_BASE_URL: $(API_BASE_URL)
+              PLATFORM: web
+              VIEWPORT: responsive
+              DRIVER: playwright
+              PROXY_ADDRESS: 127.0.0.1:50051
+              HEADLESS: 'true'
+              PLUGIN_PIXELMATCH: 'true'
+          - script: node scripts/visual-gate.js
+            displayName: 'Visual gate — fail the job if any snapshot drifted'
+            condition: succeededOrFailed()
+          - script: bash ci/steps/collect-artifacts.sh playwright-visual-responsive
+            displayName: 'Collect artifacts'
+            condition: always()
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload artifacts'
+            condition: always()
+            continueOnError: true
+            inputs:
+              targetPath: artifacts/playwright-visual-responsive
+              artifact: ahm-artifacts-visual-web-responsive
+          - script: bash ci/steps/teardown.sh
+            displayName: 'Teardown'
+            condition: always()
+
+      # -----------------------------------------------------------------
+      # Job: Accessibility / axe (profile `a11y`) — independent, not in
+      # the writes chain. Rides `start-stack.sh web` (NOT a dedicated
+      # `a11y` arm — there isn't one) with PLUGIN_AXE=true forwarded into
+      # that call's env; `run-suite.sh`'s profile arg is `a11y` (used only
+      # to name the report file). Ground truth §3.
+      # -----------------------------------------------------------------
+      - job: a11y_web
+        displayName: 'A11y — Playwright Desktop (axe)'
+        condition: "or(eq('${{ parameters.platform }}', 'all'), eq('${{ parameters.platform }}', 'a11y'))"
+        pool: { vmImage: 'ubuntu-latest' }
+        container:
+          image: mcr.microsoft.com/playwright:v1.61.1-jammy
+          options: --user 0
+        steps:
+          - checkout: self
+          - task: NodeTool@0
+            displayName: 'Set up Node'
+            inputs: { versionSpec: '22.x' }
+          - script: corepack enable && corepack prepare pnpm@latest --activate
+            displayName: 'Enable pnpm (corepack)'
+          - script: bash ci/steps/setup-environment.sh
+            displayName: 'Install dependencies (setup-environment.sh)'
+          - script: bash ci/steps/start-stack.sh web
+            displayName: 'Start proxy + plugins'
+            env:
+              BASE_URL: $(BASE_URL)
+              API_BASE_URL: $(API_BASE_URL)
+              BROWSER: chromium
+              PLATFORM: web
+              VIEWPORT: desktop
+              DRIVER: playwright
+              HEADLESS: 'true'
+              PLAYWRIGHT_ADDRESS: 127.0.0.1:50052
+              API_ADAPTER_ADDRESS: 127.0.0.1:50055
+              PLUGIN_PLAYWRIGHT: 'true'
+              PLUGIN_PIXELMATCH: 'false'
+              PLUGIN_AXE: 'true'
+              PLUGIN_API: 'true'
+          - script: bash ci/steps/run-suite.sh "@a11y" a11y
+            displayName: 'Run accessibility suite'
+            env:
+              BASE_URL: $(BASE_URL)
+              API_BASE_URL: $(API_BASE_URL)
+              BROWSER: chromium
+              PLATFORM: web
+              VIEWPORT: desktop
+              DRIVER: playwright
+              PROXY_ADDRESS: 127.0.0.1:50051
+              HEADLESS: 'true'
+              PLUGIN_AXE: 'true'
+          - script: bash ci/steps/collect-artifacts.sh a11y
+            displayName: 'Collect artifacts'
+            condition: always()
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload artifacts'
+            condition: always()
+            continueOnError: true
+            inputs:
+              targetPath: artifacts/a11y
+              artifact: ahm-artifacts-a11y-web
+          - script: bash ci/steps/teardown.sh
+            displayName: 'Teardown'
+            condition: always()
+
+      # -----------------------------------------------------------------
+      # Docker/KVM/macOS caveat (ground truth §9, plan brief Step 4):
+      # Microsoft-hosted `ubuntu-latest` agents do NOT expose /dev/kvm
+      # (same gap as GitLab.com) — the android jobs below and the android
+      # leg of mobilewright need a SELF-HOSTED agent pool with nested
+      # virtualization enabled. `self-hosted-android-kvm` below is a
+      # placeholder pool name; no such pool is provisioned for this repo.
+      # Docker itself is preinstalled and fine on ubuntu-latest for
+      # everything else (zap, mobsf, the emulator's own `docker run`).
+      # Azure DOES provide Microsoft-hosted `macOS-latest` pools
+      # comparable to GHA's — the ios job (and mobilewright's ios leg)
+      # use `pool: { vmImage: 'macOS-latest' }` directly below, no
+      # self-hosted requirement. This is the one leg that is NOT a gap
+      # versus GHA.
+      #
+      # Job: Android (profile `android`) — split reads/writes. `_writes`
+      # is the sixth link in the writes chain and also depends on the
+      # resolver for the OmniPizza APK download.
+      # -----------------------------------------------------------------
+      - job: e2e_android_reads
+        displayName: 'E2E — Appium Android reads'
+        dependsOn: resolve_omnipizza_release
+        condition: "and(or(eq('${{ parameters.platform }}', 'all'), eq('${{ parameters.platform }}', 'mobile'), eq('${{ parameters.platform }}', 'android'), eq('${{ parameters.platform }}', 'appium'), eq('${{ parameters.platform }}', 'appium-android')), in(dependencies.resolve_omnipizza_release.result, 'Succeeded', 'SucceededWithIssues', 'Skipped'))"
+        pool:
+          name: 'self-hosted-android-kvm'  # placeholder — nested-virt self-hosted pool, see caveat above
+        variables:
+          OMNIPIZZA_RELEASE_TAG: $[ dependencies.resolve_omnipizza_release.outputs['fetch.tag'] ]
+          OMNIPIZZA_RELEASE_BASE_URL: $[ dependencies.resolve_omnipizza_release.outputs['fetch.base_url'] ]
+        steps:
+          - checkout: self
+          - script: |
+              echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+                | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+              sudo udevadm control --reload-rules
+              sudo udevadm trigger --name-match=kvm
+            displayName: 'Enable KVM'
+          - task: NodeTool@0
+            displayName: 'Set up Node'
+            inputs: { versionSpec: '22.x' }
+          - script: corepack enable && corepack prepare pnpm@latest --activate
+            displayName: 'Enable pnpm (corepack)'
+          - script: bash ci/steps/setup-environment.sh
+            displayName: 'Install dependencies (setup-environment.sh)'
+          - script: |
+              sudo apt-get update
+              sudo apt-get install -y android-sdk-platform-tools
+              adb version
+            displayName: 'Install Android platform tools'
+          - script: |
+              mkdir -p assets/apps/android
+              echo "Downloading OmniPizza Android APK from release $OMNIPIZZA_RELEASE_TAG"
+              curl -fL "$OMNIPIZZA_RELEASE_BASE_URL/omnipizza-release.apk" \
+                -o assets/apps/android/app-release.apk
+              ls -lh assets/apps/android/app-release.apk
+            displayName: 'Download Android app artifact'
+          - script: |
+              docker run -d \
+                --name android-emulator \
+                --privileged \
+                --device /dev/kvm \
+                -p 5554:5554 \
+                -p 5555:5555 \
+                -e API_LEVEL=${{ parameters.androidApiLevel }} \
+                -e IMG_TYPE=google_apis \
+                -e ARCHITECTURE=x86_64 \
+                -e DEVICE_ID=pixel \
+                -e MEMORY=4096 \
+                -e CORES=2 \
+                -e DISABLE_ANIMATION=true \
+                -e DISABLE_HIDDEN_POLICY=true \
+                -e SKIP_AUTH=1 \
+                halimqarroum/docker-android:api-${{ parameters.androidApiLevel }}
+            displayName: 'Start Android emulator (docker-android)'
+          - script: |
+              pnpm exec appium --relaxed-security &
+              sleep 5
+            displayName: 'Start Appium server'
+          - script: |
+              echo "Waiting for ADB device to appear..."
+              adb connect localhost:5555
+              for i in $(seq 1 40); do
+                if adb -s localhost:5555 shell getprop sys.boot_completed 2>/dev/null | grep -q "1"; then
+                  echo "Emulator ready after $((i * 15))s"
+                  break
+                fi
+                echo "  Attempt $i/40 — waiting 15s..."
+                sleep 15
+              done
+              adb devices
+            displayName: 'Wait for emulator to be ready'
+          - script: bash ci/steps/start-stack.sh android
+            displayName: 'Start proxy + Appium plugin'
+            env:
+              API_BASE_URL: $(API_BASE_URL)
+              PLATFORM: android
+              DRIVER: appium
+              APPIUM_HOST: localhost
+              APPIUM_PORT: '4723'
+              CAP_PROFILE: docker_android
+              ANDROID_APP_PATH: assets/apps/android/app-release.apk
+              ANDROID_UDID: localhost:5555
+              PLUGIN_APPIUM: 'true'
+              PLUGIN_API: 'true'
+          - script: bash ci/steps/run-suite.sh "@android and not @writes-shared-state" android reads
+            displayName: 'Run E2E tests'
+            env:
+              API_BASE_URL: $(API_BASE_URL)
+              PLATFORM: android
+              DRIVER: appium
+              APPIUM_HOST: localhost
+              APPIUM_PORT: '4723'
+              CAP_PROFILE: docker_android
+              ANDROID_APP_PATH: assets/apps/android/app-release.apk
+              ANDROID_UDID: localhost:5555
+          - script: |
+              docker ps -a --filter name=android-emulator
+              if docker ps -a --format '{{.Names}}' | grep -qx android-emulator; then
+                docker logs --tail 200 android-emulator
+              else
+                echo "android-emulator container was not created."
+              fi
+            displayName: 'Show Android emulator logs'
+            condition: failed()
+          - script: bash ci/steps/collect-artifacts.sh android
+            displayName: 'Collect artifacts'
+            condition: always()
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload artifacts'
+            condition: always()
+            continueOnError: true
+            inputs:
+              targetPath: artifacts/android
+              artifact: ahm-artifacts-e2e-android-reads
+          - script: docker rm -f android-emulator || true
+            displayName: 'Stop emulator'
+            condition: always()
+          - script: bash ci/steps/teardown.sh
+            displayName: 'Teardown'
+            condition: always()
+
+      - job: e2e_android_writes
+        displayName: 'E2E — Appium Android writes'
+        dependsOn: [visual_web_responsive, resolve_omnipizza_release]
+        condition: "and(or(eq('${{ parameters.platform }}', 'all'), eq('${{ parameters.platform }}', 'mobile'), eq('${{ parameters.platform }}', 'android'), eq('${{ parameters.platform }}', 'appium'), eq('${{ parameters.platform }}', 'appium-android')), in(dependencies.visual_web_responsive.result, 'Succeeded', 'SucceededWithIssues', 'Skipped'), in(dependencies.resolve_omnipizza_release.result, 'Succeeded', 'SucceededWithIssues', 'Skipped'))"
+        pool:
+          name: 'self-hosted-android-kvm'  # placeholder — nested-virt self-hosted pool, see caveat above
+        variables:
+          OMNIPIZZA_RELEASE_TAG: $[ dependencies.resolve_omnipizza_release.outputs['fetch.tag'] ]
+          OMNIPIZZA_RELEASE_BASE_URL: $[ dependencies.resolve_omnipizza_release.outputs['fetch.base_url'] ]
+        steps:
+          - checkout: self
+          - script: |
+              echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+                | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+              sudo udevadm control --reload-rules
+              sudo udevadm trigger --name-match=kvm
+            displayName: 'Enable KVM'
+          - task: NodeTool@0
+            displayName: 'Set up Node'
+            inputs: { versionSpec: '22.x' }
+          - script: corepack enable && corepack prepare pnpm@latest --activate
+            displayName: 'Enable pnpm (corepack)'
+          - script: bash ci/steps/setup-environment.sh
+            displayName: 'Install dependencies (setup-environment.sh)'
+          - script: |
+              sudo apt-get update
+              sudo apt-get install -y android-sdk-platform-tools
+              adb version
+            displayName: 'Install Android platform tools'
+          - script: |
+              mkdir -p assets/apps/android
+              echo "Downloading OmniPizza Android APK from release $OMNIPIZZA_RELEASE_TAG"
+              curl -fL "$OMNIPIZZA_RELEASE_BASE_URL/omnipizza-release.apk" \
+                -o assets/apps/android/app-release.apk
+              ls -lh assets/apps/android/app-release.apk
+            displayName: 'Download Android app artifact'
+          - script: |
+              docker run -d \
+                --name android-emulator \
+                --privileged \
+                --device /dev/kvm \
+                -p 5554:5554 \
+                -p 5555:5555 \
+                -e API_LEVEL=${{ parameters.androidApiLevel }} \
+                -e IMG_TYPE=google_apis \
+                -e ARCHITECTURE=x86_64 \
+                -e DEVICE_ID=pixel \
+                -e MEMORY=4096 \
+                -e CORES=2 \
+                -e DISABLE_ANIMATION=true \
+                -e DISABLE_HIDDEN_POLICY=true \
+                -e SKIP_AUTH=1 \
+                halimqarroum/docker-android:api-${{ parameters.androidApiLevel }}
+            displayName: 'Start Android emulator (docker-android)'
+          - script: |
+              pnpm exec appium --relaxed-security &
+              sleep 5
+            displayName: 'Start Appium server'
+          - script: |
+              echo "Waiting for ADB device to appear..."
+              adb connect localhost:5555
+              for i in $(seq 1 40); do
+                if adb -s localhost:5555 shell getprop sys.boot_completed 2>/dev/null | grep -q "1"; then
+                  echo "Emulator ready after $((i * 15))s"
+                  break
+                fi
+                echo "  Attempt $i/40 — waiting 15s..."
+                sleep 15
+              done
+              adb devices
+            displayName: 'Wait for emulator to be ready'
+          - script: bash ci/steps/start-stack.sh android
+            displayName: 'Start proxy + Appium plugin'
+            env:
+              API_BASE_URL: $(API_BASE_URL)
+              PLATFORM: android
+              DRIVER: appium
+              APPIUM_HOST: localhost
+              APPIUM_PORT: '4723'
+              CAP_PROFILE: docker_android
+              ANDROID_APP_PATH: assets/apps/android/app-release.apk
+              ANDROID_UDID: localhost:5555
+              PLUGIN_APPIUM: 'true'
+              PLUGIN_API: 'true'
+          - script: bash ci/steps/run-suite.sh "@android and @writes-shared-state" android writes
+            displayName: 'Run E2E tests'
+            env:
+              API_BASE_URL: $(API_BASE_URL)
+              PLATFORM: android
+              DRIVER: appium
+              APPIUM_HOST: localhost
+              APPIUM_PORT: '4723'
+              CAP_PROFILE: docker_android
+              ANDROID_APP_PATH: assets/apps/android/app-release.apk
+              ANDROID_UDID: localhost:5555
+          - script: |
+              docker ps -a --filter name=android-emulator
+              if docker ps -a --format '{{.Names}}' | grep -qx android-emulator; then
+                docker logs --tail 200 android-emulator
+              else
+                echo "android-emulator container was not created."
+              fi
+            displayName: 'Show Android emulator logs'
+            condition: failed()
+          - script: bash ci/steps/collect-artifacts.sh android
+            displayName: 'Collect artifacts'
+            condition: always()
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload artifacts'
+            condition: always()
+            continueOnError: true
+            inputs:
+              targetPath: artifacts/android
+              artifact: ahm-artifacts-e2e-android-writes
+          - script: docker rm -f android-emulator || true
+            displayName: 'Stop emulator'
+            condition: always()
+          - script: bash ci/steps/teardown.sh
+            displayName: 'Teardown'
+            condition: always()
+
+      # -----------------------------------------------------------------
+      # Job: iOS (profile `ios`) — split reads/writes. Uses Azure's
+      # Microsoft-hosted `macOS-latest` pool directly — the one leg that
+      # is NOT a gap versus GHA (ground truth §9). `_writes` is the
+      # seventh link in the writes chain.
+      # -----------------------------------------------------------------
+      - job: e2e_ios_reads
+        displayName: 'E2E — Appium iOS reads'
+        dependsOn: resolve_omnipizza_release
+        condition: "and(or(eq('${{ parameters.platform }}', 'all'), eq('${{ parameters.platform }}', 'mobile'), eq('${{ parameters.platform }}', 'ios'), eq('${{ parameters.platform }}', 'appium'), eq('${{ parameters.platform }}', 'appium-ios')), in(dependencies.resolve_omnipizza_release.result, 'Succeeded', 'SucceededWithIssues', 'Skipped'))"
+        pool: { vmImage: 'macOS-latest' }
+        variables:
+          OMNIPIZZA_RELEASE_TAG: $[ dependencies.resolve_omnipizza_release.outputs['fetch.tag'] ]
+          OMNIPIZZA_RELEASE_BASE_URL: $[ dependencies.resolve_omnipizza_release.outputs['fetch.base_url'] ]
+        steps:
+          - checkout: self
+          - task: NodeTool@0
+            displayName: 'Set up Node'
+            inputs: { versionSpec: '22.x' }
+          - script: corepack enable && corepack prepare pnpm@latest --activate
+            displayName: 'Enable pnpm (corepack)'
+          - script: bash ci/steps/setup-environment.sh
+            displayName: 'Install dependencies (setup-environment.sh)'
+          - script: |
+              mkdir -p assets/apps/ios
+              echo "Downloading OmniPizza iOS simulator bundle from release $OMNIPIZZA_RELEASE_TAG"
+              curl -fL "$OMNIPIZZA_RELEASE_BASE_URL/OmniPizza-Simulator.zip" \
+                -o assets/apps/ios/OmniPizza-Simulator.zip
+              ls -lh assets/apps/ios/OmniPizza-Simulator.zip
+            displayName: 'Download iOS simulator artifact'
+          - script: |
+              rm -rf assets/apps/ios/unpacked
+              mkdir -p assets/apps/ios/unpacked
+              unzip -q assets/apps/ios/OmniPizza-Simulator.zip -d assets/apps/ios/unpacked
+              DISCOVERED_IOS_APP_PATH=$(find assets/apps/ios/unpacked -maxdepth 3 -name '*.app' -type d | head -n 1)
+              if [ -z "$DISCOVERED_IOS_APP_PATH" ]; then
+                echo "No .app bundle found inside OmniPizza-Simulator.zip"
+                exit 1
+              fi
+              echo "##vso[task.setvariable variable=DISCOVERED_IOS_APP_PATH]$DISCOVERED_IOS_APP_PATH"
+            displayName: 'Unpack iOS simulator app'
+          - script: |
+              DEVICE_LINE=$(xcrun simctl list devices available | grep -E 'iPhone .*\([A-F0-9-]+\) \((Shutdown|Booted)\)' | head -n 1)
+              if [ -z "$DEVICE_LINE" ]; then
+                echo "No available iPhone simulator found"
+                exit 1
+              fi
+              IOS_DEVICE_NAME=$(echo "$DEVICE_LINE" | sed -E 's/^[[:space:]]*([^()]+)[[:space:]]+\(.*/\1/' | xargs)
+              IOS_UDID=$(echo "$DEVICE_LINE" | sed -E 's/.*\(([A-F0-9-]+)\).*/\1/')
+              echo "##vso[task.setvariable variable=IOS_DEVICE_NAME]$IOS_DEVICE_NAME"
+              echo "##vso[task.setvariable variable=IOS_UDID]$IOS_UDID"
+              xcrun simctl boot "$IOS_UDID" || true
+              xcrun simctl bootstatus "$IOS_UDID" -b
+            displayName: 'Select and boot iOS simulator'
+          - script: |
+              pnpm exec appium --relaxed-security &
+              sleep 5
+            displayName: 'Start Appium server'
+          - script: |
+              export IOS_APP_PATH="${IOS_APP_PATH:-$DISCOVERED_IOS_APP_PATH}"
+              bash ci/steps/start-stack.sh ios
+            displayName: 'Start proxy + Appium plugin'
+            env:
+              API_BASE_URL: $(API_BASE_URL)
+              PLATFORM: ios
+              DRIVER: appium
+              APPIUM_HOST: localhost
+              APPIUM_PORT: '4723'
+              CAP_PROFILE: ci_ios_headless
+              IOS_APP_PATH: $(IOS_APP_PATH)
+              DISCOVERED_IOS_APP_PATH: $(DISCOVERED_IOS_APP_PATH)
+              IOS_UDID: $(IOS_UDID)
+              IOS_DEVICE_NAME: $(IOS_DEVICE_NAME)
+              PLUGIN_APPIUM: 'true'
+              PLUGIN_API: 'true'
+          - script: |
+              export IOS_APP_PATH="${IOS_APP_PATH:-$DISCOVERED_IOS_APP_PATH}"
+              bash ci/steps/run-suite.sh "@ios and not @writes-shared-state" ios reads
+            displayName: 'Run E2E tests'
+            env:
+              API_BASE_URL: $(API_BASE_URL)
+              PLATFORM: ios
+              DRIVER: appium
+              APPIUM_HOST: localhost
+              APPIUM_PORT: '4723'
+              CAP_PROFILE: ci_ios_headless
+              IOS_APP_PATH: $(IOS_APP_PATH)
+              DISCOVERED_IOS_APP_PATH: $(DISCOVERED_IOS_APP_PATH)
+              IOS_UDID: $(IOS_UDID)
+              IOS_DEVICE_NAME: $(IOS_DEVICE_NAME)
+          - script: bash ci/steps/collect-artifacts.sh ios
+            displayName: 'Collect artifacts'
+            condition: always()
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload artifacts'
+            condition: always()
+            continueOnError: true
+            inputs:
+              targetPath: artifacts/ios
+              artifact: ahm-artifacts-e2e-ios-reads
+          - script: bash ci/steps/teardown.sh
+            displayName: 'Teardown'
+            condition: always()
+
+      - job: e2e_ios_writes
+        displayName: 'E2E — Appium iOS writes'
+        dependsOn: [e2e_android_writes, resolve_omnipizza_release]
+        condition: "and(or(eq('${{ parameters.platform }}', 'all'), eq('${{ parameters.platform }}', 'mobile'), eq('${{ parameters.platform }}', 'ios'), eq('${{ parameters.platform }}', 'appium'), eq('${{ parameters.platform }}', 'appium-ios')), in(dependencies.e2e_android_writes.result, 'Succeeded', 'SucceededWithIssues', 'Skipped'), in(dependencies.resolve_omnipizza_release.result, 'Succeeded', 'SucceededWithIssues', 'Skipped'))"
+        pool: { vmImage: 'macOS-latest' }
+        variables:
+          OMNIPIZZA_RELEASE_TAG: $[ dependencies.resolve_omnipizza_release.outputs['fetch.tag'] ]
+          OMNIPIZZA_RELEASE_BASE_URL: $[ dependencies.resolve_omnipizza_release.outputs['fetch.base_url'] ]
+        steps:
+          - checkout: self
+          - task: NodeTool@0
+            displayName: 'Set up Node'
+            inputs: { versionSpec: '22.x' }
+          - script: corepack enable && corepack prepare pnpm@latest --activate
+            displayName: 'Enable pnpm (corepack)'
+          - script: bash ci/steps/setup-environment.sh
+            displayName: 'Install dependencies (setup-environment.sh)'
+          - script: |
+              mkdir -p assets/apps/ios
+              echo "Downloading OmniPizza iOS simulator bundle from release $OMNIPIZZA_RELEASE_TAG"
+              curl -fL "$OMNIPIZZA_RELEASE_BASE_URL/OmniPizza-Simulator.zip" \
+                -o assets/apps/ios/OmniPizza-Simulator.zip
+              ls -lh assets/apps/ios/OmniPizza-Simulator.zip
+            displayName: 'Download iOS simulator artifact'
+          - script: |
+              rm -rf assets/apps/ios/unpacked
+              mkdir -p assets/apps/ios/unpacked
+              unzip -q assets/apps/ios/OmniPizza-Simulator.zip -d assets/apps/ios/unpacked
+              DISCOVERED_IOS_APP_PATH=$(find assets/apps/ios/unpacked -maxdepth 3 -name '*.app' -type d | head -n 1)
+              if [ -z "$DISCOVERED_IOS_APP_PATH" ]; then
+                echo "No .app bundle found inside OmniPizza-Simulator.zip"
+                exit 1
+              fi
+              echo "##vso[task.setvariable variable=DISCOVERED_IOS_APP_PATH]$DISCOVERED_IOS_APP_PATH"
+            displayName: 'Unpack iOS simulator app'
+          - script: |
+              DEVICE_LINE=$(xcrun simctl list devices available | grep -E 'iPhone .*\([A-F0-9-]+\) \((Shutdown|Booted)\)' | head -n 1)
+              if [ -z "$DEVICE_LINE" ]; then
+                echo "No available iPhone simulator found"
+                exit 1
+              fi
+              IOS_DEVICE_NAME=$(echo "$DEVICE_LINE" | sed -E 's/^[[:space:]]*([^()]+)[[:space:]]+\(.*/\1/' | xargs)
+              IOS_UDID=$(echo "$DEVICE_LINE" | sed -E 's/.*\(([A-F0-9-]+)\).*/\1/')
+              echo "##vso[task.setvariable variable=IOS_DEVICE_NAME]$IOS_DEVICE_NAME"
+              echo "##vso[task.setvariable variable=IOS_UDID]$IOS_UDID"
+              xcrun simctl boot "$IOS_UDID" || true
+              xcrun simctl bootstatus "$IOS_UDID" -b
+            displayName: 'Select and boot iOS simulator'
+          - script: |
+              pnpm exec appium --relaxed-security &
+              sleep 5
+            displayName: 'Start Appium server'
+          - script: |
+              export IOS_APP_PATH="${IOS_APP_PATH:-$DISCOVERED_IOS_APP_PATH}"
+              bash ci/steps/start-stack.sh ios
+            displayName: 'Start proxy + Appium plugin'
+            env:
+              API_BASE_URL: $(API_BASE_URL)
+              PLATFORM: ios
+              DRIVER: appium
+              APPIUM_HOST: localhost
+              APPIUM_PORT: '4723'
+              CAP_PROFILE: ci_ios_headless
+              IOS_APP_PATH: $(IOS_APP_PATH)
+              DISCOVERED_IOS_APP_PATH: $(DISCOVERED_IOS_APP_PATH)
+              IOS_UDID: $(IOS_UDID)
+              IOS_DEVICE_NAME: $(IOS_DEVICE_NAME)
+              PLUGIN_APPIUM: 'true'
+              PLUGIN_API: 'true'
+          - script: |
+              export IOS_APP_PATH="${IOS_APP_PATH:-$DISCOVERED_IOS_APP_PATH}"
+              bash ci/steps/run-suite.sh "@ios and @writes-shared-state" ios writes
+            displayName: 'Run E2E tests'
+            env:
+              API_BASE_URL: $(API_BASE_URL)
+              PLATFORM: ios
+              DRIVER: appium
+              APPIUM_HOST: localhost
+              APPIUM_PORT: '4723'
+              CAP_PROFILE: ci_ios_headless
+              IOS_APP_PATH: $(IOS_APP_PATH)
+              DISCOVERED_IOS_APP_PATH: $(DISCOVERED_IOS_APP_PATH)
+              IOS_UDID: $(IOS_UDID)
+              IOS_DEVICE_NAME: $(IOS_DEVICE_NAME)
+          - script: bash ci/steps/collect-artifacts.sh ios
+            displayName: 'Collect artifacts'
+            condition: always()
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload artifacts'
+            condition: always()
+            continueOnError: true
+            inputs:
+              targetPath: artifacts/ios
+              artifact: ahm-artifacts-e2e-ios-writes
+          - script: bash ci/steps/teardown.sh
+            displayName: 'Teardown'
+            condition: always()
+
+      # -----------------------------------------------------------------
+      # Job: Mobilewright (profile `mobilewright`) — GHA's `e2e-mobilewright`
+      # is ONE job with `strategy: matrix: {platform:[android,ios]}` and a
+      # computed `runs-on` per leg. Azure's `strategy: matrix:` cannot vary
+      # a job's `pool:`/`container:` per leg (pool selection happens before
+      # any matrix-leg variable exists), so this is split into 4 jobs here
+      # — `_android_reads/_writes` (self-hosted KVM pool) and
+      # `_ios_reads/_writes` (macOS-latest) — see the file-header note.
+      # `mobilewrightNeedsAppiumServer: false` — no Appium daemon is
+      # started for this profile (mobilewright drives devices via
+      # `mobilecli`, not Appium/WebDriverIO — ci/pipeline.config.json,
+      # ci/steps/start-stack.sh's `mobilewright)` arm). The two writes
+      # legs are chained into the global writes queue as two consecutive
+      # links (android leg, then ios leg) rather than GHA's one combined
+      # link, preserving mutual exclusion against the shared fixture.
+      # KNOWN GAP (README.md / ci/pipeline.config.json): this job is wired
+      # but will fail at DeviceLoader.forWorker() until "mobilewright" is
+      # added to docker_android.json's/ci_ios_headless.json's
+      # compatibleDrivers arrays — out of this task's file scope.
+      # -----------------------------------------------------------------
+      - job: e2e_mobilewright_android_reads
+        displayName: 'E2E — Mobilewright android reads'
+        dependsOn: resolve_omnipizza_release
+        condition: "and(or(eq('${{ parameters.platform }}', 'all'), eq('${{ parameters.platform }}', 'mobilewright')), in(dependencies.resolve_omnipizza_release.result, 'Succeeded', 'SucceededWithIssues', 'Skipped'))"
+        pool:
+          name: 'self-hosted-android-kvm'  # placeholder — nested-virt self-hosted pool, see caveat above
+        variables:
+          OMNIPIZZA_RELEASE_TAG: $[ dependencies.resolve_omnipizza_release.outputs['fetch.tag'] ]
+          OMNIPIZZA_RELEASE_BASE_URL: $[ dependencies.resolve_omnipizza_release.outputs['fetch.base_url'] ]
+        steps:
+          - checkout: self
+          - script: |
+              echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+                | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+              sudo udevadm control --reload-rules
+              sudo udevadm trigger --name-match=kvm
+            displayName: 'Enable KVM'
+          - task: NodeTool@0
+            displayName: 'Set up Node'
+            inputs: { versionSpec: '22.x' }
+          - script: corepack enable && corepack prepare pnpm@latest --activate
+            displayName: 'Enable pnpm (corepack)'
+          - script: bash ci/steps/setup-environment.sh
+            displayName: 'Install dependencies (setup-environment.sh)'
+          - script: |
+              sudo apt-get update
+              sudo apt-get install -y android-sdk-platform-tools
+              adb version
+            displayName: 'Install Android platform tools'
+          - script: |
+              mkdir -p assets/apps/android
+              echo "Downloading OmniPizza Android APK from release $OMNIPIZZA_RELEASE_TAG"
+              curl -fL "$OMNIPIZZA_RELEASE_BASE_URL/omnipizza-release.apk" \
+                -o assets/apps/android/app-release.apk
+              ls -lh assets/apps/android/app-release.apk
+            displayName: 'Download Android app artifact'
+          - script: |
+              docker run -d \
+                --name android-emulator \
+                --privileged \
+                --device /dev/kvm \
+                -p 5554:5554 \
+                -p 5555:5555 \
+                -e API_LEVEL=${{ parameters.androidApiLevel }} \
+                -e IMG_TYPE=google_apis \
+                -e ARCHITECTURE=x86_64 \
+                -e DEVICE_ID=pixel \
+                -e MEMORY=4096 \
+                -e CORES=2 \
+                -e DISABLE_ANIMATION=true \
+                -e DISABLE_HIDDEN_POLICY=true \
+                -e SKIP_AUTH=1 \
+                halimqarroum/docker-android:api-${{ parameters.androidApiLevel }}
+            displayName: 'Start Android emulator (docker-android)'
+          - script: |
+              echo "Waiting for ADB device to appear..."
+              adb connect localhost:5555
+              for i in $(seq 1 40); do
+                if adb -s localhost:5555 shell getprop sys.boot_completed 2>/dev/null | grep -q "1"; then
+                  echo "Emulator ready after $((i * 15))s"
+                  break
+                fi
+                echo "  Attempt $i/40 — waiting 15s..."
+                sleep 15
+              done
+              adb devices
+            displayName: 'Wait for emulator to be ready'
+          # No Appium server started — mobilewrightNeedsAppiumServer: false.
+          - script: bash ci/steps/start-stack.sh mobilewright
+            displayName: 'Start proxy + Mobilewright plugin'
+            env:
+              API_BASE_URL: $(API_BASE_URL)
+              PLATFORM: android
+              DRIVER: mobilewright
+              CAP_PROFILE: docker_android
+              ANDROID_APP_PATH: assets/apps/android/app-release.apk
+              ANDROID_UDID: localhost:5555
+              PLUGIN_MOBILEWRIGHT: 'true'
+              PLUGIN_API: 'true'
+          - script: bash ci/steps/run-suite.sh "@android and not @writes-shared-state" mobilewright android-reads
+            displayName: 'Run E2E tests'
+            env:
+              API_BASE_URL: $(API_BASE_URL)
+              PLATFORM: android
+              DRIVER: mobilewright
+              CAP_PROFILE: docker_android
+              ANDROID_APP_PATH: assets/apps/android/app-release.apk
+              ANDROID_UDID: localhost:5555
+          - script: |
+              docker ps -a --filter name=android-emulator
+              if docker ps -a --format '{{.Names}}' | grep -qx android-emulator; then
+                docker logs --tail 200 android-emulator
+              else
+                echo "android-emulator container was not created."
+              fi
+            displayName: 'Show Android emulator logs'
+            condition: failed()
+          - script: bash ci/steps/collect-artifacts.sh mobilewright
+            displayName: 'Collect artifacts'
+            condition: always()
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload artifacts'
+            condition: always()
+            continueOnError: true
+            inputs:
+              targetPath: artifacts/mobilewright
+              artifact: ahm-artifacts-e2e-mobilewright-android-reads
+          - script: docker rm -f android-emulator || true
+            displayName: 'Stop emulator'
+            condition: always()
+          - script: bash ci/steps/teardown.sh
+            displayName: 'Teardown'
+            condition: always()
+
+      - job: e2e_mobilewright_android_writes
+        displayName: 'E2E — Mobilewright android writes'
+        dependsOn: [e2e_ios_writes, resolve_omnipizza_release]
+        condition: "and(or(eq('${{ parameters.platform }}', 'all'), eq('${{ parameters.platform }}', 'mobilewright')), in(dependencies.e2e_ios_writes.result, 'Succeeded', 'SucceededWithIssues', 'Skipped'), in(dependencies.resolve_omnipizza_release.result, 'Succeeded', 'SucceededWithIssues', 'Skipped'))"
+        pool:
+          name: 'self-hosted-android-kvm'  # placeholder — nested-virt self-hosted pool, see caveat above
+        variables:
+          OMNIPIZZA_RELEASE_TAG: $[ dependencies.resolve_omnipizza_release.outputs['fetch.tag'] ]
+          OMNIPIZZA_RELEASE_BASE_URL: $[ dependencies.resolve_omnipizza_release.outputs['fetch.base_url'] ]
+        steps:
+          - checkout: self
+          - script: |
+              echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+                | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+              sudo udevadm control --reload-rules
+              sudo udevadm trigger --name-match=kvm
+            displayName: 'Enable KVM'
+          - task: NodeTool@0
+            displayName: 'Set up Node'
+            inputs: { versionSpec: '22.x' }
+          - script: corepack enable && corepack prepare pnpm@latest --activate
+            displayName: 'Enable pnpm (corepack)'
+          - script: bash ci/steps/setup-environment.sh
+            displayName: 'Install dependencies (setup-environment.sh)'
+          - script: |
+              sudo apt-get update
+              sudo apt-get install -y android-sdk-platform-tools
+              adb version
+            displayName: 'Install Android platform tools'
+          - script: |
+              mkdir -p assets/apps/android
+              echo "Downloading OmniPizza Android APK from release $OMNIPIZZA_RELEASE_TAG"
+              curl -fL "$OMNIPIZZA_RELEASE_BASE_URL/omnipizza-release.apk" \
+                -o assets/apps/android/app-release.apk
+              ls -lh assets/apps/android/app-release.apk
+            displayName: 'Download Android app artifact'
+          - script: |
+              docker run -d \
+                --name android-emulator \
+                --privileged \
+                --device /dev/kvm \
+                -p 5554:5554 \
+                -p 5555:5555 \
+                -e API_LEVEL=${{ parameters.androidApiLevel }} \
+                -e IMG_TYPE=google_apis \
+                -e ARCHITECTURE=x86_64 \
+                -e DEVICE_ID=pixel \
+                -e MEMORY=4096 \
+                -e CORES=2 \
+                -e DISABLE_ANIMATION=true \
+                -e DISABLE_HIDDEN_POLICY=true \
+                -e SKIP_AUTH=1 \
+                halimqarroum/docker-android:api-${{ parameters.androidApiLevel }}
+            displayName: 'Start Android emulator (docker-android)'
+          - script: |
+              echo "Waiting for ADB device to appear..."
+              adb connect localhost:5555
+              for i in $(seq 1 40); do
+                if adb -s localhost:5555 shell getprop sys.boot_completed 2>/dev/null | grep -q "1"; then
+                  echo "Emulator ready after $((i * 15))s"
+                  break
+                fi
+                echo "  Attempt $i/40 — waiting 15s..."
+                sleep 15
+              done
+              adb devices
+            displayName: 'Wait for emulator to be ready'
+          - script: bash ci/steps/start-stack.sh mobilewright
+            displayName: 'Start proxy + Mobilewright plugin'
+            env:
+              API_BASE_URL: $(API_BASE_URL)
+              PLATFORM: android
+              DRIVER: mobilewright
+              CAP_PROFILE: docker_android
+              ANDROID_APP_PATH: assets/apps/android/app-release.apk
+              ANDROID_UDID: localhost:5555
+              PLUGIN_MOBILEWRIGHT: 'true'
+              PLUGIN_API: 'true'
+          - script: bash ci/steps/run-suite.sh "@android and @writes-shared-state" mobilewright android-writes
+            displayName: 'Run E2E tests'
+            env:
+              API_BASE_URL: $(API_BASE_URL)
+              PLATFORM: android
+              DRIVER: mobilewright
+              CAP_PROFILE: docker_android
+              ANDROID_APP_PATH: assets/apps/android/app-release.apk
+              ANDROID_UDID: localhost:5555
+          - script: |
+              docker ps -a --filter name=android-emulator
+              if docker ps -a --format '{{.Names}}' | grep -qx android-emulator; then
+                docker logs --tail 200 android-emulator
+              else
+                echo "android-emulator container was not created."
+              fi
+            displayName: 'Show Android emulator logs'
+            condition: failed()
+          - script: bash ci/steps/collect-artifacts.sh mobilewright
+            displayName: 'Collect artifacts'
+            condition: always()
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload artifacts'
+            condition: always()
+            continueOnError: true
+            inputs:
+              targetPath: artifacts/mobilewright
+              artifact: ahm-artifacts-e2e-mobilewright-android-writes
+          - script: docker rm -f android-emulator || true
+            displayName: 'Stop emulator'
+            condition: always()
+          - script: bash ci/steps/teardown.sh
+            displayName: 'Teardown'
+            condition: always()
+
+      - job: e2e_mobilewright_ios_reads
+        displayName: 'E2E — Mobilewright ios reads'
+        dependsOn: resolve_omnipizza_release
+        condition: "and(or(eq('${{ parameters.platform }}', 'all'), eq('${{ parameters.platform }}', 'mobilewright')), in(dependencies.resolve_omnipizza_release.result, 'Succeeded', 'SucceededWithIssues', 'Skipped'))"
+        pool: { vmImage: 'macOS-latest' }
+        variables:
+          OMNIPIZZA_RELEASE_TAG: $[ dependencies.resolve_omnipizza_release.outputs['fetch.tag'] ]
+          OMNIPIZZA_RELEASE_BASE_URL: $[ dependencies.resolve_omnipizza_release.outputs['fetch.base_url'] ]
+        steps:
+          - checkout: self
+          - task: NodeTool@0
+            displayName: 'Set up Node'
+            inputs: { versionSpec: '22.x' }
+          - script: corepack enable && corepack prepare pnpm@latest --activate
+            displayName: 'Enable pnpm (corepack)'
+          - script: bash ci/steps/setup-environment.sh
+            displayName: 'Install dependencies (setup-environment.sh)'
+          - script: |
+              mkdir -p assets/apps/ios
+              echo "Downloading OmniPizza iOS simulator bundle from release $OMNIPIZZA_RELEASE_TAG"
+              curl -fL "$OMNIPIZZA_RELEASE_BASE_URL/OmniPizza-Simulator.zip" \
+                -o assets/apps/ios/OmniPizza-Simulator.zip
+              ls -lh assets/apps/ios/OmniPizza-Simulator.zip
+            displayName: 'Download iOS simulator artifact'
+          - script: |
+              rm -rf assets/apps/ios/unpacked
+              mkdir -p assets/apps/ios/unpacked
+              unzip -q assets/apps/ios/OmniPizza-Simulator.zip -d assets/apps/ios/unpacked
+              DISCOVERED_IOS_APP_PATH=$(find assets/apps/ios/unpacked -maxdepth 3 -name '*.app' -type d | head -n 1)
+              if [ -z "$DISCOVERED_IOS_APP_PATH" ]; then
+                echo "No .app bundle found inside OmniPizza-Simulator.zip"
+                exit 1
+              fi
+              echo "##vso[task.setvariable variable=DISCOVERED_IOS_APP_PATH]$DISCOVERED_IOS_APP_PATH"
+            displayName: 'Unpack iOS simulator app'
+          - script: |
+              DEVICE_LINE=$(xcrun simctl list devices available | grep -E 'iPhone .*\([A-F0-9-]+\) \((Shutdown|Booted)\)' | head -n 1)
+              if [ -z "$DEVICE_LINE" ]; then
+                echo "No available iPhone simulator found"
+                exit 1
+              fi
+              IOS_DEVICE_NAME=$(echo "$DEVICE_LINE" | sed -E 's/^[[:space:]]*([^()]+)[[:space:]]+\(.*/\1/' | xargs)
+              IOS_UDID=$(echo "$DEVICE_LINE" | sed -E 's/.*\(([A-F0-9-]+)\).*/\1/')
+              echo "##vso[task.setvariable variable=IOS_DEVICE_NAME]$IOS_DEVICE_NAME"
+              echo "##vso[task.setvariable variable=IOS_UDID]$IOS_UDID"
+              xcrun simctl boot "$IOS_UDID" || true
+              xcrun simctl bootstatus "$IOS_UDID" -b
+            displayName: 'Select and boot iOS simulator'
+          # No Appium server started — mobilewrightNeedsAppiumServer: false.
+          - script: |
+              export IOS_APP_PATH="${IOS_APP_PATH:-$DISCOVERED_IOS_APP_PATH}"
+              bash ci/steps/start-stack.sh mobilewright
+            displayName: 'Start proxy + Mobilewright plugin'
+            env:
+              API_BASE_URL: $(API_BASE_URL)
+              PLATFORM: ios
+              DRIVER: mobilewright
+              CAP_PROFILE: ci_ios_headless
+              IOS_APP_PATH: $(IOS_APP_PATH)
+              DISCOVERED_IOS_APP_PATH: $(DISCOVERED_IOS_APP_PATH)
+              IOS_UDID: $(IOS_UDID)
+              IOS_DEVICE_NAME: $(IOS_DEVICE_NAME)
+              PLUGIN_MOBILEWRIGHT: 'true'
+              PLUGIN_API: 'true'
+          - script: |
+              export IOS_APP_PATH="${IOS_APP_PATH:-$DISCOVERED_IOS_APP_PATH}"
+              bash ci/steps/run-suite.sh "@ios and not @writes-shared-state" mobilewright ios-reads
+            displayName: 'Run E2E tests'
+            env:
+              API_BASE_URL: $(API_BASE_URL)
+              PLATFORM: ios
+              DRIVER: mobilewright
+              CAP_PROFILE: ci_ios_headless
+              IOS_APP_PATH: $(IOS_APP_PATH)
+              DISCOVERED_IOS_APP_PATH: $(DISCOVERED_IOS_APP_PATH)
+              IOS_UDID: $(IOS_UDID)
+              IOS_DEVICE_NAME: $(IOS_DEVICE_NAME)
+          - script: bash ci/steps/collect-artifacts.sh mobilewright
+            displayName: 'Collect artifacts'
+            condition: always()
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload artifacts'
+            condition: always()
+            continueOnError: true
+            inputs:
+              targetPath: artifacts/mobilewright
+              artifact: ahm-artifacts-e2e-mobilewright-ios-reads
+          - script: bash ci/steps/teardown.sh
+            displayName: 'Teardown'
+            condition: always()
+
+      - job: e2e_mobilewright_ios_writes
+        displayName: 'E2E — Mobilewright ios writes'
+        dependsOn: [e2e_mobilewright_android_writes, resolve_omnipizza_release]
+        condition: "and(or(eq('${{ parameters.platform }}', 'all'), eq('${{ parameters.platform }}', 'mobilewright')), in(dependencies.e2e_mobilewright_android_writes.result, 'Succeeded', 'SucceededWithIssues', 'Skipped'), in(dependencies.resolve_omnipizza_release.result, 'Succeeded', 'SucceededWithIssues', 'Skipped'))"
+        pool: { vmImage: 'macOS-latest' }
+        variables:
+          OMNIPIZZA_RELEASE_TAG: $[ dependencies.resolve_omnipizza_release.outputs['fetch.tag'] ]
+          OMNIPIZZA_RELEASE_BASE_URL: $[ dependencies.resolve_omnipizza_release.outputs['fetch.base_url'] ]
+        steps:
+          - checkout: self
+          - task: NodeTool@0
+            displayName: 'Set up Node'
+            inputs: { versionSpec: '22.x' }
+          - script: corepack enable && corepack prepare pnpm@latest --activate
+            displayName: 'Enable pnpm (corepack)'
+          - script: bash ci/steps/setup-environment.sh
+            displayName: 'Install dependencies (setup-environment.sh)'
+          - script: |
+              mkdir -p assets/apps/ios
+              echo "Downloading OmniPizza iOS simulator bundle from release $OMNIPIZZA_RELEASE_TAG"
+              curl -fL "$OMNIPIZZA_RELEASE_BASE_URL/OmniPizza-Simulator.zip" \
+                -o assets/apps/ios/OmniPizza-Simulator.zip
+              ls -lh assets/apps/ios/OmniPizza-Simulator.zip
+            displayName: 'Download iOS simulator artifact'
+          - script: |
+              rm -rf assets/apps/ios/unpacked
+              mkdir -p assets/apps/ios/unpacked
+              unzip -q assets/apps/ios/OmniPizza-Simulator.zip -d assets/apps/ios/unpacked
+              DISCOVERED_IOS_APP_PATH=$(find assets/apps/ios/unpacked -maxdepth 3 -name '*.app' -type d | head -n 1)
+              if [ -z "$DISCOVERED_IOS_APP_PATH" ]; then
+                echo "No .app bundle found inside OmniPizza-Simulator.zip"
+                exit 1
+              fi
+              echo "##vso[task.setvariable variable=DISCOVERED_IOS_APP_PATH]$DISCOVERED_IOS_APP_PATH"
+            displayName: 'Unpack iOS simulator app'
+          - script: |
+              DEVICE_LINE=$(xcrun simctl list devices available | grep -E 'iPhone .*\([A-F0-9-]+\) \((Shutdown|Booted)\)' | head -n 1)
+              if [ -z "$DEVICE_LINE" ]; then
+                echo "No available iPhone simulator found"
+                exit 1
+              fi
+              IOS_DEVICE_NAME=$(echo "$DEVICE_LINE" | sed -E 's/^[[:space:]]*([^()]+)[[:space:]]+\(.*/\1/' | xargs)
+              IOS_UDID=$(echo "$DEVICE_LINE" | sed -E 's/.*\(([A-F0-9-]+)\).*/\1/')
+              echo "##vso[task.setvariable variable=IOS_DEVICE_NAME]$IOS_DEVICE_NAME"
+              echo "##vso[task.setvariable variable=IOS_UDID]$IOS_UDID"
+              xcrun simctl boot "$IOS_UDID" || true
+              xcrun simctl bootstatus "$IOS_UDID" -b
+            displayName: 'Select and boot iOS simulator'
+          - script: |
+              export IOS_APP_PATH="${IOS_APP_PATH:-$DISCOVERED_IOS_APP_PATH}"
+              bash ci/steps/start-stack.sh mobilewright
+            displayName: 'Start proxy + Mobilewright plugin'
+            env:
+              API_BASE_URL: $(API_BASE_URL)
+              PLATFORM: ios
+              DRIVER: mobilewright
+              CAP_PROFILE: ci_ios_headless
+              IOS_APP_PATH: $(IOS_APP_PATH)
+              DISCOVERED_IOS_APP_PATH: $(DISCOVERED_IOS_APP_PATH)
+              IOS_UDID: $(IOS_UDID)
+              IOS_DEVICE_NAME: $(IOS_DEVICE_NAME)
+              PLUGIN_MOBILEWRIGHT: 'true'
+              PLUGIN_API: 'true'
+          - script: |
+              export IOS_APP_PATH="${IOS_APP_PATH:-$DISCOVERED_IOS_APP_PATH}"
+              bash ci/steps/run-suite.sh "@ios and @writes-shared-state" mobilewright ios-writes
+            displayName: 'Run E2E tests'
+            env:
+              API_BASE_URL: $(API_BASE_URL)
+              PLATFORM: ios
+              DRIVER: mobilewright
+              CAP_PROFILE: ci_ios_headless
+              IOS_APP_PATH: $(IOS_APP_PATH)
+              DISCOVERED_IOS_APP_PATH: $(DISCOVERED_IOS_APP_PATH)
+              IOS_UDID: $(IOS_UDID)
+              IOS_DEVICE_NAME: $(IOS_DEVICE_NAME)
+          - script: bash ci/steps/collect-artifacts.sh mobilewright
+            displayName: 'Collect artifacts'
+            condition: always()
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload artifacts'
+            condition: always()
+            continueOnError: true
+            inputs:
+              targetPath: artifacts/mobilewright
+              artifact: ahm-artifacts-e2e-mobilewright-ios-writes
+          - script: bash ci/steps/teardown.sh
+            displayName: 'Teardown'
+            condition: always()
+
+      # -----------------------------------------------------------------
+      # Job: Security — ZAP (profile `zap`, independent, not in the
+      # writes chain). No `@mobsf`/`@zap` tag exists — `@security` is the
+      # hard-gating active-scan suite; `@security-infra` is deliberately
+      # run from BOTH this job and security_mobsf, split by which plugin
+      # is live in each (security-infra.route.ts's own per-plugin checks
+      # make the unused half a non-fatal warning, not a failure). The
+      # second run-suite.sh call is guarded with `succeededOrFailed()`
+      # (Azure equivalent of GHA's `if: success() || failure()`) so it
+      # still runs even if the hard-gating @security step failed.
+      # -----------------------------------------------------------------
+      - job: security_zap
+        displayName: 'Security — ZAP'
+        condition: "or(eq('${{ parameters.platform }}', 'all'), eq('${{ parameters.platform }}', 'security'))"
+        pool: { vmImage: 'ubuntu-latest' }
+        steps:
+          - checkout: self
+          - task: NodeTool@0
+            displayName: 'Set up Node'
+            inputs: { versionSpec: '22.x' }
+          - script: corepack enable && corepack prepare pnpm@latest --activate
+            displayName: 'Enable pnpm (corepack)'
+          - script: bash ci/steps/setup-environment.sh
+            displayName: 'Install dependencies (setup-environment.sh)'
+          - script: bash ci/steps/start-stack.sh zap
+            displayName: 'Start proxy + API + ZAP plugin'
+            env:
+              API_BASE_URL: $(API_BASE_URL)
+              PLATFORM: api
+              DRIVER: api
+              PLUGIN_ZAP: 'true'
+              PLUGIN_API: 'true'
+          - script: bash ci/steps/run-suite.sh "@security" zap security
+            displayName: 'Run security suite (API gate)'
+            env:
+              API_BASE_URL: $(API_BASE_URL)
+              PLATFORM: api
+              DRIVER: api
+              PLUGIN_ZAP: 'true'
+          - script: bash ci/steps/run-suite.sh "@security-infra" zap security-infra
+            displayName: 'Run security-infra suite (ZAP baseline + TLS; MobSF self-skips)'
+            condition: succeededOrFailed()
+            env:
+              BASE_URL: $(BASE_URL)
+              API_BASE_URL: $(API_BASE_URL)
+              PLATFORM: api
+              DRIVER: api
+              PLUGIN_ZAP: 'true'
+          - script: bash ci/steps/collect-artifacts.sh zap
+            displayName: 'Collect artifacts'
+            condition: always()
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload artifacts'
+            condition: always()
+            continueOnError: true
+            inputs:
+              targetPath: artifacts/zap
+              artifact: ahm-artifacts-security-zap
+          - script: bash ci/steps/teardown.sh
+            displayName: 'Teardown'
+            condition: always()
+
+      # -----------------------------------------------------------------
+      # Job: Security — MobSF (profile `mobsf`, independent, not in the
+      # writes chain, but depends on the resolver for both platform
+      # binaries). Downloads Android APK + iOS .app fresh every run (no
+      # caching) so support.security.json's mobile.mobsf[] filePath
+      # entries resolve to real files. `start-stack.sh mobsf` itself
+      # brings up the pinned MobSF container, health-polls it, and
+      # scrapes MOBSF_API_KEY from `docker logs mobsf` — NOT
+      # reimplemented here (ground truth §3/§8). Only ONE run-suite.sh
+      # call (`@security-infra`, no `@security` call — that only happens
+      # in security_zap).
+      # -----------------------------------------------------------------
+      - job: security_mobsf
+        displayName: 'Security — MobSF'
+        dependsOn: resolve_omnipizza_release
+        condition: "and(or(eq('${{ parameters.platform }}', 'all'), eq('${{ parameters.platform }}', 'security')), in(dependencies.resolve_omnipizza_release.result, 'Succeeded', 'SucceededWithIssues', 'Skipped'))"
+        pool: { vmImage: 'ubuntu-latest' }
+        variables:
+          OMNIPIZZA_RELEASE_TAG: $[ dependencies.resolve_omnipizza_release.outputs['fetch.tag'] ]
+          OMNIPIZZA_RELEASE_BASE_URL: $[ dependencies.resolve_omnipizza_release.outputs['fetch.base_url'] ]
+        steps:
+          - checkout: self
+          - task: NodeTool@0
+            displayName: 'Set up Node'
+            inputs: { versionSpec: '22.x' }
+          - script: corepack enable && corepack prepare pnpm@latest --activate
+            displayName: 'Enable pnpm (corepack)'
+          - script: bash ci/steps/setup-environment.sh
+            displayName: 'Install dependencies (setup-environment.sh)'
+          # filePath must match support.security.json's mobile.mobsf[] entries
+          # exactly: "assets/apps/android/omnipizza-release.apk" — NOT renamed
+          # to app-release.apk the way e2e-android's own copy is.
+          - script: |
+              mkdir -p assets/apps/android
+              echo "Downloading OmniPizza Android APK from release $OMNIPIZZA_RELEASE_TAG"
+              curl -fL "$OMNIPIZZA_RELEASE_BASE_URL/omnipizza-release.apk" \
+                -o assets/apps/android/omnipizza-release.apk
+              ls -lh assets/apps/android/omnipizza-release.apk
+            displayName: 'Download Android APK for MobSF scan'
+          # support.security.json's ios mobsf entry expects a literal .app
+          # DIRECTORY at "assets/apps/ios/OmniPizza.app" — no booted
+          # simulator or macOS runner needed, MobSF only reads the static
+          # bundle on disk.
+          - script: |
+              mkdir -p assets/apps/ios
+              echo "Downloading OmniPizza iOS simulator bundle from release $OMNIPIZZA_RELEASE_TAG"
+              curl -fL "$OMNIPIZZA_RELEASE_BASE_URL/OmniPizza-Simulator.zip" \
+                -o assets/apps/ios/OmniPizza-Simulator.zip
+              rm -rf assets/apps/ios/unpacked assets/apps/ios/OmniPizza.app
+              mkdir -p assets/apps/ios/unpacked
+              unzip -q assets/apps/ios/OmniPizza-Simulator.zip -d assets/apps/ios/unpacked
+              APP_PATH=$(find assets/apps/ios/unpacked -maxdepth 3 -name '*.app' -type d | head -n 1)
+              if [ -z "$APP_PATH" ]; then
+                echo "No .app bundle found inside OmniPizza-Simulator.zip"
+                exit 1
+              fi
+              cp -R "$APP_PATH" assets/apps/ios/OmniPizza.app
+              ls -ld assets/apps/ios/OmniPizza.app
+            displayName: 'Download + unpack iOS app for MobSF scan'
+          - script: bash ci/steps/start-stack.sh mobsf
+            displayName: 'Start proxy + API + MobSF plugin'
+            env:
+              API_BASE_URL: $(API_BASE_URL)
+              PLATFORM: api
+              DRIVER: api
+              PLUGIN_MOBSF: 'true'
+              PLUGIN_API: 'true'
+              MOBSF_URL: http://127.0.0.1:8000
+          - script: bash ci/steps/run-suite.sh "@security-infra" mobsf security-infra
+            displayName: 'Run security-infra suite (MobSF static scan)'
+            env:
+              API_BASE_URL: $(API_BASE_URL)
+              PLATFORM: api
+              DRIVER: api
+              PLUGIN_MOBSF: 'true'
+              MOBSF_URL: http://127.0.0.1:8000
+          - script: bash ci/steps/collect-artifacts.sh mobsf
+            displayName: 'Collect artifacts'
+            condition: always()
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload artifacts'
+            condition: always()
+            continueOnError: true
+            inputs:
+              targetPath: artifacts/mobsf
+              artifact: ahm-artifacts-security-mobsf
+          - script: docker rm -f mobsf 2>/dev/null || true
+            displayName: 'Stop MobSF container'
+            condition: always()
+          - script: bash ci/steps/teardown.sh
+            displayName: 'Teardown'
+            condition: always()
+
+      # -----------------------------------------------------------------
+      # Job: Perf — Gatling (profile `gatling`, independent). Deviates
+      # from the vanilla sequence: `start-stack.sh gatling` is a
+      # documented no-op (kept for Template Method symmetry), the actual
+      # simulation runs via `pnpm perf:<profile>` directly, NOT run-suite.sh.
+      # -----------------------------------------------------------------
+      - job: perf_gatling
+        displayName: 'Perf — Gatling ${{ parameters.perfProfile }}'
+        condition: "or(eq('${{ parameters.platform }}', 'all'), eq('${{ parameters.platform }}', 'perf'), eq('${{ parameters.platform }}', 'gatling'))"
+        pool: { vmImage: 'ubuntu-latest' }
+        steps:
+          - checkout: self
+          - task: NodeTool@0
+            displayName: 'Set up Node'
+            inputs: { versionSpec: '22.x' }
+          - script: corepack enable && corepack prepare pnpm@latest --activate
+            displayName: 'Enable pnpm (corepack)'
+          - script: bash ci/steps/setup-environment.sh
+            displayName: 'Install dependencies (setup-environment.sh)'
+          - script: bash ci/steps/start-stack.sh gatling
+            displayName: 'Start stack (documented no-op, kept for Template Method symmetry)'
+          - script: pnpm perf:${{ parameters.perfProfile }}
+            displayName: 'Run simulation'
+            env:
+              API_BASE_URL: $(API_BASE_URL)
+              PERF_USERS: ${{ parameters.perfUsers }}
+              PERF_DURATION: ${{ parameters.perfDuration }}
+              LANGUAGE: en
+          - script: bash ci/steps/collect-artifacts.sh gatling
+            displayName: 'Collect artifacts'
+            condition: always()
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload artifacts'
+            condition: always()
+            continueOnError: true
+            inputs:
+              targetPath: artifacts/gatling
+              artifact: ahm-artifacts-perf-gatling-${{ parameters.perfProfile }}
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload Gatling HTML report'
+            condition: always()
+            continueOnError: true
+            inputs:
+              targetPath: target/gatling
+              artifact: gatling-report-${{ parameters.perfProfile }}
+          - script: bash ci/steps/teardown.sh
+            displayName: 'Teardown'
+            condition: always()
+
+      # -----------------------------------------------------------------
+      # Job: WebdriverIO (profile `webdriverio`) — split reads/writes.
+      # Single browser (chromium) — no browser matrix, matching
+      # ci/pipeline.config.json's matrix declaration for this profile.
+      # `_writes` is the ninth (final) link in the writes chain.
+      # start-stack.sh's `webdriverio` arm brings up its own
+      # selenium/standalone-chrome container via `docker run -d` — NOT
+      # the job's own Azure `container:` field (ground truth §2).
+      # -----------------------------------------------------------------
+      - job: e2e_webdriverio_reads
+        displayName: 'E2E — WebdriverIO reads'
+        condition: "or(eq('${{ parameters.platform }}', 'all'), eq('${{ parameters.platform }}', 'webdriverio'))"
+        pool: { vmImage: 'ubuntu-latest' }
+        steps:
+          - checkout: self
+          - task: NodeTool@0
+            displayName: 'Set up Node'
+            inputs: { versionSpec: '22.x' }
+          - script: corepack enable && corepack prepare pnpm@latest --activate
+            displayName: 'Enable pnpm (corepack)'
+          - script: bash ci/steps/setup-environment.sh
+            displayName: 'Install dependencies (setup-environment.sh)'
+          - script: bash ci/steps/start-stack.sh webdriverio
+            displayName: 'Start proxy + plugins'
+            env:
+              BASE_URL: $(BASE_URL)
+              API_BASE_URL: $(API_BASE_URL)
+              BROWSER: chromium
+              PLATFORM: web
+              VIEWPORT: desktop
+              DRIVER: webdriverio
+              PLUGIN_WEBDRIVERIO: 'true'
+              PLUGIN_API: 'true'
+          - script: bash ci/steps/run-suite.sh "@desktop and not @writes-shared-state" webdriverio reads
+            displayName: 'Run E2E tests'
+            env:
+              BASE_URL: $(BASE_URL)
+              API_BASE_URL: $(API_BASE_URL)
+              BROWSER: chromium
+              PLATFORM: web
+              VIEWPORT: desktop
+              DRIVER: webdriverio
+              PROXY_ADDRESS: 127.0.0.1:50051
+          - script: bash ci/steps/collect-artifacts.sh webdriverio
+            displayName: 'Collect artifacts'
+            condition: always()
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload artifacts'
+            condition: always()
+            continueOnError: true
+            inputs:
+              targetPath: artifacts/webdriverio
+              artifact: ahm-artifacts-e2e-webdriverio-reads
+          - script: bash ci/steps/teardown.sh
+            displayName: 'Teardown'
+            condition: always()
+
+      - job: e2e_webdriverio_writes
+        displayName: 'E2E — WebdriverIO writes'
+        dependsOn: e2e_mobilewright_ios_writes
+        condition: "and(or(eq('${{ parameters.platform }}', 'all'), eq('${{ parameters.platform }}', 'webdriverio')), in(dependencies.e2e_mobilewright_ios_writes.result, 'Succeeded', 'SucceededWithIssues', 'Skipped'))"
+        pool: { vmImage: 'ubuntu-latest' }
+        steps:
+          - checkout: self
+          - task: NodeTool@0
+            displayName: 'Set up Node'
+            inputs: { versionSpec: '22.x' }
+          - script: corepack enable && corepack prepare pnpm@latest --activate
+            displayName: 'Enable pnpm (corepack)'
+          - script: bash ci/steps/setup-environment.sh
+            displayName: 'Install dependencies (setup-environment.sh)'
+          - script: bash ci/steps/start-stack.sh webdriverio
+            displayName: 'Start proxy + plugins'
+            env:
+              BASE_URL: $(BASE_URL)
+              API_BASE_URL: $(API_BASE_URL)
+              BROWSER: chromium
+              PLATFORM: web
+              VIEWPORT: desktop
+              DRIVER: webdriverio
+              PLUGIN_WEBDRIVERIO: 'true'
+              PLUGIN_API: 'true'
+          - script: bash ci/steps/run-suite.sh "@desktop and @writes-shared-state" webdriverio writes
+            displayName: 'Run E2E tests'
+            env:
+              BASE_URL: $(BASE_URL)
+              API_BASE_URL: $(API_BASE_URL)
+              BROWSER: chromium
+              PLATFORM: web
+              VIEWPORT: desktop
+              DRIVER: webdriverio
+              PROXY_ADDRESS: 127.0.0.1:50051
+          - script: bash ci/steps/collect-artifacts.sh webdriverio
+            displayName: 'Collect artifacts'
+            condition: always()
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload artifacts'
+            condition: always()
+            continueOnError: true
+            inputs:
+              targetPath: artifacts/webdriverio
+              artifact: ahm-artifacts-e2e-webdriverio-writes
+          - script: bash ci/steps/teardown.sh
+            displayName: 'Teardown'
+            condition: always()
+
+      # -----------------------------------------------------------------
+      # Job: Cypress (profile `cypress`, independent). NOT a gRPC plugin
+      # peer — calls NONE of the 5 shared scripts except
+      # setup-environment.sh (needs pnpm/node_modules present). Runs
+      # `pnpm run test:cypress:desktop` directly and uploads Cypress's
+      # own screenshots/videos folders instead of calling
+      # collect-artifacts.sh (whose non-TOM branch exits 1 on an empty
+      # results/, which Cypress never populates) — ground truth §3.
+      # -----------------------------------------------------------------
+      - job: e2e_cypress
+        displayName: 'E2E — Cypress Desktop'
+        condition: "or(eq('${{ parameters.platform }}', 'all'), eq('${{ parameters.platform }}', 'cypress'))"
+        pool: { vmImage: 'ubuntu-latest' }
+        steps:
+          - checkout: self
+          - task: NodeTool@0
+            displayName: 'Set up Node'
+            inputs: { versionSpec: '22.x' }
+          - script: corepack enable && corepack prepare pnpm@latest --activate
+            displayName: 'Enable pnpm (corepack)'
+          - script: bash ci/steps/setup-environment.sh
+            displayName: 'Install dependencies (setup-environment.sh)'
+          - script: pnpm run test:cypress:desktop
+            displayName: 'Run Cypress suite'
+            env:
+              BASE_URL: $(BASE_URL)
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload Cypress screenshots'
+            condition: always()
+            continueOnError: true
+            inputs:
+              targetPath: src/plugins/cypress/screenshots
+              artifact: ahm-artifacts-e2e-cypress-screenshots
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload Cypress videos'
+            condition: always()
+            continueOnError: true
+            inputs:
+              targetPath: src/plugins/cypress/videos
+              artifact: ahm-artifacts-e2e-cypress-videos
