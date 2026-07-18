@@ -8,6 +8,55 @@
     { "profile": "playwright-visual-responsive", "requiredSecrets": ["API_BASE_URL", "BASE_URL"], "requiredVars": [], "artifacts": ["artifacts/playwright-visual-responsive/**"], "matrix": {} },
     { "profile": "android", "requiredSecrets": ["API_BASE_URL"], "requiredVars": [], "artifacts": ["artifacts/android/**"], "matrix": { "suite": ["reads", "writes"] } },
     { "profile": "ios", "requiredSecrets": ["API_BASE_URL"], "requiredVars": ["IOS_APP_PATH"], "artifacts": ["artifacts/ios/**"], "matrix": { "suite": ["reads", "writes"] } },
-    { "profile": "gatling", "requiredSecrets": ["API_BASE_URL"], "requiredVars": [], "artifacts": ["artifacts/gatling/**"], "matrix": {} }
+    { "profile": "gatling", "requiredSecrets": ["API_BASE_URL"], "requiredVars": [], "artifacts": ["artifacts/gatling/**"], "matrix": {} },
+    {
+      "profile": "mobilewright",
+      "requiredSecrets": ["API_BASE_URL"],
+      "requiredVars": [],
+      "artifacts": ["artifacts/mobilewright/**"],
+      "matrix": { "platform": ["android", "ios"], "suite": ["reads", "writes"] },
+      "mobilewrightNeedsAppiumServer": false,
+      "notes": "mobilewright does not need an Appium server underneath (mobilewright-adapter.ts / mobilewright-lifecycle.ts drive devices via `mobilecli`, not an Appium server or webdriverio remote()) — start-stack.sh's mobilewright arm never starts or waits on an Appium daemon. KNOWN GAP: src/devices/docker_android.json and src/devices/ci_ios_headless.json only list \"appium\" in compatibleDrivers, so e2e-mobilewright is wired but will fail at DeviceLoader.forWorker() until \"mobilewright\" is added to those passports' compatibleDrivers arrays (device JSON files are out of this task's file scope; mobilewright-adapter.ts already tolerates a passport with no mobilewright config block via `passport.mobilewright ?? {}`, so the array entry alone would be sufficient)."
+    },
+    {
+      "profile": "zap",
+      "requiredSecrets": ["API_BASE_URL"],
+      "requiredVars": [],
+      "artifacts": ["artifacts/zap/**"],
+      "matrix": {},
+      "notes": "No @mobsf (or @zap) tag exists in this codebase. @security is the hard-gating ZAP active-scan suite; @security-infra (ZAP baseline + TLS + MobSF in one scenario) is deliberately run from both this job and the mobsf job below, split by which plugin is actually live in each — security-infra.route.ts's own per-plugin enabled checks (PLUGIN_ZAP/PLUGIN_MOBSF) make the unused half a non-fatal log.warn, not a failure."
+    },
+    {
+      "profile": "mobsf",
+      "requiredSecrets": ["API_BASE_URL"],
+      "requiredVars": [],
+      "artifacts": ["artifacts/mobsf/**"],
+      "matrix": {},
+      "image": "opensecurity/mobile-security-framework-mobsf:v3.9.7",
+      "notes": "Image pinned (not :latest) for CI reproducibility, mirroring this repo's existing Playwright image pin. @security-infra is the only suite that exercises MobSF; the ZAP-baseline/TLS portions of that same scenario self-skip or still run per security-infra.route.ts's own per-plugin checks. KNOWN LIMITATION: this job does not download the OmniPizza APK/IPA (no resolve-omnipizza-release dependency), so runMobsfScans() will log-and-skip (non-fatal) resolveArtifact() failures rather than actually scan a binary — the job goes green but performs no real static scan until an APK/IPA download step is added."
+    },
+    {
+      "profile": "a11y",
+      "requiredSecrets": ["API_BASE_URL", "BASE_URL"],
+      "requiredVars": [],
+      "artifacts": ["artifacts/a11y/**"],
+      "matrix": {},
+      "notes": "Axe rides the existing 'web' start-stack.sh arm via PLUGIN_AXE=true forwarded into the Playwright plugin process's own startup env — there is no dedicated a11y start-stack.sh case arm, port, or PLUGIN_ADDRESSES entry."
+    },
+    {
+      "profile": "cypress",
+      "requiredSecrets": ["API_BASE_URL", "BASE_URL"],
+      "requiredVars": [],
+      "artifacts": ["artifacts/cypress/**"],
+      "matrix": {},
+      "notes": "Cypress is not a gRPC plugin peer (Option A) — no port, no start-stack.sh/run-suite.sh case arm. e2e-cypress runs `pnpm run test:cypress:desktop` directly and never calls start-stack.sh, collect-artifacts.sh, or teardown.sh (collect-artifacts.sh's non-TOM branch exit-1's on an empty results/, which Cypress never populates). This entry exists for descriptive secret/artifact metadata only."
+    },
+    {
+      "profile": "webdriverio",
+      "requiredSecrets": ["API_BASE_URL", "BASE_URL"],
+      "requiredVars": [],
+      "artifacts": ["artifacts/webdriverio/**"],
+      "matrix": { "suite": ["reads", "writes"] }
+    }
   ]
 }

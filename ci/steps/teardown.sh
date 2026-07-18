@@ -4,7 +4,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 source ci/steps/lib/common.sh
 
-for p in 50051 50052 50053 50054 50055 50056 50057 50058 50059; do
+for p in 50051 50052 50053 50054 50055 50056 50057 50058 50059 50060; do
     kill_port "$p"
 done
 if ! is_windows_bash; then
