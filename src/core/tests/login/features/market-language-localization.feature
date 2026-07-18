@@ -28,6 +28,6 @@ Feature: Market-driven language localization across login + post-login UI
   # single, non-outline scenario (not folded into the Outline above) so the
   # (expensive) scan runs exactly once, not once per market/language example.
   @security @api
-  Scenario: The authenticated API surface passes the automated security gate
+  Scenario: The authenticated backend has no unresolved security vulnerabilities
     Given the OmniPizza user is logged in as "standard_user"
-    Then the API surface passes the automated security gate
+    Then the authenticated backend has no unresolved security vulnerabilities

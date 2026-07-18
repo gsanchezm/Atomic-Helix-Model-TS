@@ -55,7 +55,7 @@ Then('the login error message contains {string}', async function (expected: stri
 // step, not an After hook — same rationale as the accessibility gate. The
 // explicit timeout overrides this file's 120s default: a ZAP active scan +
 // schema fuzz against the live API runs for minutes, not seconds.
-Then('the API surface passes the automated security gate', { timeout: 30 * 60_000 }, async function () {
+Then('the authenticated backend has no unresolved security vulnerabilities', { timeout: 30 * 60_000 }, async function () {
     await route(this).verifySecurityGate();
 });
 
