@@ -244,7 +244,10 @@ jobs:
   # API call is skipped when only API/Web/Perf are dispatched. `mobilewright`
   # is included here too — e2e-mobilewright downloads the same OmniPizza
   # APK/simulator bundle as e2e-android/e2e-ios and consumes this job's
-  # outputs the same way.
+  # outputs the same way. `security` is included too — security-mobsf needs
+  # this job's outputs to download both platform binaries for its static
+  # scan; without this, a `platform=security` dispatch would skip this
+  # resolver and cascade-skip security-mobsf (which `needs:` it).
   # ---------------------------------------------------------------------------
   resolve-omnipizza-release:
     name: Resolve — OmniPizza latest release
@@ -259,6 +262,7 @@ jobs:
       || inputs.platform == 'appium-android'
       || inputs.platform == 'appium-ios'
       || inputs.platform == 'mobilewright'
+      || inputs.platform == 'security'
     outputs:
       tag: ${{ steps.fetch.outputs.tag }}
       base_url: ${{ steps.fetch.outputs.base_url }}
@@ -1847,18 +1851,15 @@ jobs:
   # ---------------------------------------------------------------------------
   # Job: Security — MobSF (long-lived server, MobSF half of the infra scan)
   #
-  # KNOWN LIMITATION (not fixed in this task, flagged rather than silently
-  # worked around): this job does not download the OmniPizza APK/IPA (no
-  # resolve-omnipizza-release dependency or asset-download step). Without a
-  # binary on disk, security-infra.route.ts's runMobsfScans() ->
-  # resolveArtifact() throws "app artifact not found", which scanOne() logs
-  # and swallows (non-fatal) — so this job goes green but performs no real
-  # static scan today. Wiring the download (mirroring e2e-android's
-  # "Download Android app artifact" step) is a follow-up, not this task.
+  # Downloads both the Android APK and the iOS .app bundle fresh every run
+  # (no caching) so support.security.json's `mobile.mobsf[]` entries resolve
+  # to real files — see the two download steps below. Runs entirely on
+  # ubuntu-latest: MobSF only needs the static .app bundle on disk, not a
+  # booted simulator, so the iOS leg needs no macOS runner.
   # ---------------------------------------------------------------------------
   security-mobsf:
     name: Security — MobSF
-    needs: gate-security
+    needs: [gate-security, resolve-omnipizza-release]
     runs-on: ubuntu-latest
     concurrency:
       group: ${{ format('security-mobsf-{0}-{1}', github.run_id, github.run_attempt) }}
@@ -1889,6 +1890,45 @@ jobs:
           restore-keys: pnpm-${{ runner.os }}-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # filePath must match support.security.json's `mobile.mobsf[]` entries
+      # exactly: "assets/apps/android/omnipizza-release.apk" — NOT renamed to
+      # app-release.apk the way e2e-android's own copy is.
+      - name: Download Android APK for MobSF scan
+        env:
+          OMNIPIZZA_RELEASE_BASE_URL: ${{ needs.resolve-omnipizza-release.outputs.base_url }}
+          OMNIPIZZA_RELEASE_TAG: ${{ needs.resolve-omnipizza-release.outputs.tag }}
+        run: |
+          mkdir -p assets/apps/android
+          echo "Downloading OmniPizza Android APK from release ${OMNIPIZZA_RELEASE_TAG}"
+          curl -fL "$OMNIPIZZA_RELEASE_BASE_URL/omnipizza-release.apk" \
+            -o assets/apps/android/omnipizza-release.apk
+          ls -lh assets/apps/android/omnipizza-release.apk
+
+      # support.security.json's ios mobsf entry expects a literal .app
+      # DIRECTORY at "assets/apps/ios/OmniPizza.app" (security-infra.route.ts's
+      # resolveArtifact()/packageIpa() check `statSync(abs).isDirectory() &&
+      # abs.endsWith('.app')`). No booted simulator or macOS runner needed —
+      # MobSF only reads the static bundle on disk.
+      - name: Download + unpack iOS app for MobSF scan
+        env:
+          OMNIPIZZA_RELEASE_BASE_URL: ${{ needs.resolve-omnipizza-release.outputs.base_url }}
+          OMNIPIZZA_RELEASE_TAG: ${{ needs.resolve-omnipizza-release.outputs.tag }}
+        run: |
+          mkdir -p assets/apps/ios
+          echo "Downloading OmniPizza iOS simulator bundle from release ${OMNIPIZZA_RELEASE_TAG}"
+          curl -fL "$OMNIPIZZA_RELEASE_BASE_URL/OmniPizza-Simulator.zip" \
+            -o assets/apps/ios/OmniPizza-Simulator.zip
+          rm -rf assets/apps/ios/unpacked assets/apps/ios/OmniPizza.app
+          mkdir -p assets/apps/ios/unpacked
+          unzip -q assets/apps/ios/OmniPizza-Simulator.zip -d assets/apps/ios/unpacked
+          APP_PATH=$(find assets/apps/ios/unpacked -maxdepth 3 -name '*.app' -type d | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            echo "No .app bundle found inside OmniPizza-Simulator.zip"
+            exit 1
+          fi
+          cp -R "$APP_PATH" assets/apps/ios/OmniPizza.app
+          ls -ld assets/apps/ios/OmniPizza.app
 
       # Brings up its own MobSF container (docker run -d --name mobsf ...,
       # pinned image opensecurity/mobile-security-framework-mobsf:v3.9.7),
@@ -2163,7 +2203,6 @@ jobs:
     env:
       TOOL_NAME: cypress
       PLATFORM: web
-      DRIVER: webdriverio
       TOM_RUN_ID: >-
         ${{ inputs.architecture_type == 'TOM'
             && format('tom-{0}-{1}-{2}-cypress', github.run_id, github.run_attempt, inputs.run_index || github.run_attempt)

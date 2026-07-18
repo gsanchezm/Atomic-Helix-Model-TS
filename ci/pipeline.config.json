@@ -20,7 +20,7 @@
     },
     {
       "profile": "zap",
-      "requiredSecrets": ["API_BASE_URL"],
+      "requiredSecrets": ["API_BASE_URL", "BASE_URL"],
       "requiredVars": [],
       "artifacts": ["artifacts/zap/**"],
       "matrix": {},
@@ -33,7 +33,7 @@
       "artifacts": ["artifacts/mobsf/**"],
       "matrix": {},
       "image": "opensecurity/mobile-security-framework-mobsf:v3.9.7",
-      "notes": "Image pinned (not :latest) for CI reproducibility, mirroring this repo's existing Playwright image pin. @security-infra is the only suite that exercises MobSF; the ZAP-baseline/TLS portions of that same scenario self-skip or still run per security-infra.route.ts's own per-plugin checks. KNOWN LIMITATION: this job does not download the OmniPizza APK/IPA (no resolve-omnipizza-release dependency), so runMobsfScans() will log-and-skip (non-fatal) resolveArtifact() failures rather than actually scan a binary — the job goes green but performs no real static scan until an APK/IPA download step is added."
+      "notes": "Image pinned (not :latest) for CI reproducibility, mirroring this repo's existing Playwright image pin. @security-infra is the only suite that exercises MobSF; the ZAP-baseline/TLS portions of that same scenario self-skip or still run per security-infra.route.ts's own per-plugin checks. security-mobsf depends on resolve-omnipizza-release and downloads both the Android APK (assets/apps/android/omnipizza-release.apk) and the iOS .app bundle (assets/apps/ios/OmniPizza.app) fresh every run, matching support.security.json's mobile.mobsf[] filePath entries exactly, so runMobsfScans() has a real binary to analyze on both platforms."
     },
     {
       "profile": "a11y",
