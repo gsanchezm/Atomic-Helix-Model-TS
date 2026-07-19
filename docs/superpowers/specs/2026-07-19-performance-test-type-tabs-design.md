@@ -6,7 +6,7 @@
 ## 1. Goals
 
 - Add a fixed-order, always-visible 6-tab strip to `PerformanceDetail.tsx` (Load/Stress/Endurance/Spike/Scalability/Volume), each with its own hand-rolled SVG icon, mirroring the existing `.platform-tabs` visual pattern used elsewhere (Android/iOS, browser tabs).
-- Classify each ingested Gatling simulation into one of the 6 types by its name suffix (`checkout-load` → `load`), reusing the naming convention the simulation files already follow — no changes needed to existing `*.gatling.ts` files.
+- Classify each ingested Gatling simulation into one of the 6 types by its name suffix (`checkout-load` → `load`), reusing the naming convention the simulation files already follow — no changes needed to existing `*.gatling.ts` files. **Known current-data limitation** (see §3): every existing perf script reuses one `<feature>-load.gatling.ts` file across `smoke`/`load`/`stress` via the `PERF_PROFILE` env var, and Gatling's report is always named after the `--simulation` id, never the profile — so a `pnpm perf:stress` run today still reports as `checkout-load` and lands in the Load tab, indistinguishable from an actual load run. The classifier is correct going forward once per-type simulation files exist (the deferred execution-side work); it does not retroactively split today's conflated load/stress data.
 - Per tab, show the real client-side metrics Gatling's HTML report actually contains (throughput, avg/p95/p99/max response time, error rate, request count), re-emphasized per test type to match testing vocabulary (e.g. Stress leads with error rate + peak throughput; Spike leads with max latency).
 - Per tab, show an honest "not yet available" panel listing the metrics from the original spec that this phase cannot produce (things needing raw per-request time-series parsing, multi-run comparison, or a server-side metrics source that doesn't exist in this repo) — no fabricated numbers.
 - Two new real fields surface in `PerfBlock` (`p75Ms`, `maxMs`) — both already parsed from Gatling's HTML table today but previously discarded.
@@ -26,7 +26,7 @@
 |---|---|---|
 | Scope | Dashboard/visualization only. | User-selected; execution-side profile work is a separate, larger task. |
 | Server-side metrics | Reserved placeholder UI, "no data" state, no mock numbers. | User-selected; avoids fabricating data with no real source. |
-| Type classification | Simulation-name suffix (`-load`, `-stress`, ...), matching the existing `<feature>-load.gatling.ts` convention. | User-selected; zero changes needed to existing simulation files, consistent with how the repo already names things. |
+| Type classification | Simulation-name suffix (`-load`, `-stress`, ...), matching the existing `<feature>-load.gatling.ts` convention. | User-selected, re-confirmed after discovering that today's perf scripts reuse one file per feature across `smoke`/`load`/`stress` via the `PERF_PROFILE` env var — so on *current* data, load and stress runs report under the same name and both land in the Load tab (see §1). Suffix classification is still the correct forward design: it works cleanly once per-type simulation files exist, which is exactly the deferred execution-side work. The alternative (a sidecar file recording the actual `PERF_PROFILE` per run) was considered and explicitly rejected as a scope increase into execution-side code. |
 | Icons | Hand-rolled inline SVG per type, no external image assets. | User-selected; matches the existing hand-rolled SVG convention (`Speedometer.tsx`) and avoids depending on unavailable image sources. |
 | UI language | English. | Matches 100% of existing dashboard copy ("Performance gauges", "Simulations", etc.); no code-switching mid-dashboard. |
 | Reuse `TabbedTestDetail`? | No — new lightweight `PerfTypeTabs` component reusing only the `.platform-tabs` CSS class. | `TabbedTestDetail` is tightly coupled to `Counts & { tests: TestCase[] }` (donut, filter bar, test table) — forcing gauges through it would require an awkward adapter shape or would regress the Android/iOS/browser tabs it already serves. |
@@ -106,7 +106,7 @@ export interface PerformanceTool extends BaseTool {
   6. `passed`/`failed` — unchanged, computed across all scenarios' steps as today.
   7. Return `{ ...existing top-level fields, perf, byType, ...(unclassified && { unclassified }) }`.
 
-Existing simulations (`checkout-load`, `catalog-load`, `login-load`, `invalid-login-load`, `pizzaBuilder-load`, `profile-load`, `order-success-load`) all match `-load` today, so they populate the Load tab with zero changes to the simulation files; the other 5 tabs render their "0 runs" empty state until matching simulations exist.
+Existing simulations (`checkout-load`, `catalog-load`, `login-load`, `invalid-login-load`, `pizzaBuilder-load`, `profile-load`, `order-success-load`) all match `-load` today, so they populate the Load tab with zero changes to the simulation files; the other 5 tabs render their "0 runs" empty state until matching simulations exist. Because every one of these files is also the one `pnpm perf:stress`/`pnpm perf:smoke` runs (via `PERF_PROFILE`, not a distinct filename), a stress or smoke run of e.g. `checkout-load` reports under the same name and lands in this same Load tab today — the Load/Stress split only becomes accurate once dedicated per-type simulation files exist.
 
 ## 6. Client UI
 
