@@ -1052,9 +1052,13 @@ git commit -m "feat(dashboard): add /efficiency view with nav link"
 - Consumes: `scripts/write-timing.js` (Task 5) via its CLI entry point.
 - Produces: `reports/<runId>/timing/<tool>-<subtype>.json` for every phase, consumed by Task 11's ingest wiring.
 
-- [ ] **Step 1: Replace the file with the extended version**
+**Correction discovered during implementation, before writing this task's code**: the plan's original design assumed Playwright+WebdriverIO (and Mobilewright+Appium, and ZAP+MobSF) could share one running stack and execute concurrently, relying on the write-lock for correctness. Reading `ci/steps/start-stack.sh` in full during implementation disproved this: **every single profile** (`api`, `web`, `android`, `ios`, `mobilewright`, `zap`, `mobsf`, `webdriverio`) independently runs `run_bg proxy.log src/kernel/chaos-proxy.ts` — each starts its *own* chaos-proxy attempt on the hardcoded port 50051. There is no shared-stack mechanism; CI's apparent parallelism (e.g. running the `zap` and `mobsf` jobs "concurrently") only works because each GitHub Actions job runs on a separate runner (separate machine, separate port space) — a local machine has exactly one port 50051. Two `start-stack.sh` calls for different profiles running at the same time on this machine would collide.
 
-The full new file (every existing phase preserved; `run_timed` wrapper added; WebdriverIO added to the Web phase; Mobile, full 3-profile Gatling, API, Accessibility, and Security phases added; order matches the requested Web → Mobile → Performance → API → Visual → Accessibility → Security sequence):
+**Corrected design**: every one of the 7 categories runs fully sequentially — its own `start-stack.sh <profile>` → run → `teardown.sh` cycle, one at a time, in the requested order. This is a real, evidence-based answer to "parallelize where possible": given this architecture, essentially nothing among the 9 tool invocations is safe to run concurrently locally (Gatling is the only standalone one, and its own smoke/load/stress profiles must stay sequential anyway per the backend-contention reasoning in the spec). The user should be told this plainly — it's a smaller amount of real parallelism than either of us assumed going in.
+
+- [ ] **Step 1: Replace the file with the corrected, fully-sequential version**
+
+The full new file (every existing phase preserved; `run_timed` wrapper added; WebdriverIO, Mobile, full 3-profile Gatling, API, Accessibility, and Security phases added — all sequential; order matches the requested Web → Mobile → Performance → API → Visual → Accessibility → Security sequence):
 
 ```bash
 #!/usr/bin/env bash
@@ -1065,6 +1069,12 @@ The full new file (every existing phase preserved; `run_timed` wrapper added; We
 # duration to reports/<runId>/timing/<tool>-<subtype>.json for the dashboard's
 # Tool Efficiency section. Continues through test failures (we want results
 # captured even if some scenarios fail; retry:1 in cucumber.js absorbs cold-start flakes).
+#
+# Fully sequential by design: ci/steps/start-stack.sh's every profile (api,
+# web, android, ios, mobilewright, zap, mobsf, webdriverio) independently
+# starts its own chaos-proxy on the hardcoded port 50051 -- there is no
+# shared-stack mechanism, so two profiles cannot run at once on one machine
+# (CI's apparent parallelism relies on separate runners, not a shared proxy).
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -1102,20 +1112,14 @@ run_timed() {
 # durable record and are untouched; only the top-level scratch is cleared.
 rm -f reports/android.json reports/ios.json
 
-# ==================== 1. WEB (desktop + responsive, Playwright then WebdriverIO) ====================
+# ==================== 1. WEB (desktop + responsive Playwright, then WebdriverIO) ====================
 say "PHASE 1a — web desktop: starting stack"
 if PLATFORM=web VIEWPORT=desktop DRIVER=playwright HEADLESS=true PLUGIN_PLAYWRIGHT=true PLUGIN_PIXELMATCH=false bash ci/steps/start-stack.sh web; then
-  say "PHASE 1a — stack up; running Playwright @desktop + WebdriverIO concurrently"
-  ( PLATFORM=web VIEWPORT=desktop DRIVER=playwright HEADLESS=true PLUGIN_PIXELMATCH=false \
-      run_timed playwright web_ui desktop bash ci/steps/run-suite.sh "@desktop" playwright-desktop \
-      > "$LOG/phase1a-playwright.log" 2>&1 ) &
-  PW_PID=$!
-  ( PLATFORM=web VIEWPORT=desktop DRIVER=webdriverio HEADLESS=true \
-      run_timed webdriverio web_ui web bash ci/steps/run-suite.sh "@desktop" webdriverio \
-      > "$LOG/phase1a-webdriverio.log" 2>&1 ) &
-  WDIO_PID=$!
-  wait "$PW_PID"; say "PHASE 1a — playwright exit=$? ($(grep -aoE '[0-9]+ scenarios \([^)]*\)' "$LOG/phase1a-playwright.log" | tail -1))"
-  wait "$WDIO_PID"; say "PHASE 1a — webdriverio exit=$? ($(grep -aoE '[0-9]+ scenarios \([^)]*\)' "$LOG/phase1a-webdriverio.log" | tail -1))"
+  say "PHASE 1a — stack up; running cucumber @desktop"
+  PLATFORM=web VIEWPORT=desktop DRIVER=playwright HEADLESS=true PLUGIN_PIXELMATCH=false \
+    run_timed playwright web_ui desktop bash ci/steps/run-suite.sh "@desktop" playwright-desktop \
+    > "$LOG/phase1a.log" 2>&1
+  say "PHASE 1a — cucumber exit=$? ($(grep -aoE '[0-9]+ scenarios \([^)]*\)' "$LOG/phase1a.log" | tail -1))"
 else
   say "PHASE 1a — STACK FAILED to come up (see proxy/playwright/api logs)"
 fi
@@ -1133,31 +1137,49 @@ else
 fi
 bash ci/steps/teardown.sh
 
-# ==================== 2. MOBILE (Mobilewright + Appium concurrently) ====================
-say "PHASE 2 — android: pre-flight (adb device + Appium daemon :4723)"
+say "PHASE 1c — webdriverio: starting stack (brings up its own selenium-standalone container)"
+if PLATFORM=web DRIVER=webdriverio bash ci/steps/start-stack.sh webdriverio; then
+  say "PHASE 1c — stack up; running cucumber @desktop"
+  PLATFORM=web DRIVER=webdriverio \
+    run_timed webdriverio web_ui web bash ci/steps/run-suite.sh "@desktop" webdriverio \
+    > "$LOG/phase1c.log" 2>&1
+  say "PHASE 1c — cucumber exit=$? ($(grep -aoE '[0-9]+ scenarios \([^)]*\)' "$LOG/phase1c.log" | tail -1))"
+else
+  say "PHASE 1c — STACK FAILED to come up (needs Docker for selenium-standalone)"
+fi
+bash ci/steps/teardown.sh
+
+# ==================== 2. MOBILE (Mobilewright, then Appium — sequential, distinct start-stack profiles) ====================
+say "PHASE 2a — mobilewright: starting stack"
+if PLATFORM=android DRIVER=mobilewright bash ci/steps/start-stack.sh mobilewright; then
+  say "PHASE 2a — stack up; running cucumber @android"
+  PLATFORM=android DRIVER=mobilewright \
+    run_timed mobilewright mobile_ui android bash ci/steps/run-suite.sh "@android" mobilewright \
+    > "$LOG/phase2a.log" 2>&1
+  say "PHASE 2a — cucumber exit=$? ($(grep -aoE '[0-9]+ scenarios \([^)]*\)' "$LOG/phase2a.log" | tail -1))"
+else
+  say "PHASE 2a — STACK FAILED to come up (see proxy/mobilewright-plugin logs)"
+fi
+bash ci/steps/teardown.sh
+
+say "PHASE 2b — appium: pre-flight (adb device + Appium daemon :4723)"
 if ! command -v adb >/dev/null 2>&1; then
-  say "PHASE 2 — SKIP: adb not on PATH"
+  say "PHASE 2b — SKIP: adb not on PATH"
 elif [ -z "$(adb devices | awk 'NR>1 && $2=="device"{print $1}')" ]; then
-  say "PHASE 2 — SKIP: no adb device in 'device' state (connect a phone or start an emulator)"
+  say "PHASE 2b — SKIP: no adb device in 'device' state (connect a phone or start an emulator)"
 elif ! node -e "require('net').connect(4723,'127.0.0.1').on('connect',function(){process.exit(0)}).on('error',function(){process.exit(1)})" 2>/dev/null; then
-  say "PHASE 2 — SKIP: Appium daemon not reachable on :4723 (start it with \`appium\`)"
+  say "PHASE 2b — SKIP: Appium daemon not reachable on :4723 (start it with \`appium\`)"
 else
   ANDROID_DEV="$(adb devices | awk 'NR>1 && $2=="device"{print $1; exit}')"
-  say "PHASE 2 — device $ANDROID_DEV + daemon up; starting android stack"
+  say "PHASE 2b — device $ANDROID_DEV + daemon up; starting android stack"
   if PLATFORM=android DRIVER=appium bash ci/steps/start-stack.sh android; then
-    say "PHASE 2 — stack up; running mobilewright + appium @android concurrently"
-    ( PLATFORM=android DRIVER=mobilewright \
-        run_timed mobilewright mobile_ui android bash ci/steps/run-suite.sh "@android" mobilewright \
-        > "$LOG/phase2-mobilewright.log" 2>&1 ) &
-    MW_PID=$!
-    ( PLATFORM=android DRIVER=appium PLUGIN_APPIUM=true PLUGIN_API=true \
-        run_timed appium mobile_ui android bash ci/steps/run-suite.sh "@android" android \
-        > "$LOG/phase2-appium.log" 2>&1 ) &
-    AP_PID=$!
-    wait "$MW_PID"; say "PHASE 2 — mobilewright exit=$? ($(grep -aoE '[0-9]+ scenarios \([^)]*\)' "$LOG/phase2-mobilewright.log" | tail -1))"
-    wait "$AP_PID"; say "PHASE 2 — appium exit=$? ($(grep -aoE '[0-9]+ scenarios \([^)]*\)' "$LOG/phase2-appium.log" | tail -1))"
+    say "PHASE 2b — stack up; running cucumber @android (single Appium session, ~60min)"
+    PLATFORM=android DRIVER=appium PLUGIN_APPIUM=true PLUGIN_API=true \
+      run_timed appium mobile_ui android bash ci/steps/run-suite.sh "@android" android \
+      > "$LOG/phase2b.log" 2>&1
+    say "PHASE 2b — cucumber exit=$? ($(grep -aoE '[0-9]+ scenarios \([^)]*\)' "$LOG/phase2b.log" | tail -1))"
   else
-    say "PHASE 2 — STACK FAILED to come up (see proxy/appium-plugin logs)"
+    say "PHASE 2b — STACK FAILED to come up (see proxy/appium-plugin logs)"
   fi
   bash ci/steps/teardown.sh
 fi
@@ -1175,9 +1197,10 @@ say "PHASE 3 — stress exit=$?"
 
 # ==================== 4. API ====================
 say "PHASE 4 — API: starting stack"
-if PLATFORM=web DRIVER=api PLUGIN_API=true bash ci/steps/start-stack.sh web; then
+if PLATFORM=api DRIVER=api bash ci/steps/start-stack.sh api; then
   say "PHASE 4 — stack up; running cucumber @api"
-  run_timed api api standalone bash ci/steps/run-suite.sh "@api" api > "$LOG/phase4.log" 2>&1
+  PLATFORM=api DRIVER=api \
+    run_timed api api standalone bash ci/steps/run-suite.sh "@api" api > "$LOG/phase4.log" 2>&1
   say "PHASE 4 — cucumber exit=$? ($(grep -aoE '[0-9]+ scenarios \([^)]*\)' "$LOG/phase4.log" | tail -1))"
 else
   say "PHASE 4 — STACK FAILED to come up"
@@ -1220,16 +1243,40 @@ else
 fi
 bash ci/steps/teardown.sh
 
-# ==================== 7. SECURITY (ZAP + MobSF concurrently) ====================
-say "PHASE 7 — security: ZAP + MobSF (concurrent, independent per pipeline.config.json)"
-( run_timed zap security web bash -c 'PLUGIN_ZAP=true bash ci/steps/run-security.sh zap' \
-    > "$LOG/phase7-zap.log" 2>&1 ) &
-ZAP_PID=$!
-( run_timed mobsf security android bash -c 'PLUGIN_MOBSF=true bash ci/steps/run-security.sh mobsf' \
-    > "$LOG/phase7-mobsf.log" 2>&1 ) &
-MOBSF_PID=$!
-wait "$ZAP_PID"; say "PHASE 7 — zap exit=$?"
-wait "$MOBSF_PID"; say "PHASE 7 — mobsf exit=$?"
+# ==================== 7. SECURITY (ZAP, then MobSF — sequential, distinct start-stack profiles) ====================
+# Exact commands mirrored from .github/workflows/ahm-execution-helix.yml's
+# security-zap and security-mobsf jobs (found during implementation — there
+# is no ci/steps/run-security.sh; both tools go through the same generic
+# run-suite.sh every other profile uses).
+say "PHASE 7a — zap: starting stack"
+if PLATFORM=api DRIVER=api PLUGIN_ZAP=true PLUGIN_API=true bash ci/steps/start-stack.sh zap; then
+  say "PHASE 7a — stack up; running @security (hard-gating active scan + schema fuzz)"
+  PLATFORM=api DRIVER=api PLUGIN_ZAP=true \
+    run_timed zap security web bash ci/steps/run-suite.sh "@security" zap security \
+    > "$LOG/phase7a-security.log" 2>&1
+  say "PHASE 7a — @security exit=$?"
+  say "PHASE 7a — running @security-infra (ZAP baseline + TLS; MobSF self-skips, PLUGIN_MOBSF unset)"
+  PLATFORM=api DRIVER=api PLUGIN_ZAP=true \
+    bash ci/steps/run-suite.sh "@security-infra" zap security-infra \
+    > "$LOG/phase7a-security-infra.log" 2>&1
+  say "PHASE 7a — @security-infra exit=$?"
+else
+  say "PHASE 7a — STACK FAILED to come up (see proxy/zap-plugin logs; needs Docker)"
+fi
+bash ci/steps/teardown.sh
+
+say "PHASE 7b — mobsf: starting stack (brings up its own long-lived mobsf container)"
+if PLATFORM=api DRIVER=api PLUGIN_MOBSF=true PLUGIN_API=true MOBSF_URL="http://127.0.0.1:8000" \
+    bash ci/steps/start-stack.sh mobsf; then
+  say "PHASE 7b — stack up; running @security-infra (MobSF static scan; ZAP self-skips, PLUGIN_ZAP unset)"
+  PLATFORM=api DRIVER=api PLUGIN_MOBSF=true MOBSF_URL="http://127.0.0.1:8000" \
+    run_timed mobsf security android bash ci/steps/run-suite.sh "@security-infra" mobsf security-infra \
+    > "$LOG/phase7b.log" 2>&1
+  say "PHASE 7b — @security-infra exit=$?"
+else
+  say "PHASE 7b — STACK FAILED to come up (see proxy/mobsf-plugin logs; needs Docker)"
+fi
+bash ci/steps/teardown.sh
 
 # ---------------- Ingest ----------------
 rm -f reports/playwright.json
@@ -1242,11 +1289,11 @@ tail -12 "$LOG/ingest.log" | tee -a "$SUMMARY"
 say "DONE — run-id: $RUN_ID"
 ```
 
-**Confirm during implementation, before running for real:**
-1. `ci/steps/run-security.sh` is referenced by name/shape guessed from `pipeline.config.json`'s ZAP/MobSF profile conventions found during research — **the actual script name and invocation for local (non-CI) ZAP/MobSF runs was not read during this plan's research pass.** Find it (likely under `ci/steps/`, possibly named differently) before landing Phase 7, and replace this placeholder invocation with the real one.
-2. `webdriverio` and `mobilewright` as `run-suite.sh` `<profile>` arguments were confirmed by research to fall into the generic cucumber-js arm (no bespoke body needed) — but the exact `DRIVER=` value expected for mobilewright (`DRIVER=mobilewright` assumed here, matching the pattern of every other driver) should be confirmed against `src/kernel/client.ts`'s driver-to-plugin-address map before running.
-3. Two concurrent `run_timed` background jobs writing to the same `$LOG` summary file via `tee -a` is safe (appends are line-buffered for these short `say` calls), but confirm no other shared-file writes happen inside the concurrent blocks that could interleave badly.
-4. This is the first time this repo runs two driver invocations against one shared stack concurrently — per the spec's §11 risk, confirm the write-lock and plugin servers actually tolerate two simultaneous driver clients before trusting this at face value; if it turns out unsafe, fall back to running Playwright and WebdriverIO (and Mobilewright/Appium) sequentially within their phase instead of backgrounded — a one-line change (drop the `&`/`wait` and just call both in sequence).
+**Resolved during implementation** (superseding the plan's original placeholders): the exact ZAP/MobSF commands above are copied verbatim from `.github/workflows/ahm-execution-helix.yml`'s `security-zap`/`security-mobsf` jobs (there is no separate `ci/steps/run-security.sh` — both go through the same generic `run-suite.sh` every other profile uses, confirmed by reading `ci/steps/run-suite.sh` in full). `DRIVER=mobilewright` and its dedicated `start-stack.sh mobilewright` profile (distinct from `android`, which is Appium's profile) are confirmed via `ci/steps/start-stack.sh` and the CI workflow's `e2e-mobilewright` job. The concurrency risk flagged in the original draft turned out to be a real problem, not a hypothetical one — see the correction note above Step 1: every `start-stack.sh` profile starts its own chaos-proxy on the fixed port 50051, so this script is fully sequential, no backgrounded `run_timed` calls anywhere.
+
+**Still open, genuinely deferred to Task 12's recon pass** (needs a live run to answer, not further reading):
+1. Whether `PLUGIN_AXE=true` reliably reaches the cucumber process when set inline before `run_timed` (a shell function) — see the false-green guard added to Task 12 below.
+2. Whether the `@desktop` tag expression is the right one for WebdriverIO's Phase 1c (mirroring Playwright's tag, since no CI job reference for a standalone local WebdriverIO run was found) — confirm scenario count looks sane in the recon pass, adjust if `@desktop` scenarios assume Playwright-specific behavior WebdriverIO's plugin doesn't yet support.
 
 - [ ] **Step 2: Shellcheck**
 
