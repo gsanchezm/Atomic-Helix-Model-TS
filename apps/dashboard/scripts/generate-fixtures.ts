@@ -18,6 +18,7 @@ import type {
   ManifestEntry,
   MobileSecurityTool,
   MobileUiTool,
+  PerfBlock,
   PerformanceTool,
   RunInfo,
   TestCase,
@@ -207,44 +208,70 @@ const appium1: MobileUiTool = {
   },
 };
 
+const gatlingLoadPerf: PerfBlock = {
+  rps: 1842, avgMs: 124, p75Ms: 210, p95Ms: 312, p99Ms: 612, maxMs: 1480,
+  errorRate: 0.42, requests: 1_672_481, maxRps: 2400,
+  distribution: [
+    { label: '< 100 ms',   pct: 62,  count: 1_037_000 },
+    { label: '100–250 ms', pct: 24,  count: 401_000 },
+    { label: '250–500 ms', pct: 9,   count: 150_500 },
+    { label: '500 ms–1 s', pct: 3,   count: 50_100 },
+    { label: '1 s–3 s',    pct: 1.5, count: 25_100 },
+    { label: '> 3 s',      pct: 0.5, count: 8800 },
+  ],
+  scenarios: [
+    {
+      name: 'checkout-load',
+      rps: 920, p95: 412, errors: 0.5,
+      steps: [
+        { name: 'home',      rps: 240, p95: 180, errors: 0    },
+        { name: 'login',     rps: 220, p95: 220, errors: 0.05 },
+        { name: 'addToCart', rps: 250, p95: 350, errors: 0.30 },
+        { name: 'checkout',  rps: 210, p95: 520, errors: 1.10 },
+      ],
+    },
+    {
+      name: 'catalog-load',
+      rps: 720, p95: 360, errors: 0.3,
+      steps: [
+        { name: 'home',   rps: 420, p95: 188, errors: 0    },
+        { name: 'search', rps: 300, p95: 360, errors: 0.55 },
+      ],
+    },
+  ],
+};
+
+const gatlingStressPerf: PerfBlock = {
+  rps: 640, avgMs: 340, p75Ms: 520, p95Ms: 980, p99Ms: 1650, maxMs: 3200,
+  errorRate: 4.8, requests: 84_200, maxRps: 900,
+  distribution: [
+    { label: '< 100 ms',   pct: 12, count: 10_100 },
+    { label: '100–250 ms', pct: 22, count: 18_500 },
+    { label: '250–500 ms', pct: 28, count: 23_600 },
+    { label: '500 ms–1 s', pct: 20, count: 16_800 },
+    { label: '1 s–3 s',    pct: 13, count: 10_900 },
+    { label: '> 3 s',      pct: 5,  count: 4200 },
+  ],
+  scenarios: [
+    { name: 'checkout-stress', rps: 640, p95: 980, errors: 4.8 },
+  ],
+};
+
 const gatling1: PerformanceTool = {
   kind: 'performance',
   id: 'gatling',
   name: 'Gatling',
   description: 'Sustained load + spike scenarios against staging services.',
   passed: 18, failed: 2, skipped: 0, duration: '14m 30s',
-  perf: {
-    rps: 1842, avgMs: 124, p95Ms: 312, p99Ms: 612,
-    errorRate: 0.42, requests: 1_672_481, maxRps: 2400,
-    distribution: [
-      { label: '< 100 ms',   pct: 62,  count: 1_037_000 },
-      { label: '100–250 ms', pct: 24,  count: 401_000 },
-      { label: '250–500 ms', pct: 9,   count: 150_500 },
-      { label: '500 ms–1 s', pct: 3,   count: 50_100 },
-      { label: '1 s–3 s',    pct: 1.5, count: 25_100 },
-      { label: '> 3 s',      pct: 0.5, count: 8800 },
-    ],
-    scenarios: [
-      {
-        name: 'checkout-load',
-        rps: 920, p95: 412, errors: 0.5,
-        steps: [
-          { name: 'home',      rps: 240, p95: 180, errors: 0    },
-          { name: 'login',     rps: 220, p95: 220, errors: 0.05 },
-          { name: 'addToCart', rps: 250, p95: 350, errors: 0.30 },
-          { name: 'checkout',  rps: 210, p95: 520, errors: 1.10 },
-        ],
-      },
-      {
-        name: 'catalog-load',
-        rps: 720, p95: 360, errors: 0.3,
-        steps: [
-          { name: 'home',   rps: 420, p95: 188, errors: 0    },
-          { name: 'search', rps: 300, p95: 360, errors: 0.55 },
-        ],
-      },
-    ],
-  },
+  perf: gatlingLoadPerf,
+  byType: [
+    { type: 'load', perf: gatlingLoadPerf },
+    { type: 'stress', perf: gatlingStressPerf },
+    { type: 'endurance', perf: null },
+    { type: 'spike', perf: null },
+    { type: 'scalability', perf: null },
+    { type: 'volume', perf: null },
+  ],
 };
 
 type FixtureVisualTool = Omit<VisualTool, 'diffs'> & {
