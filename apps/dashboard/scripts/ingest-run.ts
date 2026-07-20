@@ -46,6 +46,9 @@ import type {
   SecurityGate,
   Status,
   TestCase,
+  TestCaseGroup,
+  TestCaseIteration,
+  TestCaseSingle,
   TestStep,
   ToolTiming,
   ViewportBlock,
@@ -53,8 +56,10 @@ import type {
   WebUiTool,
   ZapScanBlock,
 } from '../src/shared/types.js';
+import { isTestCaseGroup } from '../src/shared/types.js';
 import { ingestGatling } from './ingest-gatling.js';
 import { ingestPixelmatch } from './ingest-pixelmatch.js';
+import { parseOutlineRows, type OutlineRow } from './lib/outline-parser.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../../..');
@@ -89,6 +94,10 @@ interface CucumberElement {
   name?: string;
   type?: string;
   steps?: CucumberStep[];
+  /** Literal keyword text, e.g. "Scenario Outline" for Examples-row-derived elements. */
+  keyword?: string;
+  /** Source line of THIS Examples row (not the outline's own declaration line). */
+  line?: number;
 }
 interface CucumberFeature {
   name?: string;
@@ -103,7 +112,7 @@ const TERMINAL_STATUSES = new Set(['passed', 'failed', 'skipped', 'pending', 'un
  * without adding a transient field to the `TestCase` object (which would leak into
  * the written JSON and break vitest deep-equality assertions).
  */
-const screenshotData = new WeakMap<TestCase, { b64: string }>();
+const screenshotData = new WeakMap<TestCase | TestCaseIteration, { b64: string }>();
 
 function safeSegment(s: string): string {
   return s.replace(/[^A-Za-z0-9_.-]/g, '_');
@@ -165,7 +174,7 @@ export interface IngestedSuite {
   tests: TestCase[];
 }
 
-export function ingestCucumber(features: CucumberFeature[]): IngestedSuite {
+export async function ingestCucumber(features: CucumberFeature[]): Promise<IngestedSuite> {
   const tests: TestCase[] = [];
   const suiteSet = new Set<string>();
   let totalNs = 0;
@@ -174,6 +183,18 @@ export function ingestCucumber(features: CucumberFeature[]): IngestedSuite {
     const suite = feature.name ?? '(unnamed feature)';
     suiteSet.add(suite);
     const uri = (feature.uri ?? '').replace(/\\/g, '/');
+
+    const hasOutlineElement = (feature.elements ?? []).some((el) => el.keyword === 'Scenario Outline');
+    const outlineRows = hasOutlineElement && uri
+      ? await parseOutlineRows(path.resolve(repoRoot, uri))
+      : new Map<number, OutlineRow>();
+
+    // outlineKey -> accumulated iterations (with their source ns/line, for
+    // later sorting/summing), finalized into a TestCaseGroup after the loop.
+    const groupBuckets = new Map<
+      string,
+      { templateName: string; entries: { line: number; ns: number; iteration: TestCaseIteration }[] }
+    >();
 
     for (const el of feature.elements ?? []) {
       if (el.type !== 'scenario') continue;
@@ -191,7 +212,6 @@ export function ingestCucumber(features: CucumberFeature[]): IngestedSuite {
         const stepStatus = normalizeStatus(r.status);
 
         const isHidden = step.hidden === true;
-        // Hidden hook that passed: skip — it adds noise without value.
         if (isHidden && stepStatus !== 'failed') {
           continue;
         }
@@ -217,8 +237,44 @@ export function ingestCucumber(features: CucumberFeature[]): IngestedSuite {
       }
 
       const failedStepIndex = stepsOut.findIndex((s) => s.status === 'failed');
+      totalNs += scenarioNs;
 
-      const tc: TestCase = {
+      const outlineRow =
+        el.keyword === 'Scenario Outline' && typeof el.line === 'number'
+          ? outlineRows.get(el.line)
+          : undefined;
+
+      if (outlineRow) {
+        const iteration: TestCaseIteration = {
+          name: el.name ?? '(unnamed scenario)',
+          example: outlineRow.example,
+          status: worst,
+          ...(errorMsg ? { error: errorMsg } : {}),
+          steps: stepsOut,
+          ...(failedStepIndex >= 0 ? { failedStepIndex } : {}),
+        };
+        if (worst === 'failed') {
+          const b64 = extractImageAttachment(el.steps ?? []);
+          if (b64) screenshotData.set(iteration, { b64 });
+        }
+
+        let bucket = groupBuckets.get(outlineRow.outlineKey);
+        if (!bucket) {
+          bucket = { templateName: outlineRow.templateName, entries: [] };
+          groupBuckets.set(outlineRow.outlineKey, bucket);
+        }
+        bucket.entries.push({ line: el.line as number, ns: scenarioNs, iteration });
+        continue;
+      }
+
+      if (el.keyword === 'Scenario Outline' && typeof el.line === 'number') {
+        console.warn(
+          `[ingest] warning: ${uri}:${el.line} looks like a Scenario Outline row but no matching ` +
+          `Examples row was found in the .feature source -- ingesting "${el.name}" as a standalone scenario.`,
+        );
+      }
+
+      const tc: TestCaseSingle = {
         name: el.name ?? '(unnamed scenario)',
         suite,
         file: uri,
@@ -228,16 +284,32 @@ export function ingestCucumber(features: CucumberFeature[]): IngestedSuite {
         steps: stepsOut,
         ...(failedStepIndex >= 0 ? { failedStepIndex } : {}),
       };
-
-      // If the scenario failed, scan ALL raw steps (including hidden/passed
-      // hooks that are skipped by the main loop) for an image attachment.
       if (worst === 'failed') {
         const b64 = extractImageAttachment(el.steps ?? []);
         if (b64) screenshotData.set(tc, { b64 });
       }
-
-      totalNs += scenarioNs;
       tests.push(tc);
+    }
+
+    for (const bucket of groupBuckets.values()) {
+      const entries = [...bucket.entries].sort((a, b) => a.line - b.line);
+      const iterations = entries.map((e) => e.iteration);
+      const durNs = entries.reduce((sum, e) => sum + e.ns, 0);
+      const status: Status = iterations.some((i) => i.status === 'failed')
+        ? 'failed'
+        : iterations.some((i) => i.status === 'skipped')
+          ? 'skipped'
+          : 'passed';
+      const group: TestCaseGroup = {
+        kind: 'group',
+        name: bucket.templateName,
+        suite,
+        file: uri,
+        dur: formatNs(durNs),
+        status,
+        iterations,
+      };
+      tests.push(group);
     }
   }
 
@@ -269,13 +341,12 @@ async function materializeScreenshots(
   const outDir = path.join(runDir, 'screenshots');
   const usedKeys = new Set<string>();
 
-  for (const tc of tests) {
+  const writeOne = async (tc: TestCaseSingle | TestCaseIteration, keyPrefix: string): Promise<void> => {
     const entry = screenshotData.get(tc);
-    if (!entry) continue;
+    if (!entry) return;
     screenshotData.delete(tc);
 
-    // Build a filename-safe key from suite + scenario name, unique within this run.
-    let baseKey = `${safeSegment(tc.suite)}__${safeSegment(tc.name)}`;
+    let baseKey = `${keyPrefix}__${safeSegment(tc.name)}`;
     let key = baseKey;
     let suffix = 2;
     while (usedKeys.has(key)) {
@@ -291,6 +362,16 @@ async function materializeScreenshots(
     } catch (err) {
       // Non-fatal: the screenshot is a nice-to-have; don't fail the whole ingest.
       console.warn(`[ingest] warning: could not write screenshot ${pngPath}:`, (err as Error).message);
+    }
+  };
+
+  for (const tc of tests) {
+    if (isTestCaseGroup(tc)) {
+      for (const iteration of tc.iterations) {
+        await writeOne(iteration, safeSegment(tc.suite));
+      }
+    } else {
+      await writeOne(tc, safeSegment(tc.suite));
     }
   }
 }
@@ -429,7 +510,7 @@ async function buildPlaywrightTool(dir: string = reportsDir): Promise<WebUiTool 
       for (const { file, browser } of entries) {
         const raw = await readCucumberJson(path.join(dir, file));
         if (!raw) continue;
-        browsers.push(browserBlockFromSuite(browser, ingestCucumber(raw)));
+        browsers.push(browserBlockFromSuite(browser, await ingestCucumber(raw)));
       }
       if (browsers.length === 0) continue;
       browsers.sort((a, b) => a.browser.localeCompare(b.browser));
@@ -481,7 +562,7 @@ async function buildPlaywrightTool(dir: string = reportsDir): Promise<WebUiTool 
     for (const { file, browser } of browserFiles) {
       const raw = await readCucumberJson(path.join(dir, file));
       if (!raw) continue;
-      browsers.push(browserBlockFromSuite(browser, ingestCucumber(raw)));
+      browsers.push(browserBlockFromSuite(browser, await ingestCucumber(raw)));
     }
     if (browsers.length > 0) {
       browsers.sort((a, b) => a.browser.localeCompare(b.browser));
@@ -506,7 +587,7 @@ async function buildPlaywrightTool(dir: string = reportsDir): Promise<WebUiTool 
   // ---- 3. Fallback: single flat run (no breakdown → flat list, no tabs). -
   const flat = await readCucumberJson(path.join(dir, 'playwright.json'));
   if (!flat) return null;
-  const s = ingestCucumber(flat);
+  const s = await ingestCucumber(flat);
   return {
     kind: 'web_ui',
     id: 'playwright',
@@ -547,10 +628,10 @@ async function buildAppiumTool(dir: string = reportsDir): Promise<MobileUiTool |
   });
 
   const android = androidRaw
-    ? platformBlock(ingestCucumber(androidRaw), process.env.ANDROID_DEVICE ?? 'Android device')
+    ? platformBlock(await ingestCucumber(androidRaw), process.env.ANDROID_DEVICE ?? 'Android device')
     : emptyPlatformBlock();
   const ios = iosRaw
-    ? platformBlock(ingestCucumber(iosRaw), process.env.IOS_DEVICE ?? 'iOS device')
+    ? platformBlock(await ingestCucumber(iosRaw), process.env.IOS_DEVICE ?? 'iOS device')
     : emptyPlatformBlock();
 
   const durationParts: string[] = [];
@@ -798,7 +879,7 @@ async function main(): Promise<void> {
   // ---- API (api) --------------------------------------------------------
   const apiRaw = await readCucumberJson(path.join(reportsDir, 'api.json'));
   if (apiRaw) {
-    const s = ingestCucumber(apiRaw);
+    const s = await ingestCucumber(apiRaw);
     const tool: ApiTool = {
       kind: 'api',
       id: 'api',
