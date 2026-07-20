@@ -1196,11 +1196,16 @@ run_timed gatling performance stress bash -c 'PERF_PROFILE=stress pnpm perf:stre
 say "PHASE 3 — stress exit=$?"
 
 # ==================== 4. API ====================
+# "@api and not @security" -- one scenario is deliberately tagged @security @api
+# to run exactly once, but needs PLUGIN_ZAP (which the `api` stack doesn't
+# start). Confirmed via a live probe during implementation: this scenario
+# always fails here with ECONNREFUSED on the zap plugin's port. It's correctly
+# covered by Phase 7's @security run instead.
 say "PHASE 4 — API: starting stack"
 if PLATFORM=api DRIVER=api bash ci/steps/start-stack.sh api; then
-  say "PHASE 4 — stack up; running cucumber @api"
+  say "PHASE 4 — stack up; running cucumber @api and not @security"
   PLATFORM=api DRIVER=api \
-    run_timed api api standalone bash ci/steps/run-suite.sh "@api" api > "$LOG/phase4.log" 2>&1
+    run_timed api api standalone bash ci/steps/run-suite.sh "@api and not @security" api > "$LOG/phase4.log" 2>&1
   say "PHASE 4 — cucumber exit=$? ($(grep -aoE '[0-9]+ scenarios \([^)]*\)' "$LOG/phase4.log" | tail -1))"
 else
   say "PHASE 4 — STACK FAILED to come up"

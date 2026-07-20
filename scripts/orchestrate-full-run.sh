@@ -87,17 +87,25 @@ fi
 bash ci/steps/teardown.sh
 
 # ==================== 2. MOBILE (Mobilewright, then Appium — sequential, distinct start-stack profiles) ====================
-say "PHASE 2a — mobilewright: starting stack"
-if PLATFORM=android DRIVER=mobilewright bash ci/steps/start-stack.sh mobilewright; then
-  say "PHASE 2a — stack up; running cucumber @android"
-  PLATFORM=android DRIVER=mobilewright \
-    run_timed mobilewright mobile_ui android bash ci/steps/run-suite.sh "@android" mobilewright \
-    > "$LOG/phase2a.log" 2>&1
-  say "PHASE 2a — cucumber exit=$? ($(grep -aoE '[0-9]+ scenarios \([^)]*\)' "$LOG/phase2a.log" | tail -1))"
+say "PHASE 2a — mobilewright: pre-flight (adb device required; no Appium daemon needed — drives via mobilecli)"
+if ! command -v adb >/dev/null 2>&1; then
+  say "PHASE 2a — SKIP: adb not on PATH"
+elif [ -z "$(adb devices | awk 'NR>1 && $2=="device"{print $1}')" ]; then
+  say "PHASE 2a — SKIP: no adb device in 'device' state (connect a phone or start an emulator)"
 else
-  say "PHASE 2a — STACK FAILED to come up (see proxy/mobilewright-plugin logs)"
+  ANDROID_DEV="$(adb devices | awk 'NR>1 && $2=="device"{print $1; exit}')"
+  say "PHASE 2a — device $ANDROID_DEV present; starting mobilewright stack"
+  if PLATFORM=android DRIVER=mobilewright bash ci/steps/start-stack.sh mobilewright; then
+    say "PHASE 2a — stack up; running cucumber @android"
+    PLATFORM=android DRIVER=mobilewright \
+      run_timed mobilewright mobile_ui android bash ci/steps/run-suite.sh "@android" mobilewright \
+      > "$LOG/phase2a.log" 2>&1
+    say "PHASE 2a — cucumber exit=$? ($(grep -aoE '[0-9]+ scenarios \([^)]*\)' "$LOG/phase2a.log" | tail -1))"
+  else
+    say "PHASE 2a — STACK FAILED to come up (see proxy/mobilewright-plugin logs)"
+  fi
+  bash ci/steps/teardown.sh
 fi
-bash ci/steps/teardown.sh
 
 say "PHASE 2b — appium: pre-flight (adb device + Appium daemon :4723)"
 if ! command -v adb >/dev/null 2>&1; then
@@ -133,11 +141,18 @@ run_timed gatling performance stress bash -c 'PERF_PROFILE=stress pnpm perf:stre
 say "PHASE 3 — stress exit=$?"
 
 # ==================== 4. API ====================
+# "@api and not @security" -- one scenario (market-language-localization.feature's
+# "no unresolved security vulnerabilities") is deliberately tagged @security @api
+# to run exactly once, but it needs PLUGIN_ZAP (hits the zap plugin's port),
+# which the `api` stack doesn't start. Confirmed via a live probe: it always
+# fails here with ECONNREFUSED on the zap plugin port. It's correctly covered
+# by Phase 7's @security run instead -- excluding it here avoids a guaranteed,
+# structural false-red on every API-phase run.
 say "PHASE 4 — API: starting stack"
 if PLATFORM=api DRIVER=api bash ci/steps/start-stack.sh api; then
-  say "PHASE 4 — stack up; running cucumber @api"
+  say "PHASE 4 — stack up; running cucumber @api and not @security"
   PLATFORM=api DRIVER=api \
-    run_timed api api standalone bash ci/steps/run-suite.sh "@api" api > "$LOG/phase4.log" 2>&1
+    run_timed api api standalone bash ci/steps/run-suite.sh "@api and not @security" api > "$LOG/phase4.log" 2>&1
   say "PHASE 4 — cucumber exit=$? ($(grep -aoE '[0-9]+ scenarios \([^)]*\)' "$LOG/phase4.log" | tail -1))"
 else
   say "PHASE 4 — STACK FAILED to come up"
