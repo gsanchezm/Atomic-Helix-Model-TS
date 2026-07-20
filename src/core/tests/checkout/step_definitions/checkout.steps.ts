@@ -52,6 +52,10 @@ Then('the order is accepted', async function () {
     await route(this).verifyOrderAccepted();
 });
 
+Then('the checkout page passes the automated accessibility gate', async function () {
+    await route(this).verifyAccessibilityGate();
+});
+
 After(async function () {
     try {
         await route(this).resetClientState();

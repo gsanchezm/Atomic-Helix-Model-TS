@@ -32,6 +32,8 @@ import { BROWSER_COMMAND } from '@kernel/browser-command';
 import { sendBrowserCommand } from '@core/tests/support/browser-command';
 import type { CheckoutWorld } from '@core/tests/support/world';
 import { INTENT } from '@kernel/intents';
+import { AccessibilityContractLoader } from '@core/contracts/accessibility-contract-loader';
+import { appendAxeRecord, type AxeRecord } from '@core/tests/support/security-report-writer';
 
 const log = logger.child({ layer: 'route', domain: 'checkout' });
 
@@ -227,6 +229,45 @@ export class CheckoutRoute {
 
         await fillDeliveryAddress(address.street, zipSlot, secondary);
         await fillContactInfo(contact.name, contact.phone);
+    }
+
+    /**
+     * Runs the checkout `*.a11y.json` contract audits against the live
+     * page. Mirrors catalog.route.ts's verifyAccessibilityGate exactly:
+     * no-ops unless PLUGIN_AXE is enabled and the driver is playwright.
+     * Called explicitly as a Then step (not an After hook) so it fires
+     * in-sequence before checkout's own After-hook session reset can
+     * navigate away.
+     */
+    async verifyAccessibilityGate(): Promise<void> {
+        if (this.driver !== 'playwright' || (process.env.PLUGIN_AXE ?? 'false').toLowerCase() !== 'true') {
+            log.info({ driver: this.driver }, 'verifyAccessibilityGate skipped (PLUGIN_AXE off or non-web driver)');
+            return;
+        }
+        const contract = AccessibilityContractLoader.load('checkout');
+        const market = this.world.orderContext?.market ?? 'unknown';
+
+        for (const audit of contract.audits) {
+            const ruleTags = audit.ruleTags?.length ? audit.ruleTags : contract.defaults?.ruleTags;
+            const auditOptions: Record<string, unknown> = {};
+            if (ruleTags?.length) auditOptions.tags = ruleTags;
+            if (audit.include?.length) auditOptions.include = audit.include;
+            if (audit.exclude?.length) auditOptions.exclude = audit.exclude;
+
+            const auditResult = await sendIntent(
+                INTENT.RUN_ACCESSIBILITY_AUDIT,
+                `checkout||${audit.id}-${market}||${JSON.stringify(auditOptions)}`,
+            );
+
+            try {
+                appendAxeRecord(JSON.parse(auditResult.payload) as AxeRecord);
+            } catch (err) {
+                log.warn({ err: (err as Error).message }, 'Failed to persist axe audit record');
+            }
+
+            const thresholds = audit.thresholds ?? contract.defaults?.thresholds ?? {};
+            await sendIntent(INTENT.VALIDATE_ACCESSIBILITY_THRESHOLDS, JSON.stringify(thresholds));
+        }
     }
 
     async selectPayment(method: string): Promise<void> {

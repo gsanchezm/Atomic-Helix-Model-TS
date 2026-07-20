@@ -1,0 +1,14 @@
+{
+  "feature": "checkout",
+  "version": "1.0.0",
+  "defaults": {
+    "ruleTags": ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"],
+    "thresholds": { "impacts": ["critical", "serious"], "maxViolations": 0 }
+  },
+  "audits": [
+    {
+      "id": "checkout_screen",
+      "description": "Automated WCAG 2.0/2.1 A/AA scan (plus the opt-in WCAG 2.2 target-size rule) of the checkout screen after delivery details are entered. A regression gate against automatable rules, not a certification — mirrors the catalog contract's scope and thresholds."
+    }
+  ]
+}

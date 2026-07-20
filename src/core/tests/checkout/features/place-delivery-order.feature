@@ -48,3 +48,10 @@ Feature: Place a delivery order across markets
     When they provide delivery details "123 Luxury Avenue" "90210", "" for "Ada Lovelace" "+1 415 555 0110"
     And they choose payment method "PayPal"
     Then the order is accepted
+
+  @desktop @a11y
+  Scenario: Checkout screen passes the automated accessibility gate
+    Given they are ordering in market "US"
+    And they have an order with "Pepperoni" size "Large" quantity 1
+    When they provide delivery details "123 Luxury Avenue" "90210", "" for "Julian Casablancas" "+1 415 555 0101"
+    Then the checkout page passes the automated accessibility gate
