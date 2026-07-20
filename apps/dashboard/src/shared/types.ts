@@ -1,4 +1,5 @@
 import type { ToolKind } from './kinds.js';
+import type { PerfTestType } from './perf-types.js';
 
 export type Status = 'passed' | 'failed' | 'skipped';
 
@@ -141,8 +142,10 @@ export interface PerfScenario {
 export interface PerfBlock {
   rps: number;
   avgMs: number;
+  p75Ms: number;
   p95Ms: number;
   p99Ms: number;
+  maxMs: number;
   errorRate: number;
   requests: number;
   maxRps: number;
@@ -150,9 +153,16 @@ export interface PerfBlock {
   scenarios: PerfScenario[];
 }
 
+export interface PerfTypeBlock {
+  type: PerfTestType;
+  perf: PerfBlock | null;
+}
+
 export interface PerformanceTool extends BaseTool {
   kind: 'performance';
   perf: PerfBlock;
+  byType: PerfTypeBlock[];
+  unclassified?: PerfBlock;
 }
 
 export interface VisualDiffImages {

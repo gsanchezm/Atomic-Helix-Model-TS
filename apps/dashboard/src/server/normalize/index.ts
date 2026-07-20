@@ -1,5 +1,6 @@
 import type { Tool } from '../../shared/types.js';
 import type { ToolKind } from '../../shared/kinds.js';
+import { PERF_TEST_TYPES } from '../../shared/perf-types.js';
 import { apiAdapter } from './api.js';
 import { appiumAdapter } from './appium.js';
 import { axeAdapter } from './axe.js';
@@ -102,7 +103,11 @@ export function makeMissingTool(toolId: string): Tool {
     performance: () => ({
       ...base,
       kind: 'performance',
-      perf: { rps: 0, avgMs: 0, p95Ms: 0, p99Ms: 0, errorRate: 0, requests: 0, maxRps: 0, distribution: [], scenarios: [] },
+      perf: {
+        rps: 0, avgMs: 0, p75Ms: 0, p95Ms: 0, p99Ms: 0, maxMs: 0,
+        errorRate: 0, requests: 0, maxRps: 0, distribution: [], scenarios: [],
+      },
+      byType: PERF_TEST_TYPES.map((type) => ({ type, perf: null })),
     }),
     visual: () => ({ ...base, kind: 'visual', diffs: [] }),
     accessibility: () => ({ ...base, kind: 'accessibility', audits: [] }),
