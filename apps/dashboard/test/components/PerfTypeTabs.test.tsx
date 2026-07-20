@@ -27,10 +27,10 @@ describe('PerfTypeTabs', () => {
     expect(buttons[5]).toHaveTextContent('Volume');
   });
 
-  it('shows a "N runs" badge from the scenario count, 0 when perf is null', () => {
+  it('shows a "N simulations" badge from the scenario count, 0 when perf is null', () => {
     render(<PerfTypeTabs byType={byType} active="load" onSelect={() => {}} />);
-    expect(screen.getByText('Load').closest('button')).toHaveTextContent('1 runs');
-    expect(screen.getByText('Stress').closest('button')).toHaveTextContent('0 runs');
+    expect(screen.getByText('Load').closest('button')).toHaveTextContent('1 simulations');
+    expect(screen.getByText('Stress').closest('button')).toHaveTextContent('0 simulations');
   });
 
   it('marks the active tab', () => {

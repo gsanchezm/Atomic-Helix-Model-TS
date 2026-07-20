@@ -39,11 +39,17 @@ const SUMMARY_HANDLERS: Readonly<Record<ToolKind, SummaryHandler>> = {
     };
   },
   performance: (tool) => {
-    const { perf, ...rest } = tool as Extract<Tool, { kind: 'performance' }>;
-    const { distribution: _distribution, scenarios: _scenarios, ...perfRest } = perf;
-    void _distribution;
-    void _scenarios;
-    return { ...rest, perf: perfRest };
+    const { perf, byType, unclassified, ...rest } =
+      tool as Extract<Tool, { kind: 'performance' }>;
+    return {
+      ...rest,
+      perf: stripPerfDetails(perf),
+      byType: byType.map((entry) => ({
+        type: entry.type,
+        perf: entry.perf ? stripPerfDetails(entry.perf) : null,
+      })),
+      ...(unclassified ? { unclassified: stripPerfDetails(unclassified) } : {}),
+    };
   },
   visual: (tool) => {
     const { diffs: _diffs, ...rest } = tool as Extract<Tool, { kind: 'visual' }>;
@@ -90,6 +96,15 @@ function stripTests<T extends { tests: unknown }>(
 ): Omit<T, 'tests'> {
   const { tests: _tests, ...rest } = block;
   void _tests;
+  return rest;
+}
+
+function stripPerfDetails<T extends { distribution: unknown; scenarios: unknown }>(
+  block: T,
+): Omit<T, 'distribution' | 'scenarios'> {
+  const { distribution: _distribution, scenarios: _scenarios, ...rest } = block;
+  void _distribution;
+  void _scenarios;
   return rest;
 }
 

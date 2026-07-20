@@ -334,8 +334,13 @@ export type ToolSummary =
         ios: Omit<PlatformBlock, 'tests'>;
       };
     })
-  | (Omit<PerformanceTool, 'perf'> & {
+  | (Omit<PerformanceTool, 'perf' | 'byType' | 'unclassified'> & {
       perf: Omit<PerfBlock, 'distribution' | 'scenarios'>;
+      byType: Array<{
+        type: PerfTestType;
+        perf: Omit<PerfBlock, 'distribution' | 'scenarios'> | null;
+      }>;
+      unclassified?: Omit<PerfBlock, 'distribution' | 'scenarios'>;
     })
   | Omit<VisualTool, 'diffs'>
   | Omit<AccessibilityTool, 'audits'>

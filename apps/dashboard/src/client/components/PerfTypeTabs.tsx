@@ -32,7 +32,7 @@ export function PerfTypeTabs({ byType, active, onSelect }: PerfTypeTabsProps) {
                 marginLeft: 4,
               }}
             >
-              {runs} runs
+              {runs} simulations
             </span>
           </button>
         );
