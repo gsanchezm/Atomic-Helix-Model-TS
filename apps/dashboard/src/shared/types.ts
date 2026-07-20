@@ -363,3 +363,21 @@ export interface RunPayload {
 export function toolKindOf(tool: Tool | ToolSummary): ToolKind {
   return tool.kind;
 }
+
+// ---------- Tool Efficiency (per-tool wall-clock execution timing) --------
+
+export interface ToolTiming {
+  tool: string;
+  category: ToolKind;
+  subtype: string;
+  startedAt: string;
+  endedAt: string;
+  durationMs: number;
+}
+
+/** One entry per run that has a timing.json, used by the Efficiency charts. */
+export interface EfficiencyRunPoint {
+  runId: string;
+  startedAt: string;
+  timings: ToolTiming[];
+}
