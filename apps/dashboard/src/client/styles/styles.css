@@ -402,6 +402,14 @@ a{color:inherit;text-decoration:none}
 .sim-steps th, .sim-steps td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border, rgba(255,255,255,0.04)); }
 .sim-step-bad { color: oklch(0.78 0.18 25); }
 
+/* Pending performance metrics */
+.pending-metrics { margin-top: 14px; }
+.pending-metrics-title { font-size: 11px; color: var(--text-mute); text-transform: uppercase; letter-spacing: 0.14em; margin-bottom: 8px; }
+.pending-metric-row { display: flex; justify-content: space-between; gap: 14px; padding: 8px 0; border-bottom: 1px dashed var(--line-soft); font-size: 12.5px; }
+.pending-metric-row:last-child { border-bottom: none; }
+.pending-metric-label { color: var(--text-mute); }
+.pending-metric-reason { font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); text-align: right; }
+
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .chip { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; font-family: var(--mono); font-size: 11px; font-weight: 600; border: 1px solid currentColor; }
 .chip-market   { color: oklch(0.78 0.14 300); }
