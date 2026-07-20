@@ -70,22 +70,35 @@ const playwrightTests: TestCase[] = [
     error: "Expected toast 'Scheduled' to appear, got 'Server error 502'\n  at reports/schedule.spec.ts:88:12" },
   { name: 'Settings — change avatar',     suite: 'Settings', file: 'settings/avatar.spec.ts', dur: '4.0s', status: 'passed' },
   { name: 'Settings — danger zone',       suite: 'Settings', file: 'settings/danger.spec.ts', dur: '1.7s', status: 'passed' },
-  { name: 'Checkout completes for US/en — Example row 1', suite: 'Checkout', file: 'checkout/outline.spec.ts', dur: '4.2s', status: 'passed',
-    steps: [
-      { keyword: 'Given ', name: 'a US/en customer',                         status: 'passed', dur: '120ms', location: 'checkout/outline.spec.ts:5' },
-      { keyword: 'When ',  name: 'they place a delivery order',              status: 'passed', dur: '3.9s',  location: 'checkout/outline.spec.ts:8' },
-      { keyword: 'Then ',  name: 'the order success screen is shown',        status: 'passed', dur: '180ms', location: 'checkout/outline.spec.ts:12' },
+  { // Canonical demo of Scenario Outline grouping: 2 Examples rows, one fails.
+    kind: 'group', name: 'Checkout completes for <market>/<locale> — Example row <row>',
+    suite: 'Checkout', file: 'checkout/outline.spec.ts', dur: '9.3s', status: 'failed',
+    iterations: [
+      {
+        name: 'Checkout completes for US/en — Example row 1',
+        example: { market: 'US', locale: 'en', row: '1' },
+        status: 'passed',
+        steps: [
+          { keyword: 'Given ', name: 'a US/en customer',                  status: 'passed', dur: '120ms', location: 'checkout/outline.spec.ts:5' },
+          { keyword: 'When ',  name: 'they place a delivery order',       status: 'passed', dur: '3.9s',  location: 'checkout/outline.spec.ts:8' },
+          { keyword: 'Then ',  name: 'the order success screen is shown', status: 'passed', dur: '180ms', location: 'checkout/outline.spec.ts:12' },
+        ],
+      },
+      { // Name kept byte-for-byte identical to the pixelmatch1.diffs[1].triggeredBy.scenario
+        // backlink below -- that coupling is real (independently hand-typed), not derived.
+        name: 'Checkout completes for MX/es — Example row 2',
+        example: { market: 'MX', locale: 'es', row: '2' },
+        status: 'failed',
+        error: 'Expected order ID to match /^OMNI-MX-/',
+        steps: [
+          { keyword: 'Given ', name: 'a MX/es customer',                  status: 'passed', dur: '150ms', location: 'checkout/outline.spec.ts:5' },
+          { keyword: 'When ',  name: 'they place a delivery order',       status: 'failed', dur: '4.9s',  location: 'checkout/outline.spec.ts:8',
+            error: 'Expected order ID to match /^OMNI-MX-/' },
+          { keyword: 'Then ',  name: 'the order success screen is shown', status: 'skipped', dur: '0ms' },
+        ],
+        failedStepIndex: 1,
+      },
     ],
-  },
-  { name: 'Checkout completes for MX/es — Example row 2', suite: 'Checkout', file: 'checkout/outline.spec.ts', dur: '5.1s', status: 'failed',
-    error: 'Expected order ID to match /^OMNI-MX-/',
-    steps: [
-      { keyword: 'Given ', name: 'a MX/es customer',                         status: 'passed', dur: '150ms', location: 'checkout/outline.spec.ts:5' },
-      { keyword: 'When ',  name: 'they place a delivery order',              status: 'failed', dur: '4.9s',  location: 'checkout/outline.spec.ts:8',
-        error: 'Expected order ID to match /^OMNI-MX-/' },
-      { keyword: 'Then ',  name: 'the order success screen is shown',        status: 'skipped', dur: '0ms' },
-    ],
-    failedStepIndex: 1,
   },
 ];
 
