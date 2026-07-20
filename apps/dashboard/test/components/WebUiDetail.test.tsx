@@ -43,7 +43,7 @@ const tool: Tool = {
           suites: ['Checkout'],
           tests: [
             {
-              ...tc('responsive webkit scenario'),
+              name: 'responsive webkit scenario', suite: 'Checkout', file: 'checkout.feature', dur: '120ms', status: 'passed',
               steps: [{ keyword: 'Given ', name: 'webkit preconditions', status: 'passed', dur: '10ms' }],
             },
           ],
@@ -102,6 +102,58 @@ describe('WebUiDetail nested viewport + browser tabs', () => {
     // ...and is auto-expanded (steps visible), proving the
     // useSearchParams → DetailBody → TestList expand wiring is live.
     expect(screen.getByText(/webkit preconditions/)).toBeInTheDocument();
+  });
+
+  it('deep-links into an iteration inside a Scenario Outline group via ?expand', () => {
+    const groupedTool: Tool = {
+      ...tool,
+      viewports: tool.viewports!.map((v) =>
+        v.viewport === 'responsive'
+          ? {
+              ...v,
+              browsers: v.browsers.map((b) =>
+                b.browser === 'webkit'
+                  ? {
+                      ...b,
+                      tests: [
+                        ...b.tests,
+                        {
+                          kind: 'group',
+                          name: 'Logout label is translated to <language> after market <market>',
+                          suite: 'Checkout',
+                          file: 'checkout.feature',
+                          dur: '1.0s',
+                          status: 'passed',
+                          iterations: [
+                            {
+                              name: 'Logout label is translated to Spanish after market MX',
+                              example: { market: 'MX', language: 'Spanish' },
+                              status: 'passed',
+                              steps: [{ keyword: 'Given ', name: 'mx preconditions', status: 'passed', dur: '5ms' }],
+                            },
+                          ],
+                        },
+                      ],
+                    }
+                  : b,
+              ),
+            }
+          : v,
+      ),
+    };
+    render(
+      <MemoryRouter
+        initialEntries={[
+          '/runs/r1/playwright?expand=' +
+            encodeURIComponent('Logout label is translated to Spanish after market MX'),
+        ]}
+      >
+        <WebUiDetail runId="r1" tool={groupedTool} />
+      </MemoryRouter>,
+    );
+    expect(tabBtn(/WebKit/)).toBeInTheDocument();
+    expect(screen.getByText(/market: MX/)).toBeInTheDocument();
+    expect(screen.getByText(/mx preconditions/)).toBeInTheDocument();
   });
 
   it('renders the test list for the active inner browser tab', () => {
