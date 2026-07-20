@@ -1,9 +1,31 @@
 {
   "loginScreen": { "webdriverio": "body", "appium": "~screen-login" },
-  "appLogo": { "appium": "~img-logo" },
-  "appNameText": { "appium": "~text-app-name" },
-  "welcomeTitleText": { "webdriverio": "h2.text-3xl", "appium": "~text-welcome-title" },
-  "subtitleText": { "webdriverio": "p.text-gray-400", "appium": "~text-login-subtitle" },
+  "appLogo": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"img-logo\")",
+      "ios": "~img-logo"
+    }
+  },
+  "appNameText": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-app-name\")",
+      "ios": "~text-app-name"
+    }
+  },
+  "welcomeTitleText": {
+    "webdriverio": "h2.text-3xl",
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-welcome-title\")",
+      "ios": "~text-welcome-title"
+    }
+  },
+  "subtitleText": {
+    "webdriverio": "p.text-gray-400",
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-login-subtitle\")",
+      "ios": "~text-login-subtitle"
+    }
+  },
   "marketButtonList": {
     "webdriverio": "[data-testid^='market-']",
     "appium": {
@@ -30,14 +52,20 @@
       "responsive": "[data-testid='username-responsive']",
       "desktop": "[data-testid='username-desktop']"
     },
-    "appium": "~input-username"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"input-username\")",
+      "ios": "~input-username"
+    }
   },
   "passwordInput": {
     "webdriverio": {
       "responsive": "[data-testid='password-responsive']",
       "desktop": "[data-testid='password-desktop']"
     },
-    "appium": "~input-password"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"input-password\")",
+      "ios": "~input-password"
+    }
   },
   "togglePasswordButton": { "webdriverio": "[data-testid='toggle-password']" },
   "marketSelectionContainer": { "appium": "~view-market-selection" },
@@ -52,10 +80,18 @@
       "responsive": "[data-testid='login-button-responsive']",
       "desktop": "[data-testid='login-button-desktop']"
     },
-    "appium": "~btn-login"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"btn-login\")",
+      "ios": "~btn-login"
+    }
   },
   "loginError": { "webdriverio": "[data-testid='login-error']", "appium": "~text-login-error" },
-  "quickLoginLabel": { "appium": "~text-quick-login-label" },
+  "quickLoginLabel": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-quick-login-label\")",
+      "ios": "~text-quick-login-label"
+    }
+  },
   "quickLoginUserList": {
     "webdriverio": "[data-testid^='user-']",
     "appium": {

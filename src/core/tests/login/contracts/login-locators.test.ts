@@ -14,7 +14,17 @@ test('login.webdriver.locators.json is valid JSON, has all 18 original keys, val
     assert.equal(Object.keys(webdriver).length, 18);
     assert.deepEqual(webdriver.loginScreen, { webdriverio: 'body', appium: '~screen-login' });
     assert.deepEqual(webdriver.togglePasswordButton, { webdriverio: "[data-testid='toggle-password']" });
-    assert.equal(webdriver.appLogo.appium, '~img-logo');
+    // appium.android switched from a `~content-desc` strategy to a resource-id
+    // UiSelector — root-caused against a real device (R5CX71NFF9H, uiautomator
+    // dump): this APK's testID-derived elements expose Android resource-id, not
+    // content-desc (content-desc instead carries the accessibility display text,
+    // e.g. "OmniPizza" for text-app-name, not the testID). ios is left at its
+    // original `~`-prefixed value, unverified/unchanged (no iOS device available
+    // to confirm whether the same mismatch applies there).
+    assert.deepEqual(webdriver.appLogo.appium, {
+        android: 'android=new UiSelector().resourceId("img-logo")',
+        ios: '~img-logo',
+    });
     assert.equal(webdriver.appLogo.webdriverio, undefined);
     assert.deepEqual(webdriver.marketButtonList.appium, {
         android: 'android=new UiSelector().descriptionStartsWith("btn-market-")',
