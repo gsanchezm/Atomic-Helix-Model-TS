@@ -163,7 +163,7 @@ case "$PROFILE" in
     PLUGIN_WEBDRIVERIO=true run_bg webdriverio-plugin.log src/plugins/webdriverio/server.ts
     PLUGIN_API=true run_bg api-plugin.log src/plugins/api/server.ts
     wait_port 50051 || fail "chaos-proxy did not open :50051"
-    wait_port "${WEBDRIVERIO_PLUGIN_PORT:-50060}" || fail "webdriverio plugin did not open :${WEBDRIVERIO_PLUGIN_PORT:-50060}"
+    wait_port "${WEBDRIVERIO_PLUGIN_PORT:-51000}" || fail "webdriverio plugin did not open :${WEBDRIVERIO_PLUGIN_PORT:-51000}"
     wait_port "${API_PLUGIN_PORT:-50055}" || fail "api plugin did not open :${API_PLUGIN_PORT:-50055}"
     ;;
   cypress)
