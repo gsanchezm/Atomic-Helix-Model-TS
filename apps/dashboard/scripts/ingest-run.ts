@@ -47,6 +47,7 @@ import type {
   Status,
   TestCase,
   TestStep,
+  ToolTiming,
   ViewportBlock,
   WebSecurityTool,
   WebUiTool,
@@ -742,6 +743,29 @@ async function buildMobsfTool(dir: string = reportsDir): Promise<MobileSecurityT
 
 export { buildPlaywrightTool, buildAppiumTool, buildAxeTool, buildZapTool, buildMobsfTool, materializeScreenshots };
 
+// ---------- Tool Efficiency timing ----------------------------------------
+
+async function collectTiming(runDir: string): Promise<ToolTiming[]> {
+  const timingDir = path.join(runDir, 'timing');
+  let files: string[];
+  try {
+    files = await fs.readdir(timingDir);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw err;
+  }
+  const timings: ToolTiming[] = [];
+  for (const file of files.filter((f) => f.endsWith('.json'))) {
+    try {
+      const raw = await fs.readFile(path.join(timingDir, file), 'utf8');
+      timings.push(JSON.parse(raw) as ToolTiming);
+    } catch (err) {
+      console.error(`[ingest] skipping unreadable timing file ${file}: ${(err as Error).message}`);
+    }
+  }
+  return timings;
+}
+
 async function main(): Promise<void> {
   const { runId: argRunId } = parseArgs();
   const runId = argRunId ?? defaultRunId();
@@ -857,6 +881,13 @@ async function main(): Promise<void> {
     console.error('Run `pnpm test:json:playwright`, `pnpm test:json:api`, etc. first.');
     process.exitCode = 1;
     return;
+  }
+
+  // ---- timing (Tool Efficiency) -----------------------------------------
+  const timings = await collectTiming(runDir);
+  if (timings.length > 0) {
+    await writeJson(path.join(runDir, 'timing.json'), timings);
+    console.log(`[ingest] wrote timing.json (${timings.length} tool timing entr${timings.length === 1 ? 'y' : 'ies'})`);
   }
 
   // ---- run.json + manifest ---------------------------------------------
