@@ -1,8 +1,17 @@
 #!/usr/bin/env bash
-# One-shot local orchestration: web (desktop+responsive) + visual (desktop+responsive) + gatling,
-# then merge + ingest into the dashboard. Mirrors
-# ahm-execution-helix.yml env per phase. Continues through test failures (we want results
+# One-shot local orchestration across all 7 categories, in order:
+# Web (Playwright, WebdriverIO) -> Mobile (Mobilewright, Appium) ->
+# Performance (Gatling smoke/load/stress) -> API -> Visual -> Accessibility -> Security (ZAP, MobSF).
+# Every tool invocation is wrapped by run_timed(), which records wall-clock
+# duration to reports/<runId>/timing/<tool>-<subtype>.json for the dashboard's
+# Tool Efficiency section. Continues through test failures (we want results
 # captured even if some scenarios fail; retry:1 in cucumber.js absorbs cold-start flakes).
+#
+# Fully sequential by design: ci/steps/start-stack.sh's every profile (api,
+# web, android, ios, mobilewright, zap, mobsf, webdriverio) independently
+# starts its own chaos-proxy on the hardcoded port 50051 -- there is no
+# shared-stack mechanism, so two profiles cannot run at once on one machine
+# (CI's apparent parallelism relies on separate runners, not a shared proxy).
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -19,101 +28,194 @@ RUN_ID="real-$TS"
 
 say(){ echo "[$(date +%H:%M:%S)] $*" | tee -a "$SUMMARY"; }
 
+# run_timed <tool> <category> <subtype> <command...>
+# Wraps a tool invocation with wall-clock start/end capture, written via
+# scripts/write-timing.js. Never affects the wrapped command's exit status.
+run_timed() {
+  local tool="$1" category="$2" subtype="$3"; shift 3
+  local started ended status
+  started="$(node -e 'console.log(new Date().toISOString())')"
+  "$@"
+  status=$?
+  ended="$(node -e 'console.log(new Date().toISOString())')"
+  node scripts/write-timing.js --tool "$tool" --category "$category" --subtype "$subtype" \
+    --started "$started" --ended "$ended" --run-id "$RUN_ID" --reports-dir reports \
+    || say "WARN — failed to write timing sidecar for $tool/$subtype"
+  return $status
+}
+
 # Stale mobile scratch from a PRIOR run must not leak into THIS run's ingest: one
 # run = one ingest. The per-run ingested copies (reports/<runId>/appium.json) are the
 # durable record and are untouched; only the top-level scratch is cleared.
 rm -f reports/android.json reports/ios.json
 
-# ---------------- Phase B: Web Desktop (functional) ----------------
-say "PHASE B — web desktop: starting stack"
+# ==================== 1. WEB (desktop + responsive Playwright, then WebdriverIO) ====================
+say "PHASE 1a — web desktop: starting stack"
 if PLATFORM=web VIEWPORT=desktop DRIVER=playwright HEADLESS=true PLUGIN_PLAYWRIGHT=true PLUGIN_PIXELMATCH=false bash ci/steps/start-stack.sh web; then
-  say "PHASE B — stack up; running cucumber @desktop"
+  say "PHASE 1a — stack up; running cucumber @desktop"
   PLATFORM=web VIEWPORT=desktop DRIVER=playwright HEADLESS=true PLUGIN_PIXELMATCH=false \
-    bash ci/steps/run-suite.sh "@desktop" playwright-desktop > "$LOG/phaseB.log" 2>&1
-  say "PHASE B — cucumber exit=$? ($(grep -aoE '[0-9]+ scenarios \([^)]*\)' "$LOG/phaseB.log" | tail -1))"
+    run_timed playwright web_ui desktop bash ci/steps/run-suite.sh "@desktop" playwright-desktop \
+    > "$LOG/phase1a.log" 2>&1
+  say "PHASE 1a — cucumber exit=$? ($(grep -aoE '[0-9]+ scenarios \([^)]*\)' "$LOG/phase1a.log" | tail -1))"
 else
-  say "PHASE B — STACK FAILED to come up (see proxy/playwright/api logs)"
+  say "PHASE 1a — STACK FAILED to come up (see proxy/playwright/api logs)"
 fi
 bash ci/steps/teardown.sh
 
-# ---------------- Phase C: Web Responsive (functional) ----------------
-say "PHASE C — web responsive: starting stack"
+say "PHASE 1b — web responsive: starting stack"
 if PLATFORM=web VIEWPORT=responsive DRIVER=playwright HEADLESS=true PLUGIN_PLAYWRIGHT=true PLUGIN_PIXELMATCH=false bash ci/steps/start-stack.sh web; then
-  say "PHASE C — stack up; running cucumber @responsive"
+  say "PHASE 1b — stack up; running cucumber @responsive"
   PLATFORM=web VIEWPORT=responsive DRIVER=playwright HEADLESS=true PLUGIN_PIXELMATCH=false \
-    bash ci/steps/run-suite.sh "@responsive" playwright-responsive > "$LOG/phaseC.log" 2>&1
-  say "PHASE C — cucumber exit=$? ($(grep -aoE '[0-9]+ scenarios \([^)]*\)' "$LOG/phaseC.log" | tail -1))"
+    run_timed playwright web_ui responsive bash ci/steps/run-suite.sh "@responsive" playwright-responsive \
+    > "$LOG/phase1b.log" 2>&1
+  say "PHASE 1b — cucumber exit=$? ($(grep -aoE '[0-9]+ scenarios \([^)]*\)' "$LOG/phase1b.log" | tail -1))"
 else
-  say "PHASE C — STACK FAILED to come up"
+  say "PHASE 1b — STACK FAILED to come up"
 fi
 bash ci/steps/teardown.sh
 
-# ---------------- Phase D: Visual Desktop (regen = green by construction) ----------------
-say "PHASE D — visual desktop: starting stack (pixelmatch on)"
-if PLATFORM=web VIEWPORT=desktop DRIVER=playwright HEADLESS=true PLUGIN_PLAYWRIGHT=true PLUGIN_PIXELMATCH=true bash ci/steps/start-stack.sh web; then
-  say "PHASE D — stack up; running visual-regen desktop"
-  PLATFORM=web VIEWPORT=desktop DRIVER=playwright HEADLESS=true \
-    node scripts/visual-regen.js desktop > "$LOG/phaseD.log" 2>&1
-  say "PHASE D — visual-regen exit=$? ($(grep -aoE '[0-9]+ scenarios \([^)]*\)' "$LOG/phaseD.log" | tail -1))"
+say "PHASE 1c — webdriverio: starting stack (brings up its own selenium-standalone container)"
+if PLATFORM=web DRIVER=webdriverio bash ci/steps/start-stack.sh webdriverio; then
+  say "PHASE 1c — stack up; running cucumber @desktop"
+  PLATFORM=web DRIVER=webdriverio \
+    run_timed webdriverio web_ui web bash ci/steps/run-suite.sh "@desktop" webdriverio \
+    > "$LOG/phase1c.log" 2>&1
+  say "PHASE 1c — cucumber exit=$? ($(grep -aoE '[0-9]+ scenarios \([^)]*\)' "$LOG/phase1c.log" | tail -1))"
 else
-  say "PHASE D — STACK FAILED to come up"
+  say "PHASE 1c — STACK FAILED to come up (needs Docker for selenium-standalone)"
 fi
 bash ci/steps/teardown.sh
 
-# ---------------- Phase E: Visual Responsive ----------------
-say "PHASE E — visual responsive: starting stack (pixelmatch on)"
-if PLATFORM=web VIEWPORT=responsive DRIVER=playwright HEADLESS=true PLUGIN_PLAYWRIGHT=true PLUGIN_PIXELMATCH=true bash ci/steps/start-stack.sh web; then
-  say "PHASE E — stack up; running visual-regen responsive"
-  PLATFORM=web VIEWPORT=responsive DRIVER=playwright HEADLESS=true \
-    node scripts/visual-regen.js responsive > "$LOG/phaseE.log" 2>&1
-  say "PHASE E — visual-regen exit=$? ($(grep -aoE '[0-9]+ scenarios \([^)]*\)' "$LOG/phaseE.log" | tail -1))"
+# ==================== 2. MOBILE (Mobilewright, then Appium — sequential, distinct start-stack profiles) ====================
+say "PHASE 2a — mobilewright: starting stack"
+if PLATFORM=android DRIVER=mobilewright bash ci/steps/start-stack.sh mobilewright; then
+  say "PHASE 2a — stack up; running cucumber @android"
+  PLATFORM=android DRIVER=mobilewright \
+    run_timed mobilewright mobile_ui android bash ci/steps/run-suite.sh "@android" mobilewright \
+    > "$LOG/phase2a.log" 2>&1
+  say "PHASE 2a — cucumber exit=$? ($(grep -aoE '[0-9]+ scenarios \([^)]*\)' "$LOG/phase2a.log" | tail -1))"
 else
-  say "PHASE E — STACK FAILED to come up"
+  say "PHASE 2a — STACK FAILED to come up (see proxy/mobilewright-plugin logs)"
 fi
 bash ci/steps/teardown.sh
 
-# ---------------- Phase F: Gatling (smoke, both simulations — standalone, no proxy) ----------------
-say "PHASE F — gatling smoke: checkout-load"
-PERF_PROFILE=smoke pnpm perf:smoke > "$LOG/phaseF-checkout.log" 2>&1
-say "PHASE F — checkout-load exit=$?"
-say "PHASE F — gatling smoke: invalid-login-load"
-PERF_PROFILE=smoke pnpm perf:login-invalid:smoke > "$LOG/phaseF-login.log" 2>&1
-say "PHASE F — invalid-login-load exit=$?"
-
-# ---------------- Phase G: Android (Appium) — conditional on a connected device ----------------
-# Runs LAST: a single reused Appium session over @android is ~60 min on a physical device,
-# so web/visual/gatling land first. Auto-skips when there's no adb device or no Appium daemon
-# on :4723, so this orchestrator still runs end-to-end on a dev box without a phone. The daemon
-# (port 4723) is started externally (`appium`); we only require it to be reachable. Continues
-# through scenario failures by design (contract-drift is captured, not fatal); retry:1 absorbs
-# cold-starts. Produces reports/android.json, which the INGEST step below turns into the
-# (android-only, empty-iOS) Appium card.
-say "PHASE G — android: pre-flight (adb device + Appium daemon :4723)"
+say "PHASE 2b — appium: pre-flight (adb device + Appium daemon :4723)"
 if ! command -v adb >/dev/null 2>&1; then
-  say "PHASE G — SKIP: adb not on PATH"
+  say "PHASE 2b — SKIP: adb not on PATH"
 elif [ -z "$(adb devices | awk 'NR>1 && $2=="device"{print $1}')" ]; then
-  say "PHASE G — SKIP: no adb device in 'device' state (connect a phone or start an emulator)"
+  say "PHASE 2b — SKIP: no adb device in 'device' state (connect a phone or start an emulator)"
 elif ! node -e "require('net').connect(4723,'127.0.0.1').on('connect',function(){process.exit(0)}).on('error',function(){process.exit(1)})" 2>/dev/null; then
-  say "PHASE G — SKIP: Appium daemon not reachable on :4723 (start it with \`appium\`)"
+  say "PHASE 2b — SKIP: Appium daemon not reachable on :4723 (start it with \`appium\`)"
 else
   ANDROID_DEV="$(adb devices | awk 'NR>1 && $2=="device"{print $1; exit}')"
-  say "PHASE G — device $ANDROID_DEV + daemon up; starting android stack"
+  say "PHASE 2b — device $ANDROID_DEV + daemon up; starting android stack"
   if PLATFORM=android DRIVER=appium bash ci/steps/start-stack.sh android; then
-    say "PHASE G — stack up; running cucumber @android (single Appium session, ~60min)"
+    say "PHASE 2b — stack up; running cucumber @android (single Appium session, ~60min)"
     PLATFORM=android DRIVER=appium PLUGIN_APPIUM=true PLUGIN_API=true \
-      bash ci/steps/run-suite.sh "@android" android > "$LOG/phaseG.log" 2>&1
-    say "PHASE G — cucumber exit=$? ($(grep -aoE '[0-9]+ scenarios \([^)]*\)' "$LOG/phaseG.log" | tail -1))"
+      run_timed appium mobile_ui android bash ci/steps/run-suite.sh "@android" android \
+      > "$LOG/phase2b.log" 2>&1
+    say "PHASE 2b — cucumber exit=$? ($(grep -aoE '[0-9]+ scenarios \([^)]*\)' "$LOG/phase2b.log" | tail -1))"
   else
-    say "PHASE G — STACK FAILED to come up (see proxy/appium-plugin logs)"
+    say "PHASE 2b — STACK FAILED to come up (see proxy/appium-plugin logs)"
   fi
   bash ci/steps/teardown.sh
 fi
 
+# ==================== 3. PERFORMANCE (Gatling smoke, load, stress — strictly sequential, exclusive of everything else) ====================
+say "PHASE 3 — gatling smoke: checkout-load"
+run_timed gatling performance smoke bash -c 'PERF_PROFILE=smoke pnpm perf:smoke' > "$LOG/phase3-smoke.log" 2>&1
+say "PHASE 3 — smoke exit=$?"
+say "PHASE 3 — gatling load: checkout-load"
+run_timed gatling performance load bash -c 'PERF_PROFILE=load pnpm perf:load' > "$LOG/phase3-load.log" 2>&1
+say "PHASE 3 — load exit=$?"
+say "PHASE 3 — gatling stress: checkout-load"
+run_timed gatling performance stress bash -c 'PERF_PROFILE=stress pnpm perf:stress' > "$LOG/phase3-stress.log" 2>&1
+say "PHASE 3 — stress exit=$?"
+
+# ==================== 4. API ====================
+say "PHASE 4 — API: starting stack"
+if PLATFORM=api DRIVER=api bash ci/steps/start-stack.sh api; then
+  say "PHASE 4 — stack up; running cucumber @api"
+  PLATFORM=api DRIVER=api \
+    run_timed api api standalone bash ci/steps/run-suite.sh "@api" api > "$LOG/phase4.log" 2>&1
+  say "PHASE 4 — cucumber exit=$? ($(grep -aoE '[0-9]+ scenarios \([^)]*\)' "$LOG/phase4.log" | tail -1))"
+else
+  say "PHASE 4 — STACK FAILED to come up"
+fi
+bash ci/steps/teardown.sh
+
+# ==================== 5. VISUAL (desktop + responsive) ====================
+say "PHASE 5a — visual desktop: starting stack (pixelmatch on)"
+if PLATFORM=web VIEWPORT=desktop DRIVER=playwright HEADLESS=true PLUGIN_PLAYWRIGHT=true PLUGIN_PIXELMATCH=true bash ci/steps/start-stack.sh web; then
+  say "PHASE 5a — stack up; running visual-regen desktop"
+  run_timed pixelmatch visual desktop bash -c 'PLATFORM=web VIEWPORT=desktop DRIVER=playwright HEADLESS=true node scripts/visual-regen.js desktop' \
+    > "$LOG/phase5a.log" 2>&1
+  say "PHASE 5a — visual-regen exit=$? ($(grep -aoE '[0-9]+ scenarios \([^)]*\)' "$LOG/phase5a.log" | tail -1))"
+else
+  say "PHASE 5a — STACK FAILED to come up"
+fi
+bash ci/steps/teardown.sh
+
+say "PHASE 5b — visual responsive: starting stack (pixelmatch on)"
+if PLATFORM=web VIEWPORT=responsive DRIVER=playwright HEADLESS=true PLUGIN_PLAYWRIGHT=true PLUGIN_PIXELMATCH=true bash ci/steps/start-stack.sh web; then
+  say "PHASE 5b — stack up; running visual-regen responsive"
+  run_timed pixelmatch visual responsive bash -c 'PLATFORM=web VIEWPORT=responsive DRIVER=playwright HEADLESS=true node scripts/visual-regen.js responsive' \
+    > "$LOG/phase5b.log" 2>&1
+  say "PHASE 5b — visual-regen exit=$? ($(grep -aoE '[0-9]+ scenarios \([^)]*\)' "$LOG/phase5b.log" | tail -1))"
+else
+  say "PHASE 5b — STACK FAILED to come up"
+fi
+bash ci/steps/teardown.sh
+
+# ==================== 6. ACCESSIBILITY (dedicated @a11y pass, PLUGIN_AXE on) ====================
+say "PHASE 6 — accessibility: starting stack (axe on)"
+if PLATFORM=web VIEWPORT=desktop DRIVER=playwright HEADLESS=true PLUGIN_PLAYWRIGHT=true PLUGIN_AXE=true bash ci/steps/start-stack.sh web; then
+  say "PHASE 6 — stack up; running cucumber @a11y"
+  PLATFORM=web VIEWPORT=desktop DRIVER=playwright HEADLESS=true PLUGIN_AXE=true \
+    run_timed axe accessibility a11y bash ci/steps/run-suite.sh "@a11y" a11y \
+    > "$LOG/phase6.log" 2>&1
+  say "PHASE 6 — cucumber exit=$? ($(grep -aoE '[0-9]+ scenarios \([^)]*\)' "$LOG/phase6.log" | tail -1))"
+else
+  say "PHASE 6 — STACK FAILED to come up"
+fi
+bash ci/steps/teardown.sh
+
+# ==================== 7. SECURITY (ZAP, then MobSF — sequential, distinct start-stack profiles) ====================
+# Exact commands mirrored from .github/workflows/ahm-execution-helix.yml's
+# security-zap and security-mobsf jobs (found during implementation — there
+# is no ci/steps/run-security.sh; both tools go through the same generic
+# run-suite.sh every other profile uses).
+say "PHASE 7a — zap: starting stack"
+if PLATFORM=api DRIVER=api PLUGIN_ZAP=true PLUGIN_API=true bash ci/steps/start-stack.sh zap; then
+  say "PHASE 7a — stack up; running @security (hard-gating active scan + schema fuzz)"
+  PLATFORM=api DRIVER=api PLUGIN_ZAP=true \
+    run_timed zap security web bash ci/steps/run-suite.sh "@security" zap security \
+    > "$LOG/phase7a-security.log" 2>&1
+  say "PHASE 7a — @security exit=$?"
+  say "PHASE 7a — running @security-infra (ZAP baseline + TLS; MobSF self-skips, PLUGIN_MOBSF unset)"
+  PLATFORM=api DRIVER=api PLUGIN_ZAP=true \
+    bash ci/steps/run-suite.sh "@security-infra" zap security-infra \
+    > "$LOG/phase7a-security-infra.log" 2>&1
+  say "PHASE 7a — @security-infra exit=$?"
+else
+  say "PHASE 7a — STACK FAILED to come up (see proxy/zap-plugin logs; needs Docker)"
+fi
+bash ci/steps/teardown.sh
+
+say "PHASE 7b — mobsf: starting stack (brings up its own long-lived mobsf container)"
+if PLATFORM=api DRIVER=api PLUGIN_MOBSF=true PLUGIN_API=true MOBSF_URL="http://127.0.0.1:8000" \
+    bash ci/steps/start-stack.sh mobsf; then
+  say "PHASE 7b — stack up; running @security-infra (MobSF static scan; ZAP self-skips, PLUGIN_ZAP unset)"
+  PLATFORM=api DRIVER=api PLUGIN_MOBSF=true MOBSF_URL="http://127.0.0.1:8000" \
+    run_timed mobsf security android bash ci/steps/run-suite.sh "@security-infra" mobsf security-infra \
+    > "$LOG/phase7b.log" 2>&1
+  say "PHASE 7b — @security-infra exit=$?"
+else
+  say "PHASE 7b — STACK FAILED to come up (see proxy/mobsf-plugin logs; needs Docker)"
+fi
+bash ci/steps/teardown.sh
+
 # ---------------- Ingest ----------------
-# No merge needed: the dashboard ingest (ingest-run.ts) now reads
-# reports/playwright-<viewport>.json directly as viewport blocks and they take
-# precedence over a flat reports/playwright.json. Remove any stale flat file so
-# the per-viewport files are used unambiguously.
 rm -f reports/playwright.json
 
 say "INGEST — dashboard ingest as run-id $RUN_ID"
