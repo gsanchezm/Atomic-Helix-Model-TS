@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 
 import type { ManifestEntry, RunInfo } from '@shared/types';
 import { ApiError, fetchRun } from '../api';
@@ -50,6 +50,9 @@ export function Topbar({ runs, currentRunId }: TopbarProps) {
         {runs.length > 0 && currentRunId && (
           <RunPicker runs={runs} currentRunId={currentRunId} currentToolId={toolId} />
         )}
+        <Link to="/efficiency" className="pill" style={{ textDecoration: 'none' }}>
+          ⏱ Tool Efficiency
+        </Link>
       </div>
       <div className="run-meta">
         {run && (

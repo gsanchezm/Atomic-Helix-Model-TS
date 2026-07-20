@@ -1,4 +1,5 @@
 import type {
+  EfficiencyRunPoint,
   ManifestEntry,
   RunPayload,
   Tool,
@@ -36,4 +37,8 @@ export function fetchTool(
     `/api/runs/${encodeURIComponent(runId)}/tools/${encodeURIComponent(toolId)}`,
     signal,
   );
+}
+
+export function fetchEfficiency(signal?: AbortSignal): Promise<EfficiencyRunPoint[]> {
+  return fetchJson<EfficiencyRunPoint[]>('/api/efficiency', signal);
 }
