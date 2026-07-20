@@ -113,6 +113,9 @@ importers:
 
   apps/dashboard:
     dependencies:
+      '@cucumber/gherkin':
+        specifier: 38.0.0
+        version: 38.0.0
       express:
         specifier: ^4.21.2
         version: 4.22.2
