@@ -53,4 +53,61 @@ describe('TestList accordion', () => {
     render(<TestList tests={legacy} filter="all" query="" />);
     expect(screen.getByText(/legacy boom/)).toBeInTheDocument();
   });
+
+  it('renders a Scenario Outline group as one row with an iteration count badge', () => {
+    const grouped: TestCase = {
+      kind: 'group',
+      name: 'Logout label is translated to <language> after market <market>',
+      suite: 'Login',
+      file: 'login.feature',
+      dur: '2.0s',
+      status: 'failed',
+      iterations: [
+        {
+          name: 'Logout label is translated to English after market US',
+          example: { market: 'US', language: 'English' },
+          status: 'passed',
+        },
+        {
+          name: 'Logout label is translated to Spanish after market MX',
+          example: { market: 'MX', language: 'Spanish' },
+          status: 'failed',
+          error: 'boom',
+        },
+      ],
+    };
+    render(<TestList tests={[grouped]} filter="all" query="" />);
+    expect(screen.getByText(/2 iterations/)).toBeInTheDocument();
+    // The group auto-expands because one iteration failed, revealing the iteration rows.
+    expect(screen.getByText(/market: MX/)).toBeInTheDocument();
+  });
+
+  it('deep-links into a specific iteration inside a group via expandScenarioName', () => {
+    const grouped: TestCase = {
+      kind: 'group',
+      name: 'Logout label is translated to <language> after market <market>',
+      suite: 'Login',
+      file: 'login.feature',
+      dur: '2.0s',
+      status: 'passed',
+      iterations: [
+        {
+          name: 'Logout label is translated to English after market US',
+          example: { market: 'US', language: 'English' },
+          status: 'passed',
+          steps: [{ keyword: 'Given ', name: 'the login screen is open', status: 'passed', dur: '10ms' }],
+        },
+      ],
+    };
+    render(
+      <TestList
+        tests={[grouped]}
+        filter="all"
+        query=""
+        expandScenarioName="Logout label is translated to English after market US"
+      />,
+    );
+    expect(screen.getByText(/market: US/)).toBeInTheDocument();
+    expect(screen.getByText(/the login screen is open/)).toBeInTheDocument();
+  });
 });
