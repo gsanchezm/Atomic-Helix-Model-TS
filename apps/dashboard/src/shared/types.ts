@@ -22,17 +22,48 @@ export interface ManifestEntry {
   startedAt: string;
 }
 
-export interface TestCase {
-  name: string;
+export type TestCase = TestCaseSingle | TestCaseGroup;
+
+interface TestCaseBase {
   suite: string;
   file: string;
   dur: string;
   status: Status;
+}
+
+export interface TestCaseSingle extends TestCaseBase {
+  /** Optional so pre-existing report JSON (ingested before Scenario Outline grouping shipped) keeps parsing unchanged. */
+  kind?: 'single';
+  name: string;
   error?: string;
   steps?: TestStep[];
   failedStepIndex?: number;
   /** URL of a failure screenshot PNG, served from /reports/<runId>/screenshots/. Present only when the scenario failed and an image/png attachment was captured in the After hook. */
   screenshot?: string;
+}
+
+export interface TestCaseGroup extends TestCaseBase {
+  kind: 'group';
+  /** Scenario Outline template name, placeholders intact, e.g. "Logout label is translated to <language> after market <market>". */
+  name: string;
+  /** One per Examples row, ordered by source line (not execution/arrival order). */
+  iterations: TestCaseIteration[];
+}
+
+export interface TestCaseIteration {
+  /** Interpolated name, e.g. "Logout label is translated to Spanish after market MX". */
+  name: string;
+  /** Examples row data keyed by column header, e.g. { market: 'MX', language: 'Spanish', logoutLabel: 'Salir' }. */
+  example: Record<string, string>;
+  status: Status;
+  error?: string;
+  steps?: TestStep[];
+  failedStepIndex?: number;
+  screenshot?: string;
+}
+
+export function isTestCaseGroup(t: TestCase): t is TestCaseGroup {
+  return t.kind === 'group';
 }
 
 export interface TestStep {
