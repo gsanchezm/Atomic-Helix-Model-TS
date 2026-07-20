@@ -253,6 +253,8 @@ PLATFORM=web VIEWPORT=desktop DRIVER=playwright HEADLESS=true PLUGIN_PLAYWRIGHT=
 ```
 Expected: 1 scenario, 4 steps, all passed. If it fails on a real WCAG violation, that's real signal — fix the underlying OmniPizza checkout markup issue or, if it's a false positive against a known/accepted pattern, add a scoped `exclude` selector to the contract's audit entry (same escape hatch the catalog contract structure already supports) rather than loosening `maxViolations`.
 
+**Guard against a false green**: `verifyAccessibilityGate()` silently returns without running any audit when `PLUGIN_AXE` isn't `'true'` or the driver isn't `playwright` — a "passed" scenario here could mean either "0 real violations" or "0 audits ever ran." After this run, check `reports/axe.json` and confirm it actually gained a new `checkout_screen` audit entry (`grep -c checkout_screen reports/axe.json` or open it directly) — a passing scenario with no corresponding audit record means the gate no-op'd, not that checkout is accessible.
+
 - [ ] **Step 6: Commit**
 
 ```bash
@@ -478,7 +480,14 @@ async function main() {
 }
 
 // Only run as CLI when invoked directly (not when imported by the test above).
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Compare via pathToFileURL rather than a hand-built `file://${path}` string —
+// on Windows, process.argv[1] is a drive-letter path ("C:\...") whose correct
+// file:// form needs an extra slash and forward-slash normalization, which a
+// naive template string gets wrong, making this guard silently never match
+// under Git Bash/win32 (main() would never run, and no timing files would be
+// written despite the orchestrator invoking this script with `node ...`).
+import { pathToFileURL } from 'node:url';
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   main().catch((err) => {
     console.error(err);
     process.exitCode = 1;
@@ -491,7 +500,19 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 Run: `node --test scripts/write-timing.test.js`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Verify the CLI entry point actually fires on this machine**
+
+The unit test only exercises `writeTiming()` directly (imported, not run as a CLI), so it can't catch a broken `main()`-invocation guard. Run the script exactly as the orchestrator will:
+```bash
+node scripts/write-timing.js --tool test --category web_ui --subtype smoke \
+  --started 2026-07-20T10:00:00.000Z --ended 2026-07-20T10:00:01.000Z \
+  --run-id manual-check --reports-dir /tmp/ahm-write-timing-check
+cat /tmp/ahm-write-timing-check/manual-check/timing/test-smoke.json   # Git Bash; use a Windows-style temp path if this errors
+rm -rf /tmp/ahm-write-timing-check
+```
+Expected: prints `[write-timing] wrote ...` and the JSON file exists with the right shape. If nothing prints and no file is written, the `import.meta.url`/`pathToFileURL` guard isn't matching on this platform — fix it before moving on; this exact failure mode (a silently-never-firing CLI guard) would otherwise surface only much later, as an empty Tool Efficiency dashboard after a multi-hour Task 15 run, with no error anywhere to point at it.
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add scripts/write-timing.js scripts/write-timing.test.js
@@ -1326,6 +1347,11 @@ These tasks run real infrastructure directly via Bash, never through isolated/pa
 
 - [ ] Run each category once cheap (existing smoke/read-only scenarios only) using the Task 10 script's phases, to ground-truth actual current state before investing further debugging time. This also produces the first real `timing.json`, validating the timing → ingest → chart pipeline end-to-end against live data.
 - [ ] For each phase that goes red, capture the failure mode (log excerpt, exit code) before moving on — don't debug inline yet, just inventory.
+- [ ] **Don't trust exit code 0 alone — check that each phase actually did something.** Several of this repo's gates can "pass" by silently doing nothing: `verifyAccessibilityGate()` no-ops if `PLUGIN_AXE` isn't `'true'` at the point cucumber actually runs (not just at the point the orchestrator set it — env vars set inline before a shell function call that backgrounds a subshell are exactly the kind of thing that's looked right before and wasn't, per this project's own history with `PLUGIN_*`/`VIEWPORT`/`HEADLESS` propagation). Per phase, confirm real work happened, not just a clean exit:
+  - **Accessibility**: `reports/axe.json` gained new audit entries (not just an unchanged file).
+  - **WebdriverIO / Mobilewright / Appium**: the cucumber summary line (`grep -aoE '[0-9]+ scenarios' .ahm-orch-logs/phase*.log`) shows the expected scenario count for that tag filter, not suspiciously "1 scenario" or "0 scenarios."
+  - **ZAP / MobSF**: the resulting `reports/zap.json`/`reports/mobsf-*.json` contain real findings/scores, not an empty/default shape.
+  - **Every phase**: `reports/<runId>/timing/<tool>-<subtype>.json` was actually written (confirms `write-timing.js`'s CLI guard fired — see Task 5 Step 5) and `durationMs` is a plausible, non-near-zero number for what that phase actually does.
 - [ ] Confirm the Efficiency dashboard (`/efficiency`, Task 9) renders real data from this run without errors.
 
 ### Task 13: WebdriverIO investigation (only if recon reproduces the "only first scenario" symptom)
