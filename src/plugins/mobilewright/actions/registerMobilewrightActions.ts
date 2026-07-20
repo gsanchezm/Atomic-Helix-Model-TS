@@ -9,6 +9,7 @@ import { ClearTextAction } from '@plugins/mobilewright/actions/ClearText';
 import { AssertTextAction } from '@plugins/mobilewright/actions/AssertText';
 import { ReadTextAction } from '@plugins/mobilewright/actions/ReadText';
 import { WaitForElementAction } from '@plugins/mobilewright/actions/WaitForElement';
+import { ScrollToAction } from '@plugins/mobilewright/actions/ScrollTo';
 
 let cachedRegistry: ActionRegistry<MobilewrightActionContext> | null = null;
 
@@ -25,7 +26,8 @@ export function getMobilewrightActionRegistry(): ActionRegistry<MobilewrightActi
         .register(ClearTextAction)
         .register(AssertTextAction)
         .register(ReadTextAction)
-        .register(WaitForElementAction);
+        .register(WaitForElementAction)
+        .register(ScrollToAction);
 
     cachedRegistry = registry;
     return registry;
