@@ -150,12 +150,18 @@ export async function assertDesktopNavbarVisible(): Promise<void> {
 
 // -- mobile menu (responsive web + native mobile) ---------------------
 
+const MENU_OPEN_PROBE_MS = 300;
+
 /**
  * Opens the mobile navigation menu.
  *
  * - Web-responsive: clicks `mobileMenuButton` (hamburger) to reveal the
  *   drawer. The drawer's items (`mobileNavCatalogLink`, ...) become
- *   visible after this click.
+ *   visible after this click. Idempotent — `mobileMenuButton` *toggles*
+ *   the drawer, so a scenario that already opened it earlier (e.g. the CH
+ *   login flow clicking the drawer's language toggle) must not click it
+ *   again here, or it closes what it just opened. Probe a drawer-contents
+ *   element first and skip the click when it's already visible.
  * - Native mobile (appium / mobilewright): the bottom nav is always
  *   visible — no click required. We wait on `bottomNavContainer` to
  *   confirm it has rendered and return.
@@ -173,6 +179,15 @@ export async function openMobileMenu(): Promise<void> {
         // clicking. Acts as the readiness signal for the verification step.
         await sendIntent(INTENT.WAIT_FOR_ELEMENT, `bottomNavContainer||${PRESENCE_WAIT_MS}`);
         log.info('Bottom nav present (native mobile) — no hamburger to open');
+        return;
+    }
+
+    const alreadyOpen = await sendIntent(
+        INTENT.WAIT_FOR_ELEMENT,
+        `mobileNavCheckoutLink||${MENU_OPEN_PROBE_MS}`,
+    ).then(() => true).catch(() => false);
+    if (alreadyOpen) {
+        log.info('Mobile menu already open — skipping hamburger click');
         return;
     }
 

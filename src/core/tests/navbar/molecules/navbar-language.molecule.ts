@@ -1,10 +1,13 @@
 // Navbar header-language molecule.
 //
 // CH is the only market with a header language switcher (DE/FR). The
-// navbar.locators.json defines BOTH a `languageDEButton` / `languageFRButton`
-// pair (used on the login screen and visible in the header on web) and a
+// navbar.locators.json defines a `languageDEButton` / `languageFRButton`
+// pair (desktop web header, and the login screen), a `mobileLanguageDEButton`
+// / `mobileLanguageFRButton` pair (the same toggle duplicated inside the
+// web-responsive hamburger drawer — the desktop copy sits in a
+// `hidden md:flex` container and is never visible below 768px), and a
 // `headerLanguageDEButton` / `headerLanguageFRButton` pair specific to the
-// mobile header. We pick the right key by driver.
+// native mobile header. We pick the right key by driver + viewport.
 //
 // The verification step `Then the catalog add-to-cart label reflects "<x>"`
 // is intentionally cross-slice: switching the navbar language must drive
@@ -29,7 +32,7 @@
 import { sendIntent } from '@kernel/client';
 import { logger } from '@utils/logger';
 import { INTENT } from '@kernel/intents';
-import { getDriver, isApiDriver, isNativeMobileDriver, isWebDriver } from './navbar-shell.molecule';
+import { getDriver, isApiDriver, isNativeMobileDriver, isWebDriver, isWebResponsive, openMobileMenu } from './navbar-shell.molecule';
 import { BROWSER_COMMAND } from '@kernel/browser-command';
 import { sendBrowserCommand } from '@core/tests/support/browser-command';
 
@@ -55,8 +58,11 @@ const CH_WITNESS_PIZZA_ID = 'marinara';
  * Locator key selection:
  *   - native mobile: `headerLanguageDEButton` / `headerLanguageFRButton`
  *     (RN's in-app header, distinct from the login-screen switcher).
- *   - web (desktop or responsive): `languageDEButton` / `languageFRButton`
- *     (the navbar surfaces the same testid set as the login screen).
+ *   - web desktop: `languageDEButton` / `languageFRButton` (the navbar
+ *     surfaces the same testid set as the login screen).
+ *   - web responsive: the toggle is duplicated inside the hamburger drawer
+ *     under `mobileLanguageDEButton` / `mobileLanguageFRButton` — open the
+ *     drawer first, since the desktop copy is never visible below 768px.
  *
  * Waits briefly for a re-render anchor (`catalogScreen`) after the click
  * so downstream catalog reads don't race the i18n re-flow.
@@ -65,6 +71,10 @@ export async function switchHeaderLanguage(targetLanguage: CHLanguageCode): Prom
     if (isApiDriver()) {
         log.info({ targetLanguage }, 'switchHeaderLanguage skipped (api driver)');
         return;
+    }
+
+    if (isWebResponsive()) {
+        await openMobileMenu();
     }
 
     const key = pickLanguageButtonKey(targetLanguage);
@@ -81,9 +91,11 @@ function pickLanguageButtonKey(lang: CHLanguageCode): string {
     if (isNativeMobileDriver()) {
         return lang === 'fr' ? 'headerLanguageFRButton' : 'headerLanguageDEButton';
     }
-    // Web (playwright, both desktop and responsive viewports). The login
-    // and navbar share `languageDEButton` / `languageFRButton` testids,
-    // and the locator JSON serves the same data-testid for both.
+    if (isWebResponsive()) {
+        return lang === 'fr' ? 'mobileLanguageFRButton' : 'mobileLanguageDEButton';
+    }
+    // Web desktop. The login screen and desktop navbar share `languageDEButton`
+    // / `languageFRButton` testids.
     return lang === 'fr' ? 'languageFRButton' : 'languageDEButton';
 }
 

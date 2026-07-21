@@ -2,6 +2,7 @@ import { sendIntent } from '@kernel/client';
 import { INTENT } from '@kernel/intents';
 import { BROWSER_COMMAND } from '@kernel/browser-command';
 import { sendBrowserCommand } from '@core/tests/support/browser-command';
+import { isWebResponsive, openMobileMenu } from '@core/tests/navbar/molecules/navbar-shell.molecule';
 
 const POST_LOGIN_WAIT_TARGET = 'logoutButton';
 const POST_LOGIN_WAIT_TIMEOUT_MS = 20_000;
@@ -12,12 +13,16 @@ export async function submitCredentials(username: string, password: string): Pro
     await sendIntent(INTENT.TYPE, `usernameInput||${username}`);
     await sendIntent(INTENT.TYPE, `passwordInput||${password}`);
     await sendIntent(INTENT.CLICK, 'loginButton');
-    // Wait for a post-login anchor before downstream assertions run. We use the
-    // logout button itself because it's the next step's target — successful wait
-    // doubles as a render-readiness signal.
+    // Wait for a post-login anchor before downstream assertions run. On
+    // web-responsive `logoutButton` resolves to `mobile-logout-btn`, which
+    // lives inside the closed-by-default hamburger drawer and never becomes
+    // visible on its own — wait on navLogo instead, which renders unconditionally
+    // on both viewports. On desktop, keep using the logout button itself since
+    // it's the next step's target and doubles as a render-readiness signal.
+    const readinessTarget = isWebResponsive() ? 'navLogo' : POST_LOGIN_WAIT_TARGET;
     await sendIntent(
         INTENT.WAIT_FOR_ELEMENT,
-        `${POST_LOGIN_WAIT_TARGET}||${POST_LOGIN_WAIT_TIMEOUT_MS}`,
+        `${readinessTarget}||${POST_LOGIN_WAIT_TIMEOUT_MS}`,
     );
 }
 
@@ -78,5 +83,10 @@ export async function readLoginErrorText(): Promise<string> {
 }
 
 export async function assertLogoutLabel(expected: string): Promise<void> {
+    // On web-responsive, logoutButton resolves to the drawer's mobile-logout-btn,
+    // which only renders once the hamburger menu is open.
+    if (isWebResponsive()) {
+        await openMobileMenu();
+    }
     await sendIntent(INTENT.ASSERT_TEXT, `logoutButton||${expected}`);
 }

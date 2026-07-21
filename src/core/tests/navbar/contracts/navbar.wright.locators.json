@@ -58,6 +58,12 @@
   "mobileMenuButton": {
     "playwright": { "kind": "testId", "value": "mobile-menu-btn" }
   },
+  "mobileLanguageDEButton": {
+    "playwright": { "kind": "testId", "value": "mobile-lang-de" }
+  },
+  "mobileLanguageFRButton": {
+    "playwright": { "kind": "testId", "value": "mobile-lang-fr" }
+  },
   "mobileNavCatalogLink": {
     "playwright": { "kind": "testId", "value": "mobile-nav-catalog" }
   },
