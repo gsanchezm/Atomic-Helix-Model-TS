@@ -3,6 +3,7 @@ import { logger } from '@utils/logger';
 import { INTENT } from '@kernel/intents';
 import { BROWSER_COMMAND } from '@kernel/browser-command';
 import { sendBrowserCommand } from '@core/tests/support/browser-command';
+import { isWebResponsive, openMobileMenu } from '@core/tests/navbar/molecules/navbar-shell.molecule';
 
 const log = logger.child({ layer: 'molecule', action: 'navigation' });
 const CHECKOUT_PATH = '/checkout';
@@ -40,13 +41,23 @@ export async function navigateToCheckout(market?: string, accessToken?: string):
     // correctly via client-side routing, not a direct/hard load of that URL.
     // So: land on root via NAVIGATE (same as the catalog path), wait for the
     // authenticated shell to render, then CLICK the real in-app nav link.
+    //
+    // On web-responsive the desktop nav link is off-screen/hidden behind the
+    // hamburger drawer (same viewport-conditional shell navbar-shell.molecule
+    // already handles) — open the mobile menu and use its checkout entry
+    // instead of clicking the invisible desktop link.
     const baseUrl = process.env.BASE_URL;
     if (!baseUrl) {
         throw new Error('Missing required env var: BASE_URL');
     }
     await sendIntent(INTENT.NAVIGATE, baseUrl);
     await sendIntent(INTENT.WAIT_FOR_ELEMENT, 'navLogo||20000');
-    await sendIntent(INTENT.CLICK, 'navCheckoutLink');
+    if (isWebResponsive()) {
+        await openMobileMenu();
+        await sendIntent(INTENT.CLICK, 'mobileNavCheckoutLink');
+    } else {
+        await sendIntent(INTENT.CLICK, 'navCheckoutLink');
+    }
     await sendIntent(INTENT.WAIT_FOR_ELEMENT, 'streetInput||20000');
 
     const diagnostics = await sendBrowserCommand(BROWSER_COMMAND.GET_CHECKOUT_DIAGNOSTICS);
