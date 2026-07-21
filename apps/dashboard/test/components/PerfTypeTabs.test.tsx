@@ -22,9 +22,9 @@ describe('PerfTypeTabs', () => {
   it('renders one button per PerfTestType in fixed order', () => {
     render(<PerfTypeTabs byType={byType} active="load" onSelect={() => {}} />);
     const buttons = screen.getAllByRole('button');
-    expect(buttons).toHaveLength(6);
-    expect(buttons[0]).toHaveTextContent('Load');
-    expect(buttons[5]).toHaveTextContent('Volume');
+    expect(buttons).toHaveLength(7);
+    expect(buttons[0]).toHaveTextContent('Smoke');
+    expect(buttons[6]).toHaveTextContent('Volume');
   });
 
   it('shows a "N simulations" badge from the scenario count, 0 when perf is null', () => {

@@ -460,15 +460,29 @@ function browserBlockFromSuite(browser: string, s: IngestedSuite): BrowserBlock 
 }
 
 /**
- * Build the Playwright tool, in this precedence order:
- *   1. Viewport(+browser) files: `playwright-<viewport>-<browser>.json` and
- *      legacy `playwright-<viewport>.json` → `viewports[]` with nested
+ * Build a WebUiTool from cucumber JSON files following the `<toolId>*.json`
+ * naming convention, in this precedence order:
+ *   1. Viewport(+browser) files: `<toolId>-<viewport>-<browser>.json` and
+ *      legacy `<toolId>-<viewport>.json` → `viewports[]` with nested
  *      per-browser breakdown (outer viewport tabs, inner browser tabs).
- *   2. Per-browser files `playwright-<browser>.json` → `browsers[]` (browser
+ *   2. Per-browser files `<toolId>-<browser>.json` → `browsers[]` (browser
  *      sub-tabs, no viewport axis).
- *   3. Flat `playwright.json` → single flat test list (no tabs).
+ *   3. Flat `<toolId>.json` → single flat test list (no tabs).
+ *
+ * Originally Playwright-only (hence the name); WebdriverIO reuses it as-is
+ * since both drivers' cucumber-js output shares the same shape and the same
+ * run-suite.sh filename convention.
  */
-async function buildPlaywrightTool(dir: string = reportsDir): Promise<WebUiTool | null> {
+async function buildPlaywrightTool(
+  dir: string = reportsDir,
+  toolId: string = 'playwright',
+  toolName: string = 'Playwright',
+  descriptions: { viewport: string; browser: string; flat: string } = {
+    viewport: 'End-to-end browser tests across desktop and responsive viewports.',
+    browser: 'End-to-end browser tests across Chromium, Firefox, Edge and WebKit.',
+    flat: 'End-to-end browser tests across Chromium, Firefox and WebKit.',
+  },
+): Promise<WebUiTool | null> {
   let files: string[] = [];
   try {
     files = await fs.readdir(dir);
@@ -476,13 +490,18 @@ async function buildPlaywrightTool(dir: string = reportsDir): Promise<WebUiTool 
     files = [];
   }
 
+  const escapedId = toolId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const viewportBrowserRe = new RegExp(`^${escapedId}-(desktop|responsive)-([a-z0-9]+)\\.json$`, 'i');
+  const viewportLegacyRe = new RegExp(`^${escapedId}-(desktop|responsive)\\.json$`, 'i');
+  const perBrowserRe = new RegExp(`^${escapedId}-(.+)\\.json$`, 'i');
+
   // ---- 1. Viewport(+browser) files --------------------------------------
   // Group browser files per viewport. A viewport file may be either
-  // `playwright-<viewport>-<browser>.json` or legacy `playwright-<viewport>.json`
+  // `<toolId>-<viewport>-<browser>.json` or legacy `<toolId>-<viewport>.json`
   // (browser defaults to $BROWSER or 'chromium').
   const viewportFiles = new Map<KnownViewport, { file: string; browser: string }[]>();
   for (const f of files) {
-    const withBrowser = /^playwright-(desktop|responsive)-([a-z0-9]+)\.json$/i.exec(f);
+    const withBrowser = viewportBrowserRe.exec(f);
     if (withBrowser) {
       const viewport = withBrowser[1].toLowerCase() as KnownViewport;
       const browser = withBrowser[2].toLowerCase();
@@ -492,7 +511,7 @@ async function buildPlaywrightTool(dir: string = reportsDir): Promise<WebUiTool 
       viewportFiles.set(viewport, list);
       continue;
     }
-    const legacy = /^playwright-(desktop|responsive)\.json$/i.exec(f);
+    const legacy = viewportLegacyRe.exec(f);
     if (legacy) {
       const viewport = legacy[1].toLowerCase() as KnownViewport;
       const list = viewportFiles.get(viewport) ?? [];
@@ -535,9 +554,9 @@ async function buildPlaywrightTool(dir: string = reportsDir): Promise<WebUiTool 
       const suites  = [...new Set(allBrowsers.flatMap((b) => b.suites))];
       return {
         kind: 'web_ui',
-        id: 'playwright',
-        name: 'Playwright',
-        description: 'End-to-end browser tests across desktop and responsive viewports.',
+        id: toolId,
+        name: toolName,
+        description: descriptions.viewport,
         passed, failed, skipped,
         duration: `${viewports.length} viewport${viewports.length > 1 ? 's' : ''}`,
         suites,
@@ -550,7 +569,7 @@ async function buildPlaywrightTool(dir: string = reportsDir): Promise<WebUiTool 
   // ---- 2. Per-browser files ---------------------------------------------
   const browserFiles = files
     .map((f) => {
-      const m = /^playwright-(.+)\.json$/i.exec(f);
+      const m = perBrowserRe.exec(f);
       if (!m) return null;
       const browser = m[1].toLowerCase();
       return KNOWN_BROWSERS.has(browser) ? { file: f, browser } : null;
@@ -572,9 +591,9 @@ async function buildPlaywrightTool(dir: string = reportsDir): Promise<WebUiTool 
       const suites  = [...new Set(browsers.flatMap((b) => b.suites))];
       return {
         kind: 'web_ui',
-        id: 'playwright',
-        name: 'Playwright',
-        description: 'End-to-end browser tests across Chromium, Firefox, Edge and WebKit.',
+        id: toolId,
+        name: toolName,
+        description: descriptions.browser,
         passed, failed, skipped,
         duration: `${browsers.length} browser${browsers.length > 1 ? 's' : ''}`,
         suites,
@@ -585,14 +604,14 @@ async function buildPlaywrightTool(dir: string = reportsDir): Promise<WebUiTool 
   }
 
   // ---- 3. Fallback: single flat run (no breakdown → flat list, no tabs). -
-  const flat = await readCucumberJson(path.join(dir, 'playwright.json'));
+  const flat = await readCucumberJson(path.join(dir, `${toolId}.json`));
   if (!flat) return null;
   const s = await ingestCucumber(flat);
   return {
     kind: 'web_ui',
-    id: 'playwright',
-    name: 'Playwright',
-    description: 'End-to-end browser tests across Chromium, Firefox and WebKit.',
+    id: toolId,
+    name: toolName,
+    description: descriptions.flat,
     passed: s.passed, failed: s.failed, skipped: s.skipped, duration: s.duration,
     suites: s.suites,
     tests: s.tests,
@@ -647,6 +666,40 @@ async function buildAppiumTool(dir: string = reportsDir): Promise<MobileUiTool |
     failed: android.failed + ios.failed,
     skipped: android.skipped + ios.skipped,
     duration: durationParts.join(' + '),
+    platforms: { android, ios },
+  };
+}
+
+/**
+ * Build the Mobilewright (mobile_ui) tool from `mobilewright.json` — unlike
+ * Appium's platform-named android.json/ios.json (one driver, two platform
+ * files), mobilewright's run-suite.sh profile is tool-named (single file)
+ * because the plugin only drives Android in this repo today (see
+ * start-stack.sh's mobilewright arm comment). Returns null when the file is
+ * absent (e.g. no device was connected this run).
+ */
+async function buildMobilewrightTool(dir: string = reportsDir): Promise<MobileUiTool | null> {
+  const androidRaw = await readCucumberJson(path.join(dir, 'mobilewright.json'));
+  if (!androidRaw) return null;
+
+  const s = await ingestCucumber(androidRaw);
+  const android: PlatformBlock = {
+    passed: s.passed, failed: s.failed, skipped: s.skipped, duration: s.duration,
+    device: process.env.ANDROID_DEVICE ?? 'Android device',
+    suites: s.suites,
+    tests: s.tests,
+  };
+  const ios = emptyPlatformBlock();
+
+  return {
+    kind: 'mobile_ui',
+    id: 'mobilewright',
+    name: 'Mobilewright',
+    description: 'Playwright-on-mobile flows, driven via mobilecli (Android).',
+    passed: android.passed,
+    failed: android.failed,
+    skipped: android.skipped,
+    duration: `${android.duration} (Android)`,
     platforms: { android, ios },
   };
 }
@@ -876,6 +929,20 @@ async function main(): Promise<void> {
     );
   }
 
+  // ---- WebdriverIO (web_ui) ----------------------------------------------
+  const webdriverioTool = await buildPlaywrightTool(reportsDir, 'webdriverio', 'WebdriverIO', {
+    viewport: 'End-to-end browser tests (WebdriverIO/Selenium) across desktop and responsive viewports.',
+    browser: 'End-to-end browser tests (WebdriverIO/Selenium) across browsers.',
+    flat: 'End-to-end browser tests via WebdriverIO/Selenium.',
+  });
+  if (webdriverioTool) {
+    await materializeScreenshots(webdriverioTool.tests, runDir, runId);
+    await writeJson(path.join(runDir, 'webdriverio.json'), webdriverioTool);
+    wroteTools.push(
+      `webdriverio (${webdriverioTool.passed}P/${webdriverioTool.failed}F/${webdriverioTool.skipped}S)`,
+    );
+  }
+
   // ---- API (api) --------------------------------------------------------
   const apiRaw = await readCucumberJson(path.join(reportsDir, 'api.json'));
   if (apiRaw) {
@@ -906,6 +973,16 @@ async function main(): Promise<void> {
     );
     await writeJson(path.join(runDir, 'appium.json'), appiumTool);
     wroteTools.push(`appium (${appiumTool.passed}P/${appiumTool.failed}F/${appiumTool.skipped}S)`);
+  }
+
+  // ---- Mobilewright (mobile_ui) — Android-only, tool-named report file ----
+  const mobilewrightTool = await buildMobilewrightTool();
+  if (mobilewrightTool) {
+    await materializeScreenshots(mobilewrightTool.platforms.android.tests, runDir, runId);
+    await writeJson(path.join(runDir, 'mobilewright.json'), mobilewrightTool);
+    wroteTools.push(
+      `mobilewright (${mobilewrightTool.passed}P/${mobilewrightTool.failed}F/${mobilewrightTool.skipped}S)`,
+    );
   }
 
   // ---- Gatling (performance) --------------------------------------------

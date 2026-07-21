@@ -15,6 +15,15 @@ const COMMON_PROPS = {
   strokeLinejoin: 'round' as const,
 };
 
+function SmokeIcon() {
+  return (
+    <svg {...COMMON_PROPS} aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M8 12l2.5 2.5L16 9" />
+    </svg>
+  );
+}
+
 function LoadIcon() {
   return (
     <svg {...COMMON_PROPS} aria-hidden="true">
@@ -74,6 +83,7 @@ function VolumeIcon() {
 
 export function PerfTypeIcon({ type }: PerfTypeIconProps) {
   switch (type) {
+    case 'smoke': return <SmokeIcon />;
     case 'load': return <LoadIcon />;
     case 'stress': return <StressIcon />;
     case 'endurance': return <EnduranceIcon />;

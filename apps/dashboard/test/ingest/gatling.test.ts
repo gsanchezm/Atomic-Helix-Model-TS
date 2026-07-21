@@ -1,11 +1,23 @@
 import { describe, it, expect } from 'vitest';
 
-import { buildPerfScenarios, classifyPerfType, rollUpReports, type SimulationReport } from '../../scripts/ingest-gatling';
+import {
+  buildPerfScenarios,
+  classifyPerfType,
+  parseProfileHint,
+  rollUpReports,
+  type SimulationReport,
+} from '../../scripts/ingest-gatling';
 
-const sim = (name: string, root: Record<string, number>, requests: Record<string, Record<string, number>>): SimulationReport => ({
+const sim = (
+  name: string,
+  root: Record<string, number>,
+  requests: Record<string, Record<string, number>>,
+  profileHint: SimulationReport['profileHint'] = null,
+): SimulationReport => ({
   simulation: name,
   dir: `/tmp/${name}`,
   mtimeMs: 0,
+  profileHint,
   root: { label: 'ROOT', values: root },
   scenarios: Object.entries(requests).map(([label, values]) => ({ label, values })),
 });
@@ -36,6 +48,25 @@ describe('buildPerfScenarios', () => {
     const reports = [sim('login-load', { 'col-6': 10, 'col-10': 50, 'col-5': 0 }, {})];
     const out = buildPerfScenarios(reports);
     expect(out[0].steps).toBeUndefined();
+  });
+});
+
+describe('parseProfileHint', () => {
+  it.each([
+    ['jssimulation-20260720230909999--smoke', 'smoke'],
+    ['jssimulation-20260720230933197--load', 'load'],
+    ['jssimulation-20260720231146728--stress', 'stress'],
+    ['jssimulation-1--ENDURANCE', 'endurance'],
+  ])('parses the profile suffix from "%s"', (basename, expected) => {
+    expect(parseProfileHint(basename)).toBe(expected);
+  });
+
+  it('returns null for a directory with no profile suffix', () => {
+    expect(parseProfileHint('jssimulation-20260720230909999')).toBeNull();
+  });
+
+  it('returns null for an unrecognized suffix', () => {
+    expect(parseProfileHint('jssimulation-1--bogus')).toBeNull();
   });
 });
 

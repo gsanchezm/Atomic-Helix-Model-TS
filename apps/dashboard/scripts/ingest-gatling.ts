@@ -53,6 +53,15 @@ export interface SimulationReport {
   dir: string;
   /** mtime of the dir, used for dedupe-by-newest. */
   mtimeMs: number;
+  /**
+   * PERF_PROFILE captured at run time (see `--<profile>` dir-name suffix
+   * written by orchestrate-full-run.sh), when present. Gatling's own
+   * simulation identity is fixed per source file (e.g. always
+   * "checkout-load"), so smoke/load/stress runs of the SAME simulation are
+   * indistinguishable from the HTML/simulation.log alone — this is the only
+   * reliable signal that tells them apart.
+   */
+  profileHint: PerfTestType | null;
   /** ROOT / "All Requests" aggregate row. */
   root: RowValues;
   /** Per-request-group rows. */
@@ -163,6 +172,20 @@ function deriveDistribution(total: number, p50: number, p95: number, p99: number
   }));
 }
 
+const PROFILE_HINT_RE = /--(smoke|load|stress|endurance|spike|scalability|volume)$/i;
+
+/**
+ * Extracts the PERF_PROFILE hint orchestrate-full-run.sh appends to a
+ * jssimulation-* directory's basename (`jssimulation-<ts>--<profile>`).
+ * Returns null for directories with no hint (foreign/manual runs, or runs
+ * predating this convention) — callers fall back to name-suffix
+ * classification in that case.
+ */
+export function parseProfileHint(dirBasename: string): PerfTestType | null {
+  const match = PROFILE_HINT_RE.exec(dirBasename);
+  return match ? (match[1].toLowerCase() as PerfTestType) : null;
+}
+
 async function findGatlingDirs(repoRoot: string): Promise<{ dir: string; mtimeMs: number }[]> {
   const gatlingRoot = path.join(repoRoot, 'target', 'gatling');
   let entries: string[];
@@ -200,12 +223,15 @@ async function loadReport(dir: string, mtimeMs: number): Promise<SimulationRepor
   const scenarios = rows.filter((r) => r !== root);
 
   const simName = (await readSimulationName(dir)) ?? path.basename(dir).replace(/^jssimulation-/, '');
-  return { simulation: simName, dir, mtimeMs, root, scenarios };
+  const profileHint = parseProfileHint(path.basename(dir));
+  return { simulation: simName, dir, mtimeMs, profileHint, root, scenarios };
 }
 
 /**
- * Discover all jssimulation-* dirs, parse each, then dedupe by simulation name
- * keeping the most recent of each.
+ * Discover all jssimulation-* dirs, parse each, then dedupe keeping the most
+ * recent per (simulation name, profile hint). Runs of the SAME simulation
+ * under DIFFERENT profiles (e.g. checkout-load smoke/load/stress) are
+ * distinct entries — only true re-runs of the identical profile collapse.
  */
 async function discoverReports(
   repoRoot: string,
@@ -223,17 +249,20 @@ async function discoverReports(
   }
 
   const dirs = await findGatlingDirs(repoRoot); // already newest-first
-  const byName = new Map<string, SimulationReport>();
+  const byKey = new Map<string, SimulationReport>();
   for (const { dir, mtimeMs } of dirs) {
     const report = await loadReport(dir, mtimeMs);
     if (!report) continue;
-    // dirs are newest-first; first occurrence of each name wins.
-    if (!byName.has(report.simulation)) {
-      byName.set(report.simulation, report);
+    const key = report.profileHint ? `${report.simulation}::${report.profileHint}` : report.simulation;
+    // dirs are newest-first; first occurrence of each key wins.
+    if (!byKey.has(key)) {
+      byKey.set(key, report);
     }
   }
-  // Stable, human-friendly order: by simulation name.
-  return [...byName.values()].sort((a, b) => a.simulation.localeCompare(b.simulation));
+  // Stable, human-friendly order: by simulation name, then profile.
+  return [...byKey.values()].sort(
+    (a, b) => a.simulation.localeCompare(b.simulation) || (a.profileHint ?? '').localeCompare(b.profileHint ?? ''),
+  );
 }
 
 export interface IngestGatlingOptions {
@@ -322,7 +351,9 @@ export async function ingestGatling(opts: IngestGatlingOptions): Promise<Perform
 
   const byTypeGroups = new Map<PerfTestType | 'other', SimulationReport[]>();
   for (const report of reports) {
-    const type = classifyPerfType(report.simulation);
+    // Profile hint (from the dir-name suffix) wins when present — it reflects
+    // the actual PERF_PROFILE used, unlike the simulation's fixed name suffix.
+    const type = report.profileHint ?? classifyPerfType(report.simulation);
     const list = byTypeGroups.get(type) ?? [];
     list.push(report);
     byTypeGroups.set(type, list);

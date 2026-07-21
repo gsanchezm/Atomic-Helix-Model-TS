@@ -5,9 +5,11 @@ import { apiAdapter } from './api.js';
 import { appiumAdapter } from './appium.js';
 import { axeAdapter } from './axe.js';
 import { gatlingAdapter } from './gatling.js';
+import { mobilewrightAdapter } from './mobilewright.js';
 import { mobsfAdapter } from './mobsf.js';
 import { pixelmatchAdapter } from './pixelmatch.js';
 import { playwrightAdapter } from './playwright.js';
+import { webdriverioAdapter } from './webdriverio.js';
 import { zapAdapter } from './zap.js';
 import type { Adapter, AdapterContext } from './shared.js';
 
@@ -20,14 +22,16 @@ export interface AdapterEntry {
 }
 
 export const ADAPTERS: Record<string, AdapterEntry> = {
-  playwright: { id: 'playwright', kind: 'web_ui',      adapter: playwrightAdapter },
-  appium:     { id: 'appium',     kind: 'mobile_ui',   adapter: appiumAdapter     },
-  api:        { id: 'api',        kind: 'api',         adapter: apiAdapter        },
-  gatling:    { id: 'gatling',    kind: 'performance', adapter: gatlingAdapter    },
-  pixelmatch: { id: 'pixelmatch', kind: 'visual',      adapter: pixelmatchAdapter },
-  axe:        { id: 'axe',        kind: 'accessibility', adapter: axeAdapter      },
-  zap:        { id: 'zap',        kind: 'security',    adapter: zapAdapter        },
-  mobsf:      { id: 'mobsf',      kind: 'security',    adapter: mobsfAdapter      },
+  playwright:   { id: 'playwright',   kind: 'web_ui',      adapter: playwrightAdapter   },
+  webdriverio:  { id: 'webdriverio',  kind: 'web_ui',      adapter: webdriverioAdapter  },
+  appium:       { id: 'appium',       kind: 'mobile_ui',   adapter: appiumAdapter       },
+  mobilewright: { id: 'mobilewright', kind: 'mobile_ui',   adapter: mobilewrightAdapter },
+  api:          { id: 'api',          kind: 'api',         adapter: apiAdapter          },
+  gatling:      { id: 'gatling',      kind: 'performance', adapter: gatlingAdapter      },
+  pixelmatch:   { id: 'pixelmatch',   kind: 'visual',      adapter: pixelmatchAdapter   },
+  axe:          { id: 'axe',          kind: 'accessibility', adapter: axeAdapter        },
+  zap:          { id: 'zap',          kind: 'security',    adapter: zapAdapter          },
+  mobsf:        { id: 'mobsf',        kind: 'security',    adapter: mobsfAdapter        },
 };
 
 /**
@@ -40,9 +44,17 @@ export const TOOL_META: Record<string, { name: string; description: string }> = 
     name: 'Playwright',
     description: 'End-to-end browser tests across Chromium, Firefox and WebKit.',
   },
+  webdriverio: {
+    name: 'WebdriverIO',
+    description: 'End-to-end browser tests via WebdriverIO/Selenium.',
+  },
   appium: {
     name: 'Appium',
     description: 'Native mobile flows on iOS simulators and Android emulators.',
+  },
+  mobilewright: {
+    name: 'Mobilewright',
+    description: 'Playwright-on-mobile flows, driven via mobilecli (Android).',
   },
   api: {
     name: 'API Suite',

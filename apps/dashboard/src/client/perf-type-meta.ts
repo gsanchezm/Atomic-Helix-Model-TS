@@ -45,6 +45,17 @@ export const FIELD_GAUGE_CONFIG: Partial<Record<keyof PerfBlock, FieldGaugeConfi
 };
 
 export const PERF_TYPE_META: Record<PerfTestType, PerfTypeMeta> = {
+  smoke: {
+    label: 'Smoke',
+    description: 'A single-user pass to validate the chain still works end to end.',
+    gauges: [
+      { label: 'Avg response', field: 'avgMs' },
+      { label: 'Error rate', field: 'errorRate' },
+    ],
+    pending: [
+      { label: 'Throughput / P95 / P99', reason: 'a single-user run has no meaningful concurrency signal' },
+    ],
+  },
   load: {
     label: 'Load',
     description: 'Expected, steady traffic.',

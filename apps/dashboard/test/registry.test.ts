@@ -31,14 +31,16 @@ describe('tool registry', () => {
   // test stays independent of React imports. If you add a new tool with a
   // non-default filename, mirror the entry here.
   const TOOL_LOGO_FILES: Record<string, string> = {
-    playwright: 'playwright-logo.svg',
-    appium:     'appium-logo.png',
-    gatling:    'gatling.png',
-    pixelmatch: 'pixelmatch-logo.png',
-    api:        'api.svg',
-    axe:        'aXe-logo.png',
-    zap:        'zap.png',
-    mobsf:      'mobsf.png',
+    playwright:   'playwright-logo.svg',
+    webdriverio:  'webdriverio.png',
+    appium:       'appium-logo.png',
+    mobilewright: 'mobilewright-logo.png',
+    gatling:      'gatling.png',
+    pixelmatch:   'pixelmatch-logo.png',
+    api:          'api.svg',
+    axe:          'aXe-logo.png',
+    zap:          'zap.png',
+    mobsf:        'mobsf.png',
   };
 
   it('every toolId resolves to an existing logo file in public/assets/logos/', () => {

@@ -130,15 +130,36 @@ else
 fi
 
 # ==================== 3. PERFORMANCE (Gatling smoke, load, stress — strictly sequential, exclusive of everything else) ====================
+# Gatling's own simulation identity is fixed per source file (always
+# "checkout-load", regardless of PERF_PROFILE), so smoke/load/stress runs are
+# indistinguishable from the HTML report alone. tag_gatling_dir appends
+# "--<profile>" to the newest untagged target/gatling/jssimulation-* dir right
+# after each run, which apps/dashboard/scripts/ingest-gatling.ts's
+# parseProfileHint() reads to keep the 3 profiles as distinct dashboard
+# entries instead of collapsing/misclassifying them.
+tag_gatling_dir() {
+  local profile="$1"
+  local newest
+  newest="$(ls -1dt target/gatling/jssimulation-* 2>/dev/null | grep -v -- '--' | head -1)"
+  if [ -n "$newest" ]; then
+    mv "$newest" "${newest}--${profile}"
+  else
+    say "PHASE 3 — WARN: no untagged gatling dir found to tag as '$profile'"
+  fi
+}
+
 say "PHASE 3 — gatling smoke: checkout-load"
 run_timed gatling performance smoke bash -c 'PERF_PROFILE=smoke pnpm perf:smoke' > "$LOG/phase3-smoke.log" 2>&1
 say "PHASE 3 — smoke exit=$?"
+tag_gatling_dir smoke
 say "PHASE 3 — gatling load: checkout-load"
 run_timed gatling performance load bash -c 'PERF_PROFILE=load pnpm perf:load' > "$LOG/phase3-load.log" 2>&1
 say "PHASE 3 — load exit=$?"
+tag_gatling_dir load
 say "PHASE 3 — gatling stress: checkout-load"
 run_timed gatling performance stress bash -c 'PERF_PROFILE=stress pnpm perf:stress' > "$LOG/phase3-stress.log" 2>&1
 say "PHASE 3 — stress exit=$?"
+tag_gatling_dir stress
 
 # ==================== 4. API ====================
 # "@api and not @security" -- one scenario (market-language-localization.feature's
