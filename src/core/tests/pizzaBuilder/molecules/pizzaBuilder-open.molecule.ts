@@ -5,6 +5,7 @@ import { openPizzaCard } from '@core/tests/catalog/molecules/catalog-card.molecu
 import { openCatalogScreen } from '@core/tests/catalog/molecules/catalog-browse.molecule';
 import type { CountryCode } from '@core/tests/pizzaBuilder/dao/pizzaBuilder.types';
 import { seedWebPersistedStores as seedPersistedStores } from '@core/tests/support/browser-command';
+import { mobileTestId } from '@core/tests/support/mobile-selector';
 
 const log = logger.child({ layer: 'molecule', domain: 'pizzaBuilder', action: 'open' });
 
@@ -23,7 +24,9 @@ const WAIT_TARGET_WEB = 'confirmAddToCartButton';
 // builder authors verified present on-device (see verifyPriceAndConfirmVisible).
 // TODO(verify): confirm on the next @ios run that this recovers the builder
 // scenarios; if OmniPizza adds a screen-level id to the iOS modal, prefer it.
-const WAIT_TARGET_MOBILE = '~btn-add-to-cart';
+function waitTargetMobile(): string {
+    return mobileTestId('btn-add-to-cart');
+}
 const WAIT_TIMEOUT_MS = 30_000;
 
 export type LanguageCode = 'en' | 'es' | 'de' | 'fr' | 'ja' | 'ar';
@@ -77,7 +80,7 @@ export async function openPizzaBuilder(args: OpenBuilderArgs): Promise<void> {
         });
         log.info({ market: args.market, language: args.language, pizzaId: args.pizzaId }, 'Opening builder via catalog add button (mobile)');
         await openPizzaCard(args.pizzaId);
-        await sendIntent(INTENT.WAIT_FOR_ELEMENT, `${WAIT_TARGET_MOBILE}||${WAIT_TIMEOUT_MS}`);
+        await sendIntent(INTENT.WAIT_FOR_ELEMENT, `${waitTargetMobile()}||${WAIT_TIMEOUT_MS}`);
         return;
     }
 
@@ -140,10 +143,10 @@ export async function verifyPriceAndConfirmVisible(): Promise<void> {
         return;
     }
     await sendIntent(INTENT.WAIT_FOR_ELEMENT, `estimatedTotalValue||${PRESENCE_WAIT_MS}`);
-    // The mobile builder's confirm CTA is `~btn-add-to-cart` (verified
+    // The mobile builder's confirm CTA is `btn-add-to-cart` (verified
     // on-device 2026-05-28). Assert it's present so "the confirm-add-to-cart
     // affordance is visible" is a real check, not just the price block.
-    await sendIntent(INTENT.WAIT_FOR_ELEMENT, `~btn-add-to-cart||${PRESENCE_WAIT_MS}`);
+    await sendIntent(INTENT.WAIT_FOR_ELEMENT, `${mobileTestId('btn-add-to-cart')}||${PRESENCE_WAIT_MS}`);
 }
 
 // Case-insensitive contains assertion against rendered label text.

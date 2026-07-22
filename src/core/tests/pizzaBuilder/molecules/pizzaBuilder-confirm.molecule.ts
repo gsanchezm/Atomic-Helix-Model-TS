@@ -3,6 +3,7 @@ import { INTENT } from '@kernel/intents';
 import { logger } from '@utils/logger';
 import { BROWSER_COMMAND } from '@kernel/browser-command';
 import { sendBrowserCommand } from '@core/tests/support/browser-command';
+import { mobileTestId } from '@core/tests/support/mobile-selector';
 
 const log = logger.child({ layer: 'molecule', domain: 'pizzaBuilder', action: 'confirm' });
 
@@ -26,7 +27,7 @@ export async function clickConfirmAddToCart(): Promise<void> {
     // Web's confirm CTA is the `confirmAddToCartButton` locator key (web-only);
     // the mobile builder's CTA is `~btn-add-to-cart` (verified on-device
     // 2026-05-28). Branch per-driver like the size/topping molecules do.
-    const selector = isMobileDriver() ? '~btn-add-to-cart' : 'confirmAddToCartButton';
+    const selector = isMobileDriver() ? mobileTestId('btn-add-to-cart') : 'confirmAddToCartButton';
     await sendIntent(INTENT.CLICK, selector);
 }
 

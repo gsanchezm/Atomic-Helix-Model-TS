@@ -1,7 +1,10 @@
 {
   "checkoutHeader": {
     "webdriverio": "h1:has-text(\"Checkout\")",
-    "appium": "~text-section-address"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-section-address\")",
+      "ios": "~text-section-address"
+    }
   },
   "checkoutScreenLanding": {
     "appium": {
@@ -15,41 +18,47 @@
       "desktop": "[data-testid='address-desktop']"
     },
     "appium": {
-      "android": "android=new UiSelector().description(\"input-address\")",
+      "android": "android=new UiSelector().resourceId(\"input-address\")",
       "ios": "~input-address"
     }
   },
   "zipCodeInput": {
     "webdriverio": "[data-testid='zip-code']",
     "appium": {
-      "android": "~input-zipcode",
+      "android": "android=new UiSelector().resourceId(\"input-zipcode\")",
       "ios": "~input-zipcode"
     }
   },
   "coloniaInput": {
     "webdriverio": "[data-testid='colonia']",
     "appium": {
-      "android": "~input-colonia",
+      "android": "android=new UiSelector().resourceId(\"input-colonia\")",
       "ios": "~input-colonia"
     }
   },
   "prefecturaInput": {
     "webdriverio": "[data-testid='zip-code']",
     "appium": {
-      "android": "~input-zipcode",
+      "android": "android=new UiSelector().resourceId(\"input-zipcode\")",
       "ios": "~input-zipcode"
     }
   },
   "districtInput": {
     "webdriverio": "[data-testid='district']",
-    "appium": "~input-district"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"input-district\")",
+      "ios": "~input-district"
+    }
   },
   "fullNameInput": {
     "webdriverio": {
       "responsive": "[data-testid='full-name-responsive']",
       "desktop": "[data-testid='full-name-desktop']"
     },
-    "appium": "~input-fullname"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"input-fullname\")",
+      "ios": "~input-fullname"
+    }
   },
   "phoneNumberInput": {
     "webdriverio": {
@@ -57,56 +66,77 @@
       "desktop": "[data-testid='phone-desktop']"
     },
     "appium": {
-      "android": "~input-phone",
+      "android": "android=new UiSelector().resourceId(\"input-phone\")",
       "ios": "~input-phone"
     }
   },
   "paymentMethodList": {
     "webdriverio": "[role='radiogroup'] [role='radio']",
     "appium": {
-      "android": "android=new UiSelector().descriptionStartsWith(\"btn-payment-\")",
+      "android": "android=new UiSelector().resourceIdMatches(\"btn-payment-.*\")",
       "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'btn-payment-'`]"
     }
   },
   "paymentCardButton": {
     "webdriverio": "[data-testid='payment-method-card']",
-    "appium": "~btn-payment-card"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"btn-payment-card\")",
+      "ios": "~btn-payment-card"
+    }
   },
   "paymentCashButton": {
     "webdriverio": "[data-testid='payment-method-cash']",
-    "appium": "~btn-payment-cash"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"btn-payment-cash\")",
+      "ios": "~btn-payment-cash"
+    }
   },
   "paymentPaypalButton": {
     "webdriverio": "[data-testid='payment-method-paypal']",
-    "appium": "~btn-payment-paypal"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"btn-payment-paypal\")",
+      "ios": "~btn-payment-paypal"
+    }
   },
   "cardHolderNameInput": {
     "webdriverio": "[data-testid='card-holder']",
-    "appium": "~input-card-holder"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"input-card-holder\")",
+      "ios": "~input-card-holder"
+    }
   },
   "cardNumberInput": {
     "webdriverio": "[data-testid='card-number']",
     "appium": {
-      "android": "android=new UiSelector().className(\"android.widget.EditText\").description(\"input-card-number\")",
+      "android": "android=new UiSelector().className(\"android.widget.EditText\").resourceId(\"input-card-number\")",
       "ios": "-ios predicate string:type == 'XCUIElementTypeTextField' AND name == 'input-card-number'"
     }
   },
   "expiryMonthInput": {
     "webdriverio": "[data-testid='card-expiry-month']",
-    "appium": "~input-card-expiry-month"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"input-card-expiry-month\")",
+      "ios": "~input-card-expiry-month"
+    }
   },
   "expiryYearInput": {
     "webdriverio": "[data-testid='card-expiry-year']",
-    "appium": "~input-card-expiry-year"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"input-card-expiry-year\")",
+      "ios": "~input-card-expiry-year"
+    }
   },
   "cvvInput": {
     "webdriverio": "[data-testid='card-cvv']",
-    "appium": "~input-card-cvv"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"input-card-cvv\")",
+      "ios": "~input-card-cvv"
+    }
   },
   "actionItemsList": {
     "webdriverio": "button:has-text(\"Edit\"), button:has-text(\"Remove\")",
     "appium": {
-      "android": "android=new UiSelector().descriptionMatches(\"text-(edit|remove)-item.*\")",
+      "android": "android=new UiSelector().resourceIdMatches(\"text-(edit|remove)-item.*\")",
       "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'btn-edit-item' OR name BEGINSWITH 'btn-remove-item'`]"
     }
   },
@@ -120,7 +150,7 @@
   "tipOptionsList": {
     "webdriverio": "[data-testid^='order-tip-']",
     "appium": {
-      "android": "android=new UiSelector().descriptionMatches(\"btn-tip-(0|5|10|15)\")",
+      "android": "android=new UiSelector().resourceIdMatches(\"btn-tip-(0|5|10|15)\")",
       "ios": "-ios predicate string:name IN {'btn-tip-0','btn-tip-5','btn-tip-10','btn-tip-15'}"
     }
   },
@@ -129,38 +159,65 @@
       "responsive": "[data-testid='place-order-btn-responsive']",
       "desktop": "[data-testid='place-order-btn-desktop']"
     },
-    "appium": "~btn-place-order"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"btn-place-order\")",
+      "ios": "~btn-place-order"
+    }
   },
   "confirmOrderModal": {
     "webdriverio": "[data-testid='confirm-order-modal']",
-    "appium": "~modal-confirm-order"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"modal-confirm-order\")",
+      "ios": "~modal-confirm-order"
+    }
   },
   "confirmOrderYesButton": {
     "webdriverio": "[data-testid='confirm-order-yes']",
-    "appium": "~btn-confirm-order-yes"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"btn-confirm-order-yes\")",
+      "ios": "~btn-confirm-order-yes"
+    }
   },
   "confirmOrderCancelButton": {
     "webdriverio": "[data-testid='confirm-order-cancel']",
-    "appium": "~btn-confirm-order-cancel"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"btn-confirm-order-cancel\")",
+      "ios": "~btn-confirm-order-cancel"
+    }
   },
   "orderSummaryTitle": {
     "webdriverio": "[data-testid='order-summary-title']",
-    "appium": "~text-section-summary"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-section-summary\")",
+      "ios": "~text-section-summary"
+    }
   },
   "orderTotalValue": {
     "webdriverio": "[data-testid='order-total']",
-    "appium": "~text-total-value"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-total-value\")",
+      "ios": "~text-total-value"
+    }
   },
   "orderSubtotalValue": {
     "webdriverio": "[data-testid='order-subtotal']",
-    "appium": "~text-subtotal-value"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-subtotal-value\")",
+      "ios": "~text-subtotal-value"
+    }
   },
   "orderTaxValue": {
     "webdriverio": "[data-testid='order-tax']",
-    "appium": "~text-tax-value"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-tax-value\")",
+      "ios": "~text-tax-value"
+    }
   },
   "orderDeliveryValue": {
     "webdriverio": "[data-testid='order-delivery']",
-    "appium": "~text-delivery-value"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-delivery-value\")",
+      "ios": "~text-delivery-value"
+    }
   }
 }

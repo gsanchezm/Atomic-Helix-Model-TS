@@ -1,31 +1,52 @@
 {
   "pizzaBuilderScreen": {
     "webdriverio": "div[class*=\"max-h-[90vh]\"]",
-    "appium": "~screen-pizza-builder"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"screen-pizza-builder\")",
+      "ios": "~screen-pizza-builder"
+    }
   },
   "builderTitleText": {
-    "appium": "~text-builder-title"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-builder-title\")",
+      "ios": "~text-builder-title"
+    }
   },
   "closeBuilderButton": {
     "webdriverio": "[data-testid='customizer-close']",
-    "appium": "~btn-close-builder"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"btn-close-builder\")",
+      "ios": "~btn-close-builder"
+    }
   },
   "builderPizzaImage": {
-    "appium": "~img-builder-pizza"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"img-builder-pizza\")",
+      "ios": "~img-builder-pizza"
+    }
   },
   "sectionSizeText": {
-    "appium": "~text-section-size"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-section-size\")",
+      "ios": "~text-section-size"
+    }
   },
   "requiredBadgeText": {
-    "appium": "~text-badge-required"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-badge-required\")",
+      "ios": "~text-badge-required"
+    }
   },
   "sizeOptionsContainer": {
-    "appium": "~view-size-pills"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"view-size-pills\")",
+      "ios": "~view-size-pills"
+    }
   },
   "sizeOptionsList": {
     "webdriverio": "[data-testid^='size-']",
     "appium": {
-      "android": "android=new UiSelector().descriptionStartsWith(\"btn-size-\")",
+      "android": "android=new UiSelector().resourceIdMatches(\"btn-size-.*\")",
       "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'btn-size-'`]"
     }
   },
@@ -37,32 +58,38 @@
   },
   "sizeOptionPrice": {
     "appium": {
-      "android": "android=new UiSelector().descriptionStartsWith(\"text-size-price-\")",
+      "android": "android=new UiSelector().resourceIdMatches(\"text-size-price-.*\")",
       "ios": "-ios class chain:**/XCUIElementTypeStaticText[`name BEGINSWITH 'text-size-price-'`]"
     }
   },
   "sectionToppingsText": {
-    "appium": "~text-section-toppings"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-section-toppings\")",
+      "ios": "~text-section-toppings"
+    }
   },
   "toppingsHintText": {
-    "appium": "~text-toppings-hint"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-toppings-hint\")",
+      "ios": "~text-toppings-hint"
+    }
   },
   "toppingGroupList": {
     "appium": {
-      "android": "android=new UiSelector().descriptionStartsWith(\"text-topping-group-\")",
+      "android": "android=new UiSelector().resourceIdMatches(\"text-topping-group-.*\")",
       "ios": "-ios class chain:**/XCUIElementTypeStaticText[`name BEGINSWITH 'text-topping-group-'`]"
     }
   },
   "toppingGroupTitle": {
     "appium": {
-      "android": "android=new UiSelector().descriptionStartsWith(\"text-topping-group-\")",
+      "android": "android=new UiSelector().resourceIdMatches(\"text-topping-group-.*\")",
       "ios": "-ios class chain:**/XCUIElementTypeStaticText[`name BEGINSWITH 'text-topping-group-'`]"
     }
   },
   "toppingsList": {
     "webdriverio": "[data-testid^='topping-']",
     "appium": {
-      "android": "android=new UiSelector().descriptionStartsWith(\"btn-topping-\")",
+      "android": "android=new UiSelector().resourceIdMatches(\"btn-topping-.*\")",
       "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'btn-topping-'`]"
     }
   },
@@ -76,10 +103,16 @@
     "webdriverio": "[data-testid='customizer-price']"
   },
   "estimatedTotalLabel": {
-    "appium": "~text-estimated-total-label"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-estimated-total-label\")",
+      "ios": "~text-estimated-total-label"
+    }
   },
   "estimatedTotalValue": {
-    "appium": "~text-estimated-total-value"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-estimated-total-value\")",
+      "ios": "~text-estimated-total-value"
+    }
   },
   "confirmAddToCartButton": {
     "webdriverio": "[data-testid='confirm-add-to-cart']"

@@ -1,15 +1,27 @@
 {
   "navbarContainer": {
-    "appium": "~view-navbar"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"view-navbar\")",
+      "ios": "~view-navbar"
+    }
   },
   "locationHeaderContainer": {
-    "appium": "~view-location-header"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"view-location-header\")",
+      "ios": "~view-location-header"
+    }
   },
   "headerLogoImage": {
-    "appium": "~img-header-logo"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"img-header-logo\")",
+      "ios": "~img-header-logo"
+    }
   },
   "headerBrandText": {
-    "appium": "~text-header-brand"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-header-brand\")",
+      "ios": "~text-header-brand"
+    }
   },
   "navLogo": {
     "webdriverio": "[data-testid='nav-logo']"
@@ -27,33 +39,60 @@
     "webdriverio": "[data-testid='nav-profile']"
   },
   "navbarTitleText": {
-    "appium": "~text-navbar-title"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-navbar-title\")",
+      "ios": "~text-navbar-title"
+    }
   },
   "languageDEButton": {
     "webdriverio": "[data-testid='lang-de']",
-    "appium": "~btn-lang-de"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"btn-lang-de\")",
+      "ios": "~btn-lang-de"
+    }
   },
   "languageDELabel": {
-    "appium": "~text-lang-de"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-lang-de\")",
+      "ios": "~text-lang-de"
+    }
   },
   "languageFRButton": {
     "webdriverio": "[data-testid='lang-fr']",
-    "appium": "~btn-lang-fr"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"btn-lang-fr\")",
+      "ios": "~btn-lang-fr"
+    }
   },
   "languageFRLabel": {
-    "appium": "~text-lang-fr"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-lang-fr\")",
+      "ios": "~text-lang-fr"
+    }
   },
   "headerLanguageDEButton": {
-    "appium": "~btn-header-lang-de"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"btn-header-lang-de\")",
+      "ios": "~btn-header-lang-de"
+    }
   },
   "headerLanguageDELabel": {
-    "appium": "~text-header-lang-de"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-header-lang-de\")",
+      "ios": "~text-header-lang-de"
+    }
   },
   "headerLanguageFRButton": {
-    "appium": "~btn-header-lang-fr"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"btn-header-lang-fr\")",
+      "ios": "~btn-header-lang-fr"
+    }
   },
   "headerLanguageFRLabel": {
-    "appium": "~text-header-lang-fr"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-header-lang-fr\")",
+      "ios": "~text-header-lang-fr"
+    }
   },
   "mobileMenuButton": {
     "webdriverio": "[data-testid='mobile-menu-btn']"
@@ -71,11 +110,14 @@
     "webdriverio": "[data-testid='mobile-logout-btn']"
   },
   "bottomNavContainer": {
-    "appium": "~view-bottom-nav"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"view-bottom-nav\")",
+      "ios": "~view-bottom-nav"
+    }
   },
   "bottomNavList": {
     "appium": {
-      "android": "android=new UiSelector().descriptionMatches(\"nav-[a-z]+\")",
+      "android": "android=new UiSelector().resourceIdMatches(\"nav-[a-z]+\")",
       "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'nav-'`]"
     }
   },
@@ -87,13 +129,13 @@
   },
   "bottomNavBadge": {
     "appium": {
-      "android": "android=new UiSelector().descriptionStartsWith(\"view-nav-badge-\")",
+      "android": "android=new UiSelector().resourceIdMatches(\"view-nav-badge-.*\")",
       "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'view-nav-badge-'`]"
     }
   },
   "bottomNavBadgeText": {
     "appium": {
-      "android": "android=new UiSelector().descriptionStartsWith(\"text-nav-badge-\")",
+      "android": "android=new UiSelector().resourceIdMatches(\"text-nav-badge-.*\")",
       "ios": "-ios class chain:**/XCUIElementTypeStaticText[`name BEGINSWITH 'text-nav-badge-'`]"
     }
   }

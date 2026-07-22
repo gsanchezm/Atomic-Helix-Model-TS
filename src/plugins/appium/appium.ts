@@ -9,6 +9,7 @@ import {
 } from '@plugins/appium/appium-helpers';
 import { DeviceLoader } from '@devices/device-loader';
 import { AppiumAdapter } from '@devices/adapters/appium-adapter';
+import { runCommand } from '@plugins/shared/command-runner';
 
 // --- Capability Profile Loader (delegates to driver-agnostic device passport) ---
 
@@ -68,6 +69,24 @@ const APPIUM_PORT = parseInt(process.env.APPIUM_PORT || '4723', 10);
 
 const sessions: Map<string, Browser> = new Map();
 
+// Real-device mobilewright runs hit a mid-run failure mode where the screen
+// turns off ~40min in despite `stay_on_while_plugged_in` already covering
+// USB (Samsung's own power-saving daemon overrides the AOSP setting — see
+// mobilewright-lifecycle.ts's `preventAndroidScreenSleep`). Appium hasn't
+// been run past that mark yet on this device, so port the same best-effort
+// mitigation here before trusting a full-length run.
+async function preventAndroidScreenSleep(deviceId: string | undefined): Promise<void> {
+    const args = [...(deviceId ? ['-s', deviceId] : []), 'shell', 'svc', 'power', 'stayon', 'true'];
+    try {
+        const result = await runCommand('adb', args, { timeoutMs: 10_000 });
+        if (result.exitCode !== 0) {
+            logger.warn({ deviceId, stderr: result.stderr.trim() }, '[Appium] svc power stayon failed (continuing)');
+        }
+    } catch (err) {
+        logger.warn({ deviceId, err: (err as Error).message }, '[Appium] svc power stayon failed (continuing)');
+    }
+}
+
 async function ensureSession(sessionId: string): Promise<Browser> {
     if (sessions.has(sessionId)) return sessions.get(sessionId)!;
 
@@ -113,6 +132,12 @@ async function ensureSession(sessionId: string): Promise<Browser> {
             await new Promise((r) => setTimeout(r, backoffMs));
         }
     }
+    if (PLATFORM === 'android') {
+        const caps = driver!.capabilities as Record<string, unknown> | undefined;
+        const deviceId = (caps?.udid ?? caps?.['appium:udid']) as string | undefined;
+        await preventAndroidScreenSleep(deviceId);
+    }
+
     sessions.set(sessionId, driver!);
     logger.info({ sessionId, total: sessions.size }, '[Appium] Session created');
     return driver!;

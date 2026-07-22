@@ -20,16 +20,31 @@ export async function navigateToCheckout(market?: string, accessToken?: string):
         if (market) params.set('market', market);
         if (accessToken) params.set('accessToken', accessToken);
         await sendIntent(INTENT.DEEP_LINK, `omnipizza://checkout?${params.toString()}`);
-        // Step 1: confirm we landed on the checkout screen (empty or loaded)
-        // screen-checkout-empty is shown while the cart hydration API call is in flight
-        await sendIntent(INTENT.WAIT_FOR_ELEMENT, 'checkoutScreenLanding||8000');
+        if (driver === 'appium') {
+            // Step 1 (appium only): confirm we landed on the checkout screen
+            // (empty or loaded) — screen-checkout-empty is shown while the
+            // cart hydration API call is in flight. `checkoutScreenLanding`
+            // is an either/or of two testIds (text-cart-empty OR
+            // text-section-address), expressed via an Appium UiSelector/
+            // predicate regex; mobilewright's single-value testId locator
+            // can't express that alternation and has no entry for this key
+            // by design (see checkout-locators.test.ts). Step 2 below already
+            // covers the "landed on the loaded form" signal for mobilewright,
+            // just without this fast, empty-cart-aware early exit.
+            await sendIntent(INTENT.WAIT_FOR_ELEMENT, 'checkoutScreenLanding||8000');
+        }
         // Step 2: wait for cart hydration — screen flips to screen-checkout once API responds
         await sendIntent(INTENT.WAIT_FOR_ELEMENT, 'checkoutHeader||15000');
-        // Step 3: form inputs confirm the checkout form is fully rendered.
-        // First scenario of a run hits a cold JS bundle; 20 s absorbs that
-        // cold start while still surfacing real regressions quickly on later
-        // scenarios where the bundle is already warm.
-        await sendIntent(INTENT.WAIT_FOR_ELEMENT, 'streetInput||20000');
+        // Step 3 (appium only): form inputs confirm the checkout form is
+        // fully rendered. `streetInput` likewise has no mobilewright entry
+        // (checkout-locators.test.ts) — the mobile checkout form's street
+        // field isn't yet mapped for the mobilewright driver.
+        if (driver === 'appium') {
+            // First scenario of a run hits a cold JS bundle; 20 s absorbs that
+            // cold start while still surfacing real regressions quickly on later
+            // scenarios where the bundle is already warm.
+            await sendIntent(INTENT.WAIT_FOR_ELEMENT, 'streetInput||20000');
+        }
         log.info({ market }, 'Deep linked to checkout screen (atomic mobile path)');
         return;
     }

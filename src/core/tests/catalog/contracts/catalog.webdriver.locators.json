@@ -24,7 +24,10 @@
       "responsive": "[data-testid='search-pizza-responsive']",
       "desktop": "[data-testid='search-pizza-desktop']"
     },
-    "appium": "~input-search-pizza"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"input-search-pizza\")",
+      "ios": "~input-search-pizza"
+    }
   },
   "clearFiltersButton": {
     "webdriverio": {

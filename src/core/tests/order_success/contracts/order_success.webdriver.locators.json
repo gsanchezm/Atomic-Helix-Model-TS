@@ -5,7 +5,7 @@
       "responsive": "[data-testid='order-success-title-responsive']"
     },
     "appium": {
-      "android": "~screen-order-success",
+      "android": "android=new UiSelector().resourceId(\"screen-order-success\")",
       "ios": "~btn-order-details"
     }
   },
@@ -23,73 +23,124 @@
       "responsive": "[data-testid='back-to-catalog-responsive']",
       "desktop": "[data-testid='back-to-catalog-desktop']"
     },
-    "appium": "~btn-back-catalog"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"btn-back-catalog\")",
+      "ios": "~btn-back-catalog"
+    }
   },
   "liveBadgeContainer": {
-    "appium": "~view-live-badge"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"view-live-badge\")",
+      "ios": "~view-live-badge"
+    }
   },
   "liveTrackingText": {
     "webdriverio": "[data-testid='live-tracking-status']",
-    "appium": "~text-live-tracking"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-live-tracking\")",
+      "ios": "~text-live-tracking"
+    }
   },
   "courierTagText": {
-    "appium": "~text-courier-tag"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-courier-tag\")",
+      "ios": "~text-courier-tag"
+    }
   },
   "statusTitleText": {
-    "appium": "~text-status-title"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-status-title\")",
+      "ios": "~text-status-title"
+    }
   },
   "statusSubtitleText": {
     "webdriverio": "[data-testid='expected-arrival']",
-    "appium": "~text-status-sub"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-status-sub\")",
+      "ios": "~text-status-sub"
+    }
   },
   "timeEstimateText": {
     "webdriverio": "[data-testid='delivery-time-min']",
-    "appium": "~text-time-estimate"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-time-estimate\")",
+      "ios": "~text-time-estimate"
+    }
   },
   "minLabelText": {
     "webdriverio": "[data-testid='delivery-time-label']",
-    "appium": "~text-min-label"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-min-label\")",
+      "ios": "~text-min-label"
+    }
   },
   "bottomSheetContainer": {
-    "appium": "~view-bottom-sheet"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"view-bottom-sheet\")",
+      "ios": "~view-bottom-sheet"
+    }
   },
   "courierInfoContainer": {
     "webdriverio": "[data-testid='courier-info']",
-    "appium": "~view-courier-card"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"view-courier-card\")",
+      "ios": "~view-courier-card"
+    }
   },
   "courierRatingText": {
     "webdriverio": "[data-testid='courier-rating']",
-    "appium": "~text-courier-rating"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-courier-rating\")",
+      "ios": "~text-courier-rating"
+    }
   },
   "courierLabelText": {
     "webdriverio": "[data-testid='courier-role-label']",
-    "appium": "~text-courier-label"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-courier-label\")",
+      "ios": "~text-courier-label"
+    }
   },
   "courierNameText": {
     "webdriverio": "[data-testid='courier-name']",
-    "appium": "~text-courier-name"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-courier-name\")",
+      "ios": "~text-courier-name"
+    }
   },
   "courierVehicleText": {
     "webdriverio": "[data-testid='courier-vehicle']",
-    "appium": "~text-courier-vehicle"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-courier-vehicle\")",
+      "ios": "~text-courier-vehicle"
+    }
   },
   "courierImage": {
     "webdriverio": "[data-testid='img-courier']",
-    "appium": "~img-courier-avatar"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"img-courier-avatar\")",
+      "ios": "~img-courier-avatar"
+    }
   },
   "courierChatButton": {
     "webdriverio": {
       "responsive": "[data-testid='courier-chat-responsive']",
       "desktop": "[data-testid='courier-chat-desktop']"
     },
-    "appium": "~btn-courier-chat"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"btn-courier-chat\")",
+      "ios": "~btn-courier-chat"
+    }
   },
   "courierCallButton": {
     "webdriverio": {
       "responsive": "[data-testid='courier-call-responsive']",
       "desktop": "[data-testid='courier-call-desktop']"
     },
-    "appium": "~btn-courier-call"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"btn-courier-call\")",
+      "ios": "~btn-courier-call"
+    }
   },
   "orderIdText": {
     "webdriverio": "[data-testid='order-id']"
@@ -99,14 +150,23 @@
   },
   "viewOrderDetailsButton": {
     "webdriverio": "[data-testid='order-details-toggle']",
-    "appium": "~btn-order-details"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"btn-order-details\")",
+      "ios": "~btn-order-details"
+    }
   },
   "orderDetailsPanel": {
     "webdriverio": "[data-testid='order-details-panel']",
-    "appium": "~view-order-details-panel"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"view-order-details-panel\")",
+      "ios": "~view-order-details-panel"
+    }
   },
   "orderDetailsLabel": {
     "webdriverio": "[data-testid='order-details-label']",
-    "appium": "~text-order-details"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-order-details\")",
+      "ios": "~text-order-details"
+    }
   }
 }

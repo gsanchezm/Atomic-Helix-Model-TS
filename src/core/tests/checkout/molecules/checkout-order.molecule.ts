@@ -2,6 +2,7 @@ import { sendIntent } from '@kernel/client';
 import type { CartItemResponse, CountryInfo } from '@core/tests/checkout/dao/checkout.types';
 import { logger } from '@utils/logger';
 import { INTENT } from '@kernel/intents';
+import { mobileTestId } from '@core/tests/support/mobile-selector';
 
 const log = logger.child({ layer: 'molecule', action: 'order' });
 
@@ -39,7 +40,7 @@ export async function verifyOrderAccepted(
         // opaque 90s timeout. Additive/read-only: the happy path is unchanged.
         // `text-checkout-error` (CheckoutScreen.tsx:687) exposes the localized
         // message as its iOS accessibilityLabel, so READ_TEXT returns it.
-        const probe = await sendIntent(INTENT.READ_TEXT, '~text-checkout-error').catch(() => null);
+        const probe = await sendIntent(INTENT.READ_TEXT, mobileTestId('text-checkout-error')).catch(() => null);
         const inlineError = (probe?.payload ?? '').trim();
         throw new Error(
             `[checkout] order-success ('btn-order-details') never rendered for ${countryInfo.code} within 90s; ` +

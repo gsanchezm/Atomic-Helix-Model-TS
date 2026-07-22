@@ -12,10 +12,19 @@ test('checkout.locators.json no longer exists — content was redistributed, not
 test('checkout.webdriver.locators.json is valid JSON, has all 30 original keys, values verbatim', () => {
     const webdriver = JSON.parse(fs.readFileSync(path.join(CONTRACTS_DIR, 'checkout.webdriver.locators.json'), 'utf-8'));
     assert.equal(Object.keys(webdriver).length, 30);
-    assert.deepEqual(webdriver.checkoutHeader, { webdriverio: 'h1:has-text("Checkout")', appium: '~text-section-address' });
-    assert.deepEqual(webdriver.zipCodeInput.appium, { android: '~input-zipcode', ios: '~input-zipcode' });
+    assert.deepEqual(webdriver.checkoutHeader, {
+        webdriverio: 'h1:has-text("Checkout")',
+        appium: {
+            android: 'android=new UiSelector().resourceId("text-section-address")',
+            ios: '~text-section-address',
+        },
+    });
+    assert.deepEqual(webdriver.zipCodeInput.appium, {
+        android: 'android=new UiSelector().resourceId("input-zipcode")',
+        ios: '~input-zipcode',
+    });
     assert.deepEqual(webdriver.cardNumberInput.appium, {
-        android: 'android=new UiSelector().className("android.widget.EditText").description("input-card-number")',
+        android: 'android=new UiSelector().className("android.widget.EditText").resourceId("input-card-number")',
         ios: "-ios predicate string:type == 'XCUIElementTypeTextField' AND name == 'input-card-number'",
     });
     assert.equal(webdriver.districtInput.webdriverio, "[data-testid='district']");

@@ -7,6 +7,7 @@ import {
     seedWebPersistedStores as seedPersistedStores,
     sendBrowserCommand,
 } from '@core/tests/support/browser-command';
+import { mobileTestId } from '@core/tests/support/mobile-selector';
 
 const log = logger.child({ layer: 'molecule', action: 'catalog-browse' });
 
@@ -146,7 +147,7 @@ export async function readVisiblePizzaNames(candidateIds?: string[]): Promise<st
         const ids = candidateIds && candidateIds.length ? candidateIds : DEFAULT_PIZZA_IDS;
         const names: string[] = [];
         for (const id of ids) {
-            const r = await sendIntent(INTENT.READ_TEXT, `~text-pizza-name-${id.toLowerCase()}`)
+            const r = await sendIntent(INTENT.READ_TEXT, mobileTestId(`text-pizza-name-${id.toLowerCase()}`))
                 .catch(() => null);
             const t = (r?.payload ?? '').trim();
             if (t) names.push(t);
@@ -178,11 +179,11 @@ export async function assertAddToCartLabelVisible(label: string): Promise<void> 
         // read the CTA label, assert, then close. Verified on-device
         // 2026-05-28 the CTA is correctly localized (en "Add to Cart" /
         // es "Agregar" / de "Hinzufügen" / fr "Ajouter").
-        await sendIntent(INTENT.CLICK, '~btn-add-pizza-p01');
-        await sendIntent(INTENT.WAIT_FOR_ELEMENT, `~text-add-to-cart||${CATALOG_WAIT_TIMEOUT_MS}`);
-        const read = await sendIntent(INTENT.READ_TEXT, '~text-add-to-cart');
+        await sendIntent(INTENT.CLICK, mobileTestId('btn-add-pizza-p01'));
+        await sendIntent(INTENT.WAIT_FOR_ELEMENT, `${mobileTestId('text-add-to-cart')}||${CATALOG_WAIT_TIMEOUT_MS}`);
+        const read = await sendIntent(INTENT.READ_TEXT, mobileTestId('text-add-to-cart'));
         const actual = (read.payload ?? '').trim();
-        await sendIntent(INTENT.CLICK, '~btn-close-builder').catch(() => { /* best-effort close */ });
+        await sendIntent(INTENT.CLICK, mobileTestId('btn-close-builder')).catch(() => { /* best-effort close */ });
         if (!actual.toLowerCase().includes(label.trim().toLowerCase())) {
             throw new Error(
                 `[catalog] add-to-cart label "${label}" not found on the builder CTA — got "${actual}".`,
@@ -256,7 +257,7 @@ export async function assertSectionTitle(title: string): Promise<void> {
         // "Alle Pizzen" / "すべてのピザ"). Assert that pill carries the
         // localized title (case-insensitive; tolerate singular/plural so
         // "Pizzas" matches "All Pizza"). Verified on-device 2026-05-28.
-        const read = await sendIntent(INTENT.READ_TEXT, '~text-category-all');
+        const read = await sendIntent(INTENT.READ_TEXT, mobileTestId('text-category-all'));
         const actual = (read.payload ?? '').trim().toLowerCase();
         const wanted = title.trim().toLowerCase();
         if (!actual.includes(wanted) && !actual.includes(wanted.replace(/s$/, ''))) {

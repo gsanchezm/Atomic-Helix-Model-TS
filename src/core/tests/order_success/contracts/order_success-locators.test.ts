@@ -12,7 +12,10 @@ test('order_success.locators.json no longer exists — content was redistributed
 test('order_success.webdriver.locators.json is valid JSON, has all 25 original keys, values verbatim', () => {
     const webdriver = JSON.parse(fs.readFileSync(path.join(CONTRACTS_DIR, 'order_success.webdriver.locators.json'), 'utf-8'));
     assert.equal(Object.keys(webdriver).length, 25);
-    assert.deepEqual(webdriver.orderSuccessScreen.appium, { android: '~screen-order-success', ios: '~btn-order-details' });
+    assert.deepEqual(webdriver.orderSuccessScreen.appium, {
+        android: 'android=new UiSelector().resourceId("screen-order-success")',
+        ios: '~btn-order-details',
+    });
 });
 
 test('order_success.wright.locators.json resolves the genuine android/ios mobilewright divergence as an axis', () => {

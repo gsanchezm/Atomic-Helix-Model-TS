@@ -35,6 +35,7 @@ import { INTENT } from '@kernel/intents';
 import { getDriver, isApiDriver, isNativeMobileDriver, isWebDriver, isWebResponsive, openMobileMenu } from './navbar-shell.molecule';
 import { BROWSER_COMMAND } from '@kernel/browser-command';
 import { sendBrowserCommand } from '@core/tests/support/browser-command';
+import { mobileTestId } from '@core/tests/support/mobile-selector';
 
 const log = logger.child({ layer: 'molecule', domain: 'navbar', action: 'language' });
 
@@ -158,7 +159,7 @@ async function readAddToCartLabel(): Promise<string> {
         // the resolver. Build the raw accessibility-id locally and pass
         // it through; locator-resolver passes unknown keys/raw selectors
         // through with a warning.
-        const rawSelector = `~text-add-pizza-${CH_WITNESS_PIZZA_ID}`;
+        const rawSelector = mobileTestId(`text-add-pizza-${CH_WITNESS_PIZZA_ID}`);
         const result = await sendIntent(INTENT.READ_TEXT, rawSelector);
         return (result.payload ?? '').trim();
     }

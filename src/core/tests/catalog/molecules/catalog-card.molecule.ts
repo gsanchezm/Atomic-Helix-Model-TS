@@ -1,6 +1,7 @@
 import { sendIntent } from '@kernel/client';
 import { INTENT } from '@kernel/intents';
 import { logger } from '@utils/logger';
+import { mobileTestId } from '@core/tests/support/mobile-selector';
 
 const log = logger.child({ layer: 'molecule', action: 'catalog-card' });
 
@@ -30,7 +31,7 @@ export async function openPizzaCard(pizzaId: string): Promise<void> {
     }
     const id = pizzaId.toLowerCase();
     const selector = isMobileDriver()
-        ? `~btn-add-pizza-${id}`
+        ? mobileTestId(`btn-add-pizza-${id}`)
         : viewportAwareAddToCartSelector(id);
     await sendIntent(INTENT.CLICK, selector);
 }
@@ -55,7 +56,7 @@ export async function assertBuilderOpen(pizzaId: string): Promise<void> {
         // (the modal renders but the container id is absent — 30s timeout in
         // the @ios run while the builder is visibly open). Anchor on the
         // confirm CTA `~btn-add-to-cart`, verified present on-device, instead.
-        await sendIntent(INTENT.WAIT_FOR_ELEMENT, `~btn-add-to-cart||${BUILDER_WAIT_TIMEOUT_MS}`);
+        await sendIntent(INTENT.WAIT_FOR_ELEMENT, `${mobileTestId('btn-add-to-cart')}||${BUILDER_WAIT_TIMEOUT_MS}`);
         return;
     }
     await sendIntent(INTENT.WAIT_FOR_ELEMENT, `confirmAddToCartButton||${BUILDER_WAIT_TIMEOUT_MS}`);

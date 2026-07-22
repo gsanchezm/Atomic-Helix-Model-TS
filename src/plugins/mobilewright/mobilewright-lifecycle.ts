@@ -12,6 +12,7 @@ import { logger } from '@utils/logger';
 import { DeviceLoader } from '@devices/device-loader';
 import { MobilewrightAdapter } from '@devices/adapters/mobilewright-adapter';
 import type { DevicePlatform } from '@devices/device-passport.types';
+import { runCommand } from '@plugins/shared/command-runner';
 
 export type MobilewrightPlatform = DevicePlatform;
 
@@ -61,6 +62,28 @@ function resolveBinaryPathOverride(platform: DevicePlatform): string | undefined
     return platform === 'android' ? process.env.ANDROID_APP_PATH : process.env.IOS_APP_PATH;
 }
 
+// Real-device runs observed a mid-run failure mode where every subsequent
+// action started failing with "no XML content found in uiautomator dump" —
+// traced (via logcat) to the screen turning off ~40min into a run despite
+// `stay_on_while_plugged_in` already covering USB: uiautomator2 cannot dump
+// the view hierarchy while the display is off, and read-only stretches
+// (DEEP_LINK/READ_TEXT, no taps) don't reliably reset Android's idle timer.
+// `svc power stayon` sets PowerManagerService's mStayOn flag directly,
+// overriding the softer settings-based policy. Best-effort: a failure here
+// (e.g. adb not on PATH, no device attached in a headless/emulator CI leg)
+// shouldn't block session creation.
+async function preventAndroidScreenSleep(deviceId: string | undefined): Promise<void> {
+    const args = [...(deviceId ? ['-s', deviceId] : []), 'shell', 'svc', 'power', 'stayon', 'true'];
+    try {
+        const result = await runCommand('adb', args, { timeoutMs: 10_000 });
+        if (result.exitCode !== 0) {
+            logger.warn({ deviceId, stderr: result.stderr.trim() }, '[Mobilewright] svc power stayon failed (continuing)');
+        }
+    } catch (err) {
+        logger.warn({ deviceId, err: (err as Error).message }, '[Mobilewright] svc power stayon failed (continuing)');
+    }
+}
+
 export async function ensureSession(sessionId: string = '0'): Promise<MobilewrightSession> {
     const existing = sessions.get(sessionId);
     if (existing) return existing;
@@ -80,6 +103,10 @@ export async function ensureSession(sessionId: string = '0'): Promise<Mobilewrig
     const launcher = passport.platform === 'ios' ? mw.ios : mw.android;
     const { platform: _omit, ...launchOpts } = opts;
     const device = await launcher.launch(launchOpts);
+
+    if (passport.platform === 'android') {
+        await preventAndroidScreenSleep(opts.deviceId);
+    }
 
     const session: MobilewrightSession = { device, platform: passport.platform, profileId: passport.id };
     sessions.set(sessionId, session);
