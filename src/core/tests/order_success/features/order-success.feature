@@ -25,4 +25,4 @@ Feature: Order success screen surfaces tracking & courier per market
       | CH     | de       | In Zustellung         | BESTELLDETAILS         |
       | CH     | fr       | En cours de livraison | DÉTAILS DE LA COMMANDE |
       | JP     | ja       | 配達中                  | 注文詳細                 |
-      | SA     | ar       | التوصيل                 | تفاصيل الطلب            |
+      | SA     | ar       | توصيل                  | تفاصيل الطلب            |

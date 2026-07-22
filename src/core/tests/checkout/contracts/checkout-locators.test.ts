@@ -39,11 +39,13 @@ test('checkout.wright.locators.json is valid JSON with playwright testId/css + m
     });
     assert.deepEqual(wright.paymentMethodList, { playwright: { kind: 'css', value: "[role='radiogroup'] [role='radio']" } });
     assert.equal(wright.paymentMethodList.mobilewright, undefined);
-    // streetInput and cardNumberInput have a mixed appium android/ios axis
-    // (one branch bare `~foo`, the other an Appium-only UiSelector/predicate)
-    // — no mobilewright entry is invented for a partial axis (§6-style gap).
-    assert.equal(wright.streetInput.mobilewright, undefined);
-    assert.equal(wright.cardNumberInput.mobilewright, undefined);
+    // streetInput and cardNumberInput's appium android branch is a single
+    // exact resourceId (input-address / input-card-number) — unlike the
+    // list/regex locators above, that's directly expressible as a
+    // mobilewright testId entry, so one was added (verified on-device
+    // 2026-07-22: the deep-link + checkout flow reaches these fields).
+    assert.deepEqual(wright.streetInput.mobilewright, { kind: 'testId', value: 'input-address' });
+    assert.deepEqual(wright.cardNumberInput.mobilewright, { kind: 'testId', value: 'input-card-number' });
     // checkoutScreenLanding has no web value and a non-`~` mobile axis on both
     // branches — absent entirely, not present as an empty object.
     assert.equal(wright.checkoutScreenLanding, undefined);

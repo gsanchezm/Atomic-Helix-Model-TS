@@ -6,6 +6,17 @@ export interface CommandResult {
     stderr: string;
 }
 
+// Wraps a value in single quotes for the DEVICE's POSIX shell, escaping any
+// literal single quotes it might contain (`'` -> `'\''`). Needed whenever a
+// value (e.g. a deep-link URL) gets shelled into `adb shell <command>` —
+// `adb shell` sends the command as one raw string that the device's own
+// shell re-tokenizes, so unquoted metacharacters like `&` split it into
+// multiple statements on that end, independent of how the value was quoted
+// (or not) for the local/Windows side.
+export function posixQuote(value: string): string {
+    return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
 export function runCommand(
     command: string,
     args: string[],

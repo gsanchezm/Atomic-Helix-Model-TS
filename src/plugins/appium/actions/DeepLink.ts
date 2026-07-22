@@ -1,13 +1,7 @@
 import { ActionHandler } from '@plugins/shared/ActionHandler';
 import { logger } from '@utils/logger';
 import { AppiumActionContext } from '@plugins/appium/actions/AppiumActionContext';
-import { runCommand } from '@plugins/shared/command-runner';
-
-// Wraps a value in single quotes for the DEVICE's POSIX shell, escaping any
-// literal single quotes it might contain (`'` -> `'\''`).
-function posixQuote(value: string): string {
-    return `'${value.replace(/'/g, `'\\''`)}'`;
-}
+import { posixQuote, runCommand } from '@plugins/shared/command-runner';
 
 /**
  * DEEP_LINK — navigate directly to a screen via the omnipizza:// URI scheme.

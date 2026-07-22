@@ -7,9 +7,9 @@
 // Navbar locators differentiate WEB (`navLogo`, `navCatalogLink`, ...) from
 // MOBILE in two flavors:
 //   - native mobile (appium / mobilewright): `bottomNavContainer` +
-//     `bottomNav*` UiSelector locators. There is NO logout entry in the
-//     bottom nav — logout lives on the profile screen, so we self-skip
-//     that assertion on native and log it.
+//     `bottomNav*` UiSelector locators. The bottom nav DOES include a
+//     logout entry (`nav-logout`/`text-nav-logout`, verified on-device
+//     2026-07-22) alongside catalog/checkout/profile.
 //   - web-responsive (playwright with small viewport): `mobileMenuButton`
 //     opens a drawer carrying `mobileNavCatalogLink`, `mobileNavCheckoutLink`,
 //     `mobileNavProfileLink`, and `mobileLogoutButton`.
@@ -199,14 +199,8 @@ export async function openMobileMenu(): Promise<void> {
 }
 
 /**
- * Asserts the mobile menu shows catalog, checkout, profile and (on
- * web-responsive only) logout entries.
- *
- * Native mobile bottom-nav locators expose catalog/checkout/profile but
- * NOT a logout button — logout lives on the profile screen. We self-skip
- * the logout assertion on native and log it. The feature step phrasing
- * accepts this gracefully because the assertion is a UI-shape check,
- * not a contract clause about a specific element key.
+ * Asserts the mobile menu shows catalog, checkout, profile and logout
+ * entries.
  */
 export async function assertMobileMenuEntries(): Promise<void> {
     if (isApiDriver()) {
@@ -215,14 +209,24 @@ export async function assertMobileMenuEntries(): Promise<void> {
     }
 
     if (isNativeMobileDriver()) {
-        // Bottom nav exposes the navigation entries via a UiSelector match;
-        // bottomNavList is a list-selector that resolves to multiple elements,
-        // so its presence implies catalog/checkout/profile are rendered.
+        if (getDriver() === 'mobilewright') {
+            // mobilewright's locator engine only supports exact-match
+            // lookups (testId/label/text/role/placeholder/type) — it can't
+            // express bottomNavList's Appium UiSelector regex
+            // (resourceIdMatches("nav-[a-z]+")), so probe each destination's
+            // raw testId individually instead (mirrors the candidate-probe
+            // pattern in catalog-browse.molecule.ts's readVisiblePizzaNames).
+            for (const dest of ['catalog', 'checkout', 'profile', 'logout']) {
+                await sendIntent(INTENT.WAIT_FOR_ELEMENT, `nav-${dest}||${PRESENCE_WAIT_MS}`);
+            }
+            log.info({ driver: getDriver() }, 'Native bottom nav verified (mobilewright, per-item probe)');
+            return;
+        }
+        // Appium: bottomNavList's UiSelector regex resolves to multiple
+        // elements at once; its presence implies catalog/checkout/profile/
+        // logout are all rendered.
         await sendIntent(INTENT.WAIT_FOR_ELEMENT, `bottomNavList||${PRESENCE_WAIT_MS}`);
-        log.info(
-            { driver: getDriver() },
-            'Native bottom nav verified; logout entry not in bottom nav (lives on profile screen) — skipped',
-        );
+        log.info({ driver: getDriver() }, 'Native bottom nav verified (appium)');
         return;
     }
 

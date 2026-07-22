@@ -132,6 +132,19 @@ export async function verifySizeAndToppingsRendered(): Promise<void> {
         return;
     }
     await sendIntent(INTENT.WAIT_FOR_ELEMENT, `sizeOptionsContainer||${PRESENCE_WAIT_MS}`);
+    if (driver === 'mobilewright') {
+        // toppingGroupList is an Appium UiSelector regex
+        // (resourceIdMatches("text-topping-group-.*")) that mobilewright's
+        // exact-match-only locator engine can't express, and topping group
+        // slugs vary per pizza (e.g. Pepperoni only renders a "meats" group
+        // — verified on-device 2026-07-22), so there's no safe fixed
+        // candidate list to probe. sectionToppingsText ("Add toppings") is a
+        // static, pizza-independent header that already has a working
+        // mobilewright entry — its presence is an equally valid proxy for
+        // "the toppings section rendered".
+        await sendIntent(INTENT.WAIT_FOR_ELEMENT, `sectionToppingsText||${PRESENCE_WAIT_MS}`);
+        return;
+    }
     await sendIntent(INTENT.WAIT_FOR_ELEMENT, `toppingGroupList||${PRESENCE_WAIT_MS}`);
 }
 

@@ -7,7 +7,8 @@
     "playwright": {
       "responsive": { "kind": "testId", "value": "address-responsive" },
       "desktop": { "kind": "testId", "value": "address-desktop" }
-    }
+    },
+    "mobilewright": { "kind": "testId", "value": "input-address" }
   },
   "zipCodeInput": {
     "playwright": { "kind": "testId", "value": "zip-code" },
@@ -59,7 +60,8 @@
     "mobilewright": { "kind": "testId", "value": "input-card-holder" }
   },
   "cardNumberInput": {
-    "playwright": { "kind": "testId", "value": "card-number" }
+    "playwright": { "kind": "testId", "value": "card-number" },
+    "mobilewright": { "kind": "testId", "value": "input-card-number" }
   },
   "expiryMonthInput": {
     "playwright": { "kind": "testId", "value": "card-expiry-month" },
