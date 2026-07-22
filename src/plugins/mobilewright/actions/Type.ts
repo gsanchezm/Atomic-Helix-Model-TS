@@ -4,6 +4,7 @@ import {
     MobilewrightActionContext,
     parseLocator,
     locate,
+    scrollIntoViewSafe,
 } from '@plugins/mobilewright/actions/MobilewrightActionContext';
 
 export const TypeAction: ActionHandler<MobilewrightActionContext> = {
@@ -12,7 +13,7 @@ export const TypeAction: ActionHandler<MobilewrightActionContext> = {
         const { selector, value } = parseSelectorValue(target, 'TYPE action');
         const strategy = parseLocator(selector);
         const locator = await locate(driver, strategy);
-        await locator.scrollIntoViewIfNeeded();
+        await scrollIntoViewSafe(driver, locator);
         await locator.tap(); // focus the field
         await locator.fill(value);
         return `Typed into mobilewright element: ${strategy.kind}=${strategy.value}`;
