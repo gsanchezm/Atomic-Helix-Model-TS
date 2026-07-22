@@ -28,4 +28,30 @@ module.exports = {
     // is preserved rather than hidden.
     retry: 1,
   },
+
+  // EVALUATION ARTIFACT — see evaluation/non-atomic-twin/README.md and
+  // docs/paper/atomic-testing-formal-definition.md §8.3. Scoped to a
+  // directory OUTSIDE src/core/tests/ so the `default` profile's glob can
+  // never pick it up. Parity with `default` on requireModule/timeout/the
+  // support/** require path; the two deliberate differences are `paths`
+  // (points only at the twin) and `retry: 0` — a retry would silently
+  // re-run the entire journey and mask the determinism signal §8.4 measures.
+  nonAtomicTwin: {
+    paths: ["evaluation/non-atomic-twin/**/*.feature"],
+
+    requireModule: ["tsconfig-paths/register", "ts-node/register", "dotenv/config"],
+    require: [
+      "src/core/tests/support/**/*.ts",
+      "evaluation/non-atomic-twin/**/step_definitions/**/*.ts",
+    ],
+
+    format: ["progress"],
+
+    timeout: 300000,
+    parallel: Number.isFinite(configuredParallelism) && configuredParallelism > 0
+      ? configuredParallelism
+      : 1,
+
+    retry: 0,
+  },
 };

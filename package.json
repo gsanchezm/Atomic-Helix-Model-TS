@@ -18,6 +18,8 @@
     "plugin:webdriverio": "ts-node -r tsconfig-paths/register -r dotenv/config src/plugins/webdriverio/server.ts",
     "plugin:cypress": "cypress run --config-file src/plugins/cypress/cypress.config.ts",
     "test": "cucumber-js",
+    "test:eval:non-atomic-twin": "cross-env TOOL_NAME=non-atomic-twin cucumber-js --profile nonAtomicTwin",
+    "test:eval:non-atomic-twin:json": "cross-env TOOL_NAME=non-atomic-twin cucumber-js --profile nonAtomicTwin --format json:reports/non-atomic-twin.json",
     "test:unit": "node --test -r ts-node/register -r tsconfig-paths/register src/kernel/*.test.ts",
     "test:a11y": "cross-env DRIVER=playwright PLATFORM=web PLUGIN_AXE=true cucumber-js --tags \"@a11y\" --format json:reports/accessibility.json",
     "test:all-browsers": "node scripts/run-cross-browser-sequential.js",
