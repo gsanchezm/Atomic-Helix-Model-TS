@@ -26,13 +26,23 @@ sweep), and sequences the remaining build work now that the scope is settled.
 - **`CUCUMBER_PARALLEL` is hardcoded, not swept.** `cucumber.js` reads it from env
   (`process.env.CUCUMBER_PARALLEL || '1'`), but the workflow hardcodes `'4'` for the two Playwright
   jobs only. No existing input parameterizes it — required for the 1/2/4/8 sweep.
-- **The non-atomic twin does not exist yet.** §8.2–§8.3 spec a single cross-domain journey
-  (login → catalog → pizzaBuilder → checkout), Playwright-only as specced (built from existing UI
-  molecules: `submitCredentials`, catalog card-click, pizzaBuilder open/size/toppings/confirm). This
-  design **expands that scope**: the determinism instrument (per this session's decisions, §3 below)
-  needs a Mobilewright-Android leg of the same journey too, not just Playwright. The twin lives in
-  `evaluation/non-atomic-twin/`, has a dedicated `nonAtomicTwin` cucumber profile (`retry: 0`, parity
-  otherwise with `default`) already specced but not built.
+- **CORRECTION (discovered 2026-07-23, post-approval):** the non-atomic twin already exists and is
+  **not** a stub. `evaluation/non-atomic-twin/` is fully scaffolded: `checkout/features/full-order-journey.nonatomic.feature`
+  (one cross-domain journey, currently **K=8** instance rows, login → catalog → pizzaBuilder →
+  checkout), plus `catalog/step_definitions/`, `pizzaBuilder/{organisms,step_definitions}/`,
+  `checkout/{organisms,step_definitions}/`, and a README documenting the disclosed R1/R2/R3
+  violations. The `nonAtomicTwin` cucumber profile (`retry: 0`, parity otherwise with `default`)
+  is live in `cucumber.js`, and `test:eval:non-atomic-twin`/`test:eval:non-atomic-twin:json` scripts
+  exist in `package.json`. **What's actually missing is not construction — it's verification.** The
+  twin has never been run live, on any driver (confirmed against project memory and the README's own
+  framing). Its organisms reuse the atomic suites' domain routes (`CatalogRoute`, `PizzaBuilderRoute`
+  via molecules, `CheckoutRoute`), which already branch on `DRIVER` internally (including a
+  `mobilewright` branch) — so the Mobilewright leg is very likely **zero new construction**, just
+  `DRIVER=mobilewright` against the same feature file. This is unverified until it actually runs; two
+  spots flagged as worth checking first if the Playwright smoke run fails: a possible double-login
+  (the journey's UI login vs. the shared Background step's API-only `loginAs`) and a possible
+  cart-overwrite (checkout's API `addToOrder` step, if still reachable, would clobber a UI-built
+  cart — needs confirming it isn't in this journey's path). See the corrected build order, §4.
 - **Repo is public.** No GitHub Actions minutes budget ceiling applies (the 2,000–3,000 min/month
   figures are a private-repo concept); standard Linux/Windows/macOS runners are free under fair-use
   limits. This is why "everything in GitHub Actions" is affordable even at ~156 dispatches.
@@ -78,20 +88,29 @@ sweep), and sequences the remaining build work now that the scope is settled.
 Total campaign size: **120 + 8 + 28 = 156 `workflow_dispatch` calls**, plus the one-time portability
 measurement captured during twin construction.
 
-## 4. Build order (dependency chain)
+## 4. Build order (dependency chain) — REVISED post-discovery
 
-Nothing below step 1 can run until the twin exists in both legs, so this is a strict sequence, not a
-menu:
+Nothing below step 1 can run until the twin is confirmed working, so this is a strict sequence, not a
+menu. Step 1 is no longer "build" — it's verify-and-tune, since the artifact already exists:
 
-1. **Build the non-atomic twin** — Playwright leg (per existing §8.2–§8.3 spec) **and** a new
-   Mobilewright-Android leg of the same concatenated journey. This is the immediate next brainstorm/plan
-   (see §6 — first sub-project to hand to `writing-plans`).
+1. **Verify and tune the existing twin**, not build it from scratch:
+   - Bring up the live stack (proxy + `playwright` plugin at minimum) and smoke-run
+     `pnpm test:eval:non-atomic-twin` for the first time ever. Fix any genuine harness bugs surfaced
+     (not the deliberate R1/R2/R3 violations the README documents as the measured signal — only real
+     defects, e.g. a double-login or a cart-overwrite race, per the correction above).
+   - Bump the Examples table from K=8 to **K=16** (this session's decision, §3) in
+     `checkout/features/full-order-journey.nonatomic.feature`.
+   - Once Playwright is green, set `DRIVER=mobilewright` (+ `PLUGIN_MOBILEWRIGHT=true` in `.env`,
+     restart the plugin, a compatible `DEVICE_PROFILE`) and smoke-run the **same** feature file against
+     Android. Only write new code here if the run actually reveals something missing — expect this to
+     be a verification pass, not a construction task.
 2. **Parameterize `CUCUMBER_PARALLEL`** in `ahm-execution-helix.yml` as a `workflow_dispatch` input for
    the two Playwright jobs (currently hardcoded `'4'`), enabling the 1/2/4/8 sweep.
 3. **Build the diagnosability fault-injection harness** — targets the shared backend/network layer per
    §8.4's existing design note (fault must be genuinely shared between arms, not UI-vs-API setup).
-4. **Build the portability delta measurement** — LOC/files-touched tooling, exercised against the
-   Mobilewright-Android twin leg built in step 1.
+4. **Build the portability delta measurement** — LOC/files-touched tooling. Since step 1 confirmed
+   (rather than newly built) the Mobilewright-Android leg, this instrument's artifact is whatever diff
+   step 1 actually produced (likely near-zero, which is itself the finding for Corollary 1).
 5. **Build the campaign orchestrator** (§5) and run it.
 
 ## 5. Orchestration mechanism
