@@ -177,6 +177,11 @@ const commandHandlers: Readonly<Record<BrowserCommandName, CommandHandler>> = {
     [BROWSER_COMMAND.READ_CART_COUNT]: (page) => page.evaluate(() => (
         document.querySelector("[data-testid='nav-cart-count']")?.textContent?.trim() ?? ''
     )),
+
+    [BROWSER_COMMAND.GET_LOCAL_STORAGE_ITEM]: async (page, request) => {
+        const key = requireString(requireArgs(request), 'key');
+        return page.evaluate((k) => localStorage.getItem(k) ?? '', key);
+    },
 };
 
 export const BrowserCommandAction: ActionHandler<PlaywrightActionContext> = {

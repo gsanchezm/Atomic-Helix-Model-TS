@@ -408,22 +408,36 @@ export class CheckoutRoute {
     }
 
     private pickZipSlot(country: CountryInfo, address: DeliveryAddress): string | undefined {
-        if (country.required_fields.includes('district')) return undefined;
-        for (const field of country.required_fields ?? []) {
-            const source = ZIP_SLOT_PRIMARY_BY_FIELD[field];
-            if (source) return address[source] || undefined;
-        }
-        return address.zip || undefined;
+        return pickZipSlot(country, address);
     }
 
     private pickSecondaryAddressField(
         country: CountryInfo,
         address: DeliveryAddress,
     ): SecondaryAddressField | undefined {
-        const field = country.required_fields.find((f) => SECONDARY_ADDRESS_FIELDS.has(f));
-        if (!field) return undefined;
-        const value = address.suburb || (field === 'district' ? address.zip : undefined);
-        if (!value) return undefined;
-        return { locatorKey: `${field}Input`, value };
+        return pickSecondaryAddressField(country, address);
     }
+}
+
+// Exported standalone (the class methods above delegate to these) so
+// evaluation/non-atomic-twin's checkout organism can reuse the exact same
+// country-specific field-routing logic without duplicating it.
+export function pickZipSlot(country: CountryInfo, address: DeliveryAddress): string | undefined {
+    if (country.required_fields.includes('district')) return undefined;
+    for (const field of country.required_fields ?? []) {
+        const source = ZIP_SLOT_PRIMARY_BY_FIELD[field];
+        if (source) return address[source] || undefined;
+    }
+    return address.zip || undefined;
+}
+
+export function pickSecondaryAddressField(
+    country: CountryInfo,
+    address: DeliveryAddress,
+): SecondaryAddressField | undefined {
+    const field = country.required_fields.find((f) => SECONDARY_ADDRESS_FIELDS.has(f));
+    if (!field) return undefined;
+    const value = address.suburb || (field === 'district' ? address.zip : undefined);
+    if (!value) return undefined;
+    return { locatorKey: `${field}Input`, value };
 }

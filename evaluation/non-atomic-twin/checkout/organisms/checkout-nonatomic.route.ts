@@ -4,11 +4,17 @@ import { CheckoutDao } from '@core/tests/checkout/dao/checkout.dao';
 import { LoginRoute } from '@core/tests/login/organisms/login.route';
 import {
     CheckoutRoute,
+    pickZipSlot,
+    pickSecondaryAddressField,
     type DeliveryAddress,
     type ContactDetails,
 } from '@core/tests/checkout/organisms/checkout.route';
-import type { CountryCode } from '@core/tests/checkout/dao/checkout.types';
+import { navigateToCheckout } from '@core/tests/checkout/molecules/checkout-navigation.molecule';
+import { fillDeliveryAddress, fillContactInfo } from '@core/tests/checkout/molecules/checkout-address.molecule';
+import type { CountryCode, CartItemResponse } from '@core/tests/checkout/dao/checkout.types';
 import { logger } from '@utils/logger';
+import { sendBrowserCommand } from '@core/tests/support/browser-command';
+import { BROWSER_COMMAND } from '@kernel/browser-command';
 import {
     readPizzaBuilderDraft,
     type JourneyWorldShape,
@@ -54,31 +60,60 @@ export class CheckoutNonAtomicRoute {
      * not LoginDao.login()). This IS the R3 fix for the precondition shared
      * by catalog/pizzaBuilder/checkout in the atomic suites.
      *
-     * Disclosed plumbing exception: submitCredentials() does not populate
-     * world.auth.token (it's a UI-only flow — see login-session.molecule's
-     * own comment). The catalog/checkout DAOs used across this journey need
-     * a bearer token for pizza-id resolution and cart read-back, exactly
-     * like the atomic reference suites also require even on their own
-     * UI-driver legs (CatalogRoute.browseCatalog throws without one). So
-     * this method makes one direct LoginDao.login() call purely to obtain
-     * that token — NOT a second, hidden precondition-establishment path;
-     * the user is already authenticated by the UI click above. It is
-     * bookkeeping, not setup. See the paper's §8.3 and this artifact's
-     * README.md.
+     * ROOT-CAUSE CORRECTION (2026-07-23, first live smoke run): this used to
+     * make an independent LoginDao.login() call to obtain a bearer token,
+     * on the assumption that was harmless bookkeeping ("the user is already
+     * authenticated by the UI click above"). That assumption was false and
+     * broke every run: /api/auth/login issues a NEW, independent backend
+     * session each call, with its own empty cart — unrelated to the real
+     * session the UI form submission just established (and whose cart the
+     * pizzaBuilder UI steps had just populated). Using that second token
+     * downstream (prepareCheckoutContext's getCart, and the checkout page
+     * itself post-navigation) read/seeded the WRONG, empty-cart session and
+     * the app fell back to the login screen — reproduced and confirmed via
+     * failure screenshot.
+     *
+     * Fix: read the REAL session's token back out of the browser's own
+     * `omnipizza-auth` localStorage entry (the same Zustand-persisted key
+     * the app itself writes on a real login — see
+     * SEED_CHECKOUT_SESSION/SEED_PERSISTED_STORES's matching shape) instead
+     * of minting a second session. Playwright/web only: mobile drivers have
+     * no persisted browser storage to read back from (Zustand is ephemeral
+     * on React Native — see injectBrowserSession's own comment), so they
+     * still fall back to a fresh API login. That fallback carries the same
+     * empty-cart risk on mobile and is unverified — flagged for whoever
+     * builds the Mobilewright leg (see
+     * docs/superpowers/specs/2026-07-23-atomic-testing-evaluation-campaign-design.md).
      */
     async loginViaUi(userAlias: string): Promise<void> {
         await this.loginRoute.loginAs(userAlias);
 
         const user = await this.users.getUser(userAlias);
-        const loginResponse = await this.loginDao.login({
-            username: user.username,
-            email: user.email,
-            password: user.password,
-        });
-        const token = this.loginDao.extractToken(loginResponse);
-        if (!token) {
-            throw new Error(`Journey: plumbing token fetch failed for "${userAlias}".`);
+        let token: string | undefined;
+
+        if ((process.env.DRIVER ?? 'playwright') === 'playwright') {
+            const raw = await sendBrowserCommand(BROWSER_COMMAND.GET_LOCAL_STORAGE_ITEM, {
+                key: 'omnipizza-auth',
+            });
+            const parsed = raw.payload ? (JSON.parse(raw.payload) as { state?: { token?: string } }) : undefined;
+            token = parsed?.state?.token;
+            if (!token) {
+                throw new Error(
+                    `Journey: could not read back the real session token from "omnipizza-auth" for "${userAlias}" after UI login.`,
+                );
+            }
+        } else {
+            const loginResponse = await this.loginDao.login({
+                username: user.username,
+                email: user.email,
+                password: user.password,
+            });
+            token = this.loginDao.extractToken(loginResponse);
+            if (!token) {
+                throw new Error(`Journey: plumbing token fetch failed for "${userAlias}".`);
+            }
         }
+
         if (!this.world.auth) {
             throw new Error('Journey: loginRoute.loginAs() did not populate world.auth as expected.');
         }
@@ -89,17 +124,23 @@ export class CheckoutNonAtomicRoute {
 
     /**
      * Assembles world.orderContext from what the catalog/pizzaBuilder
-     * slices' UI-driven cart building already produced, instead of
-     * CheckoutRoute.addToOrder()'s API $S_0$ injection. The
-     * CheckoutDao.getCart() call here is a READ-BACK of state the UI's
-     * confirmAddToCart() click already wrote server-side, not an injection —
-     * it mirrors exactly what the atomic addToOrder() itself does after its
-     * own POST ("POST only stores IDs; GET enriches with unit_price and
-     * pizza object").
+     * slices' UI-driven cart building already produced.
+     *
+     * ROOT-CAUSE CORRECTION (2026-07-23, first live smoke run): this used to
+     * read the cart via CheckoutDao.getCart() (the atomic suite's API), on
+     * the assumption it was a read-back of state the UI's confirmAddToCart()
+     * click had already written server-side — mirroring atomic addToOrder()'s
+     * own POST-then-GET pattern. That assumption was false: the real app's
+     * "add to cart" click writes ONLY to the browser's client-side,
+     * Zustand-persisted `omnipizza-cart` localStorage entry (confirmed by a
+     * live read immediately after a real add-to-cart click, which showed a
+     * fully populated cart) — it never touches /api/cart at all. So
+     * CheckoutDao.getCart() always returned an empty cart here, regardless
+     * of which token was used. Fixed by reading `omnipizza-cart` directly;
+     * its persisted item shape matches CartItemResponse exactly.
      */
     async prepareCheckoutContext(market: string): Promise<void> {
         const draft = readPizzaBuilderDraft(this.world);
-        const { token } = this.requireAuth();
         const countryCode = market.toUpperCase() as CountryCode;
 
         const countries = await this.checkoutDao.getCountries();
@@ -108,8 +149,12 @@ export class CheckoutNonAtomicRoute {
             throw new Error(`Journey: unsupported market "${countryCode}".`);
         }
 
-        const cart = await this.checkoutDao.getCart({ token, countryCode });
-        const cartItems = cart.cart_items ?? [];
+        const cartItems = await this.readCartItems(countryCode);
+        if (!cartItems.length) {
+            throw new Error(
+                `Journey: cart was empty when preparing checkout context for pizza "${draft.pizzaId}" — the UI add-to-cart step may not have completed.`,
+            );
+        }
 
         this.world.orderContext = {
             market: countryCode,
@@ -120,7 +165,7 @@ export class CheckoutNonAtomicRoute {
             currencySymbol: country.currency_symbol,
             item: draft.itemName,
             size: draft.size ?? '',
-            qty: 1,
+            qty: cartItems[0]?.quantity ?? 1,
             pizzaId: draft.pizzaId,
             pizzaName: draft.itemName,
             unitPrice: cartItems[0]?.unit_price ?? 0,
@@ -133,20 +178,71 @@ export class CheckoutNonAtomicRoute {
         );
     }
 
-    // -- checkout (reused as-is) --------------------------------------------
-    //
-    // fillDelivery/selectPayment/enterCard/verifyOrderAccepted are the
-    // atomic suite's OWN behavior under test (filling the delivery form,
-    // submitting), not a precondition, so they are intentionally NOT
-    // transformed. Note fillDelivery() internally calls
-    // injectBrowserSession() (a CheckoutRoute implementation detail,
-    // unchanged here) even though this journey's browser is already
-    // authenticated via the real UI login above; that is a harmless,
-    // pre-existing side effect of reusing CheckoutRoute as-is, not a new
-    // violation introduced by this class.
+    /**
+     * Playwright/web: read the real, UI-built cart back from the browser's
+     * own storage (see prepareCheckoutContext's doc comment). Mobile
+     * drivers have no persisted browser storage to read back from (Zustand
+     * is ephemeral on React Native), so they fall back to the API — which
+     * carries the same known empty-cart risk on mobile and is unverified;
+     * flagged for whoever builds the Mobilewright leg (see
+     * docs/superpowers/specs/2026-07-23-atomic-testing-evaluation-campaign-design.md).
+     */
+    private async readCartItems(countryCode: CountryCode): Promise<CartItemResponse[]> {
+        if ((process.env.DRIVER ?? 'playwright') !== 'playwright') {
+            const { token } = this.requireAuth();
+            const cart = await this.checkoutDao.getCart({ token, countryCode });
+            return cart.cart_items ?? [];
+        }
+        const raw = await sendBrowserCommand(BROWSER_COMMAND.GET_LOCAL_STORAGE_ITEM, { key: 'omnipizza-cart' });
+        if (!raw.payload) return [];
+        const parsed = JSON.parse(raw.payload) as { state?: { items?: CartItemResponse[] } };
+        return parsed.state?.items ?? [];
+    }
 
+    // -- checkout --------------------------------------------------------
+    //
+    // selectPayment/enterCard/verifyOrderAccepted are the atomic suite's OWN
+    // behavior under test (filling the delivery form, submitting), not a
+    // precondition, so they are reused as-is, unmodified.
+
+    /**
+     * NOT a thin pass-through to CheckoutRoute.fillDelivery() (unlike the
+     * other checkout methods below) — deliberately re-composed.
+     *
+     * ROOT-CAUSE CORRECTION (2026-07-23, first live smoke run): the atomic
+     * fillDelivery() unconditionally calls injectBrowserSession() before
+     * navigating to /checkout. That call exists to BOOTSTRAP a session from
+     * nothing for the atomic suite's pure-API precondition path (no browser
+     * state exists yet at that point in the atomic flow) — its
+     * SEED_CHECKOUT_SESSION implementation deliberately
+     * `localStorage.removeItem('omnipizza-cart')` as part of that reset.
+     * This journey's browser is NOT starting from nothing: the real UI
+     * already persisted a valid session (`omnipizza-auth`) and a real,
+     * populated cart (`omnipizza-cart`) before this step ever runs.
+     * Calling injectBrowserSession() here deleted that real cart moments
+     * before navigating to checkout, leaving the checkout page with no cart
+     * under any token — it hung on a loading state and fell back to the
+     * login screen (reproduced and confirmed via failure screenshot +
+     * live localStorage reads). Fix: reuse navigateToCheckout() (the actual
+     * click-through navigation, still needed — a direct hard load of
+     * /checkout bounces to /catalog per that molecule's own comment) and
+     * the fill molecules, but skip injectBrowserSession() entirely — the
+     * real, already-persisted session survives the navigation on its own.
+     */
     async fillDelivery(address: DeliveryAddress, contact: ContactDetails): Promise<void> {
-        await this.checkoutRoute.fillDelivery(address, contact);
+        const ctx = this.world.orderContext;
+        if (!ctx) throw new Error('Journey: missing order context — run prepareCheckoutContext first.');
+
+        this.world.deliveryAddress = address;
+        this.world.contact = contact;
+
+        await navigateToCheckout(ctx.market, this.world.auth?.token);
+
+        const zipSlot = pickZipSlot(ctx.countryInfo, address);
+        const secondary = pickSecondaryAddressField(ctx.countryInfo, address);
+
+        await fillDeliveryAddress(address.street, zipSlot, secondary);
+        await fillContactInfo(contact.name, contact.phone);
     }
 
     async selectPayment(method: string): Promise<void> {
