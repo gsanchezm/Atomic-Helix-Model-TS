@@ -64,6 +64,10 @@ on:
         default: '33'
         type: choice
         options: ['28', '29', '30', '31', '32', '33']
+      cucumber_parallel:
+        description: 'Cucumber worker count (playwright-desktop/responsive only — the §8.4 parallel-safety sweep uses 1/2/4/8)'
+        required: false
+        default: '4'
 
 # ---------------------------------------------------------------------------
 # Shared environment — inherited by every job. The ARCHITECTURE_TYPE through
@@ -496,7 +500,7 @@ jobs:
           BASE_URL: ${{ secrets.BASE_URL }}
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           BROWSER: ${{ matrix.browser }}
-          CUCUMBER_PARALLEL: '4'
+          CUCUMBER_PARALLEL: ${{ inputs.cucumber_parallel || '4' }}
           PLATFORM: web
           VIEWPORT: desktop
           DRIVER: playwright
@@ -623,7 +627,7 @@ jobs:
           BASE_URL: ${{ secrets.BASE_URL }}
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           BROWSER: ${{ matrix.browser }}
-          CUCUMBER_PARALLEL: '4'
+          CUCUMBER_PARALLEL: ${{ inputs.cucumber_parallel || '4' }}
           PLATFORM: web
           VIEWPORT: responsive
           DRIVER: playwright
