@@ -2,6 +2,14 @@
 
 **Date:** 2026-07-23
 **Status:** Approved (design); implementation pending
+**UPDATE 2026-07-25:** every "Mobilewright" / `DRIVER=mobilewright` reference below is superseded —
+the mobile instrument changed to **Appium** (`DRIVER=appium`) after Mobilewright proved unreliable
+mid-evaluation (reproducible defect: whichever of two sequential expiry-date pickers on the checkout
+card-entry screen opens *second* fails to open; confirmed positional, not timing, not a Mobilewright
+dispatch bug, and not an app defect via a clean Appium cross-check on the same device/app build). See
+`docs/paper/atomic-testing-formal-definition.md` §7.1 for the full disclosure. Left as originally
+written below for the historical record of what was decided on 2026-07-23; read "Mobilewright-Android"
+as "Appium-Android" throughout.
 **Scope:** Decides *where* and *how many times* the four §8.4 evaluation instruments run, and the
 order remaining build work happens in. Does not design the internals of the fault-injection harness
 or the portability delta tooling — those get their own brainstorm when their turn comes (see §6).

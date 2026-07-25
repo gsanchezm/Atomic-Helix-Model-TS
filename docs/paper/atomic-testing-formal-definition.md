@@ -18,10 +18,12 @@
 > ([Test-Oriented-Microkernel-Architecture-TS](https://github.com/gsanchezm/Test-Oriented-Microkernel-Architecture-TS)) —
 > reference it, don't re-derive it here.
 > **Tool scope (this paper's experiments):** **Playwright** for web (desktop + responsive viewports),
-> **Mobilewright** for mobile (Android + iOS), and **API** as the surface that operationalizes Rule 3
-> ($S_0$ state injection) and anchors the atomicity argument. The legacy Appium mobile path, Gatling
-> (performance), and Pixelmatch (visual) exist in the full AHM reference implementation but are out of
-> scope for this paper's evaluation — see §7.1.
+> **Appium** for mobile (Android + iOS), and **API** as the surface that operationalizes Rule 3
+> ($S_0$ state injection) and anchors the atomicity argument. Mobilewright — the reference
+> implementation's newer mobile plugin, and this paper's original mobile instrument choice — was
+> dropped in favor of Appium after the evaluation itself surfaced a reproducible instrument defect;
+> see §7.1. Gatling (performance) and Pixelmatch (visual) exist in the full AHM reference
+> implementation but are out of scope for this paper's evaluation.
 
 ---
 
@@ -35,7 +37,8 @@ Tracking what's sourced vs. still open, so we know where to focus next.
 - [x] Baseline-construction method decided: **mechanical de-atomization** (documented, reproducible transformation ruleset) of the existing atomic suite — *not* free-hand authoring of a "bad" suite. Verified there is no pre-atomic git history to mine instead: the first commit (`f90ee8a`, 2026-07-11, "initial import — Automated Atomic Testing reference implementation") already contains `place-delivery-order.feature`, `invalid-credentials.feature`, and `market-language-localization.feature` in atomic form. The repository was born atomic; a found, zero-construction-bias baseline does not exist.
 - [x] Baseline scope decided (superseded once, see below): **both** checkout and login domains get de-atomized coverage.
 - [x] Terminology clarified: **Automated Atomic Testing is an approach, not a model** — no architectural commitment. AHM is one specific formal reference model that instantiates it; it is not a synonym. Applied at the top scope box and reinforced at §5 Corollary 1 / §6.
-- [x] Tool scope for this paper's experiments decided: **Playwright** (web, desktop + responsive), **Mobilewright** (Android + iOS), **API** (the Rule-3 $S_0$ surface, also the constant precondition path for the portability instrument). Appium (legacy), Gatling, and Pixelmatch are explicitly out of scope — see §7.1.
+- [x] Tool scope for this paper's experiments decided 2026-07-23: **Playwright** (web, desktop + responsive), **Mobilewright** (Android + iOS), **API** (the Rule-3 $S_0$ surface, also the constant precondition path for the portability instrument). Appium (legacy), Gatling, and Pixelmatch explicitly out of scope. **SUPERSEDED 2026-07-25** — see next entry.
+- [x] **Mobile instrument changed Mobilewright → Appium, 2026-07-25.** While verifying the twin's mobile leg, found a reproducible, 100%-repeatable Mobilewright defect: whichever of the two sequential expiry-date pickers (month/year) opens *second* on the card-entry screen fails to open at all — confirmed positional (not field-specific) by reversing call order, confirmed not a timing race (an 87s-later retry tap still failed), confirmed not a Mobilewright-dispatch bug (a raw `adb shell input tap` at the same coordinates, bypassing Mobilewright's own driver entirely, also failed). A live cross-check of the identical sequence under Appium, same device, same unmodified app binary, passed cleanly end-to-end — exonerating the app and pointing at Mobilewright/device-session state specifically. Left unresolved: this same Mobilewright flow was explicitly verified working on this same app binary three days earlier (`d02d759`, 2026-07-22) — either that verification was incomplete, or session state degrades over long device-connected runs; not conclusively distinguished. Given a reference-implementation mobile plugin cannot be trusted mid-evaluation to reliably execute a spec-correct two-picker sequence, and Appium is already present in the full AHM implementation as the previously-designated "legacy" path, the pragmatic choice was to swap instruments rather than debug the plugin further or block the evaluation. Full investigation trail kept in the project's own memory system, not reproduced here.
 - [x] **Twin shape superseded**: not two isolated per-domain fused-Outline twins. Adopted instead — a single, cross-domain **horizontal journey** twin, built by *mechanically concatenating* the existing atomic step sequences of **four** domains (login → catalog → pizzaBuilder → checkout), wrapped in a K-row Outline against one shared, undeclared-tag account. Domain-scope expansion (2→4) confirmed by the author 2026-07-20 — it's a consequence of R3 having no honest UI-driven equivalent to cart injection *within* checkout alone. See §8.2–§8.3 for the full design and why this resolves the R1-fusion-vs-parallel-unit-count tension the earlier per-domain design had.
 - [x] **Twin scaffold exists** (discovered stale-checkbox 2026-07-23, see `docs/superpowers/specs/2026-07-23-atomic-testing-evaluation-campaign-design.md`): `evaluation/non-atomic-twin/` directory, `nonAtomicTwin` cucumber profile, the concatenated journey feature + step_definitions/organisms reusing existing molecules — all already built (currently K=8, being bumped to K=16). **Still open:** it has never been run live on any driver. Verify-and-tune (Playwright smoke run, then `DRIVER=mobilewright`) is the actual next task, not construction.
 - [x] **Playwright leg verified live** (2026-07-23, commit `be6a04e`): first-ever live run found and fixed a real harness bug — `CheckoutNonAtomicRoute` was reusing atomic `CheckoutRoute` pieces designed to bootstrap a session from nothing (a second independent login call, and `injectBrowserSession()`'s `SEED_CHECKOUT_SESSION` which deletes the client-side `omnipizza-cart`), which destroyed the twin's real UI-built session/cart before reaching checkout. Fixed: read the real token/cart back from browser storage instead. 8/8 journey instances now green (120/120 steps); atomic `place-delivery-order.feature` re-verified green too (the fix touched two shared, exported helper functions). K is still 8, not yet bumped to 16. Mobilewright-Android leg not yet attempted.
@@ -151,7 +154,7 @@ than being separately engineered:
 - **Corollary 1 — Platform invariance.** TODO: because atomicity rules 2–4 don't reference a specific
   interface, an atomic test's specification is portable across execution surfaces without
   modification. This paper's evaluation exercises this corollary across exactly three surfaces —
-  web (Playwright, desktop + responsive), mobile (Mobilewright, Android + iOS), and API — see the
+  web (Playwright, desktop + responsive), mobile (Appium, Android + iOS), and API — see the
   tool-scope note at the top of the document and §7.1. The full AHM reference implementation supports
   additional surfaces (Gatling load, Pixelmatch visual) as cross-cutting *contracts* rather than
   alternate platforms; they are out of scope here (§7.1) but not counterevidence to the corollary.
@@ -216,15 +219,28 @@ Appium, Mobilewright, Gatling, API/fetch, Pixelmatch) behind a single Gherkin sp
 | Tool | Role in this paper | Why |
 |---|---|---|
 | **Playwright** | Web UI — desktop and responsive viewports | Primary UI surface for both the atomic suite and the non-atomic twin's R3 (UI-driven setup) violation |
-| **Mobilewright** | Mobile UI — Android and iOS | The "second platform" for the Corollary 1 (portability) instrument in §8.4 |
+| **Appium** | Mobile UI — Android and iOS | The "second platform" for the Corollary 1 (portability) instrument in §8.4 |
 | **API** | Contract execution / $S_0$ state injection | Directly operationalizes Rule 3 — the atomic suite's `Given` steps route preconditions through this surface instead of through UI; it is the mechanism the atomicity argument stands on, not just a third platform |
 
-**Explicitly out of scope for this paper:** the legacy **Appium** mobile path (superseded by
-Mobilewright in the reference implementation; see the migration referenced in the project's own
-locator work), **Gatling** (performance/load), and **Pixelmatch** (visual regression). All three exist
-in the full repository as cross-cutting quality-attribute *contracts* (§7.2) rather than alternate
-execution platforms for the core approach, and belong to the architecture-level (TOM) evaluation, not
-this paper's method-level one.
+**Mobile instrument note.** The reference implementation offers two mobile UI plugins: **Mobilewright**
+(newer) and **Appium** (the more established, WebDriver-based path). This paper originally selected
+Mobilewright. That choice was revised to **Appium** mid-evaluation (2026-07-25) after Mobilewright
+exhibited a reproducible defect while executing the twin's mobile leg — a card-entry screen with two
+sequential picker interactions consistently failed to open whichever picker came second, independent of
+which field it was. The defect was isolated to be positional rather than field-specific, shown not to
+be a timing race, shown not to be a Mobilewright input-dispatch bug (a raw OS-level tap at the same
+target also failed), and shown not to be an application defect (the identical interaction sequence,
+same device, same unmodified app build, completed correctly under Appium). Because a mobile execution
+plugin's own reliability is a precondition for this paper's instruments — not something the evaluation
+is measuring — the resolution was to swap the designated mobile tool rather than treat plugin debugging
+as in-scope experimental work. This is disclosed here per the evidence policy in §8.5: an instrument
+substitution made for reasons independent of the method under test.
+
+**Explicitly out of scope for this paper:** **Mobilewright** (see above), **Gatling**
+(performance/load), and **Pixelmatch** (visual regression). All three exist in the full repository as
+cross-cutting quality-attribute *contracts* (§7.2) or alternate plugins rather than this paper's chosen
+execution platforms, and belong to the architecture-level (TOM) evaluation, not this paper's
+method-level one.
 
 ### 7.2 Cross-cutting quality attributes as contracts
 
@@ -321,12 +337,13 @@ existing `metrics/` pipeline ingests both arms without any pipeline code change.
 
 **Platform legs.** As specced above, the twin's step sequences are Playwright/web (the UI molecules
 named — `submitCredentials`, catalog card-click, pizzaBuilder open/size/toppings/confirm — are the
-Playwright ones). The determinism instrument (§8.4) additionally requires a **Mobilewright-Android**
-leg of the same concatenated journey, built the same mechanical way from the corresponding Mobilewright
+Playwright ones). The determinism instrument (§8.4) additionally requires an **Appium-Android**
+leg of the same concatenated journey, built the same mechanical way from the corresponding Appium
 organisms; this construction is shared with the portability instrument, which measures the LOC/files
 touched to build it (§8.4). See `docs/superpowers/specs/2026-07-23-atomic-testing-evaluation-campaign-design.md`
-for why the scope widened past the original Playwright-only framing, and why iOS is excluded from the
-repeated determinism runs specifically while still covered by the one-shot portability check.
+for why the scope widened past the original Playwright-only framing, why iOS is excluded from the
+repeated determinism runs specifically while still covered by the one-shot portability check, and §7.1
+for why this leg's designated tool changed from Mobilewright to Appium mid-evaluation.
 
 Both suites otherwise run through the **identical, unmodified** TOM stack (same proxy, same plugins,
 same locator contracts, same chaos-suppression policy) — the only independent variable is which suite
@@ -347,18 +364,20 @@ generalization check (§10.2) — not one of the primary instruments.
 |---|---|---|---|
 | **Parallel safety** (from R2) | Atomic checkout suite's failure rate stays flat as concurrency increases (it already declares `@writes-shared-state` on `standard_user` and is serialized by the existing FIFO write-lock hook — verified in `write-lock.hooks.ts`, gated on that tag alone); the twin's climbs | Run the **existing, unmodified** atomic checkout suite (no new construction needed on this arm) and the twin's K-row Outline both at `CUCUMBER_PARALLEL = 1, 2, 4, 8`; plot failure rate vs. worker count for each | A curve isolates *where* contention starts; a single ratio hides that shape. Using the twin's K identical journey rows (not a fused/reduced scenario count) keeps the number of parallelizable units stable across sweep points — the flaw in the earlier fused-Outline design |
 | **Diagnosability** (from R1, compounded) | A fault fails exactly the atomic scenario that owns it, classified into its true failure bucket; the same fault in the journey produces a wider blast radius (the whole journey fails) and can surface far from its true cause (e.g. a cart-calculation fault only manifesting at the order-confirmation assertion) | Systematic fault injection at a layer **both arms genuinely share** — backend/network, not UI vs. API setup, since the twin's setup is now all-UI while the atomic arm's is API and a setup-layer fault wouldn't be the "same" fault in both. One representative fault per entry in the existing 14-bucket taxonomy (`scripts/metrics/lib/failure-buckets.ts`). Measure blast radius (# scenarios/oracles failing) and localization accuracy (does the reported bucket name the true cause, or the symptom where it happened to surface) | Injecting from the *whole* taxonomy, at a shared layer, removes both fault-selection bias and arm-asymmetric injection as sources of bias |
-| **Determinism** (from R4, mediated by R2) | The twin shows a higher pass↔fail transition rate across repeated runs than the atomic suite, *even with TOM's chaos suppression identical in both arms* | Repeat each suite across **N=30** `run_index` values under one `experiment_batch_id`, on **web (Playwright/Chromium) + Mobilewright-Android** (iOS excluded from repetition), both arms at `retry: 0` (see §8.3) so a masked retry doesn't hide the signal; reuse the existing reliability infrastructure (`measure-reliability.ts`, pass→fail / fail→pass transition probabilities) | TOM's chaos suppression (`λ < 0`) only absorbs *transient* noise and fails fast on deterministic ones (README:27,48). R2 collisions in the twin are deterministic, not transient — TOM won't retry them away. That's the mechanism making the delta attributable to the method. Suppression applies identically to both arms, so it still partially masks method-induced flakiness in the twin too — read the delta as a **conservative, lower-bound** estimate |
-| **Platform invariance** (from R3, Corollary 1) | Porting the atomic suites from Playwright (web) to Mobilewright (Android + iOS) costs ~0 spec changes; porting the twin journey costs materially more | For both arms, measure LOC/files touched in the `.feature`/step-definition layer needed to also pass under Mobilewright, with the API surface held as the common $S_0$ path on the atomic side (the twin's Mobilewright-Android leg built for the determinism instrument is the artifact measured here — no separate construction) | Isolates the *specification*-level cost from the architecture, which is held constant and already supports both platforms |
+| **Determinism** (from R4, mediated by R2) | The twin shows a higher pass↔fail transition rate across repeated runs than the atomic suite, *even with TOM's chaos suppression identical in both arms* | Repeat each suite across **N=30** `run_index` values under one `experiment_batch_id`, on **web (Playwright/Chromium) + Appium-Android** (iOS excluded from repetition), both arms at `retry: 0` (see §8.3) so a masked retry doesn't hide the signal; reuse the existing reliability infrastructure (`measure-reliability.ts`, pass→fail / fail→pass transition probabilities) | TOM's chaos suppression (`λ < 0`) only absorbs *transient* noise and fails fast on deterministic ones (README:27,48). R2 collisions in the twin are deterministic, not transient — TOM won't retry them away. That's the mechanism making the delta attributable to the method. Suppression applies identically to both arms, so it still partially masks method-induced flakiness in the twin too — read the delta as a **conservative, lower-bound** estimate |
+| **Platform invariance** (from R3, Corollary 1) | Porting the atomic suites from Playwright (web) to Appium (Android + iOS) costs ~0 spec changes; porting the twin journey costs materially more | For both arms, measure LOC/files touched in the `.feature`/step-definition layer needed to also pass under Appium, with the API surface held as the common $S_0$ path on the atomic side (the twin's Appium-Android leg built for the determinism instrument is the artifact measured here — no separate construction) | Isolates the *specification*-level cost from the architecture, which is held constant and already supports both platforms |
 
-**Threat specific to the portability instrument.** Mobile execution (Mobilewright, Android + iOS) is
+**Threat specific to the portability instrument.** Mobile execution (Appium, Android + iOS) is
 not optional here — it *is* the instrument, not an add-on (see §7.1). But it makes this instrument the
-one most exposed to conflating **tool immaturity with non-atomicity**: if the Mobilewright plugin is
-missing an action the twin's heavier UI journey happens to need (the reference implementation has, at
-various points, had gaps of this kind — e.g. missing `SCROLL_TO` support), porting the twin costs extra
-work for a reason that belongs to TOM's plugin surface, not to the method. Mitigation: only count spec
-changes forced by the *specification itself* (different assertions, different navigation structure);
-any change forced by a missing plugin action gets logged separately and excluded from the reported
-delta, with the gap itself disclosed rather than silently worked around. Also tracked in §10.1.
+one most exposed to conflating **tool immaturity with non-atomicity**: if the mobile plugin is
+missing an action the twin's heavier UI journey happens to need, or — as found during this evaluation
+with the originally-designated Mobilewright plugin — behaves unreliably on an interaction the
+specification itself requires, porting the twin costs extra work (or an instrument swap) for a reason
+that belongs to TOM's plugin surface, not to the method. Mitigation: only count spec changes forced by
+the *specification itself* (different assertions, different navigation structure); any change forced by
+a missing or unreliable plugin action gets logged separately and excluded from the reported delta, with
+the gap itself disclosed rather than silently worked around — see §7.1 for the Mobilewright→Appium
+substitution this policy produced. Also tracked in §10.1.
 
 ### 8.5 Evidence policy (inherited from the framework's own norm)
 
@@ -429,9 +448,11 @@ count hasn't been executed) is reported as **not yet measured**, not as a placeh
 > author-authored reference implementation (potential confirmation bias); metrics measure the
 > architecture, not independent replications by third parties yet.
 
-- **Tool-immaturity attribution (portability instrument).** See §8.4's dedicated note: a gap in the
-  Mobilewright plugin's action coverage could inflate the twin's measured porting cost for reasons
-  unrelated to atomicity. Mitigated by excluding plugin-gap-forced changes from the reported delta and
+- **Tool-immaturity attribution (portability instrument).** See §8.4's dedicated note: a gap or defect
+  in the mobile plugin's action coverage or reliability could inflate the twin's measured porting cost
+  for reasons unrelated to atomicity — realized during this evaluation itself, when the originally-
+  designated Mobilewright plugin proved unreliable on a two-picker interaction sequence and was swapped
+  for Appium (§7.1). Mitigated by excluding plugin-gap-forced changes from the reported delta and
   disclosing them separately, but this requires active bookkeeping during construction, not a
   one-time check.
 - **Browser-engine flakiness contaminating the determinism instrument** if cross-browser results were

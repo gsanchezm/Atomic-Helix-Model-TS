@@ -45,7 +45,10 @@
       "desktop": "[data-testid='logout-btn']",
       "responsive": "[data-testid='mobile-logout-btn']"
     },
-    "appium": "~btn-logout"
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-nav-logout\")",
+      "ios": "~text-nav-logout"
+    }
   },
   "usernameInput": {
     "webdriverio": {
