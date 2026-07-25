@@ -181,14 +181,48 @@ export class CheckoutNonAtomicRoute {
     /**
      * Playwright/web: read the real, UI-built cart back from the browser's
      * own storage (see prepareCheckoutContext's doc comment). Mobile
-     * drivers have no persisted browser storage to read back from (Zustand
-     * is ephemeral on React Native), so they fall back to the API — which
-     * carries the same known empty-cart risk on mobile and is unverified;
-     * flagged for whoever builds the Mobilewright leg (see
-     * docs/superpowers/specs/2026-07-23-atomic-testing-evaluation-campaign-design.md).
+     * (appium/mobilewright) has no persisted browser storage to read back
+     * from (Zustand is ephemeral on React Native), so this used to fall back
+     * to CheckoutDao.getCart() on the assumption the UI's add-to-cart tap was
+     * a thin wrapper over the same /api/cart the web build uses.
+     *
+     * ROOT-CAUSE CORRECTION (2026-07-24, first live Mobilewright/Android
+     * run): that assumption was false, and the empty cart isn't only a
+     * read-back problem here — it's why the checkout SCREEN itself never
+     * loads. Verified live: a CLICK on `btn-add-to-cart` completes and
+     * returns PASS (confirmed via the mobilewright plugin's own ACTION_END
+     * log, durationMs 7731, tap target on-screen and unoccluded per a
+     * screencap taken during the click), and CheckoutDao.getCart() still
+     * comes back empty immediately after — the mobile app's add-to-cart,
+     * like the web build's, never touches /api/cart at all (it's on-device
+     * client state, e.g. AsyncStorage, not server-synced). Downstream,
+     * navigateToCheckout's mobile path deep-links with `hydrateCart=true`,
+     * which makes the app fetch the cart from that same empty /api/cart —
+     * so the checkout screen renders its empty-cart variant instead of the
+     * address form, and the WAIT_FOR_ELEMENT on `checkoutHeader`
+     * (text-section-address) times out. Both symptoms are the same fact:
+     * there is no server-side cart for mobile's real UI-driven flow.
+     *
+     * Fix: mirror the atomic suite's own precondition instead of fighting
+     * it — CheckoutRoute.addToOrder() calls this "$S_0$ state injection via
+     * API" for exactly this reason (deep-link/hydrateCart-based mobile
+     * checkout needs a real backend cart to hydrate from). Seed one here
+     * with what the UI steps actually built (the pizza-builder draft has
+     * pizzaId/size straight from the real clicks), then re-fetch — same
+     * POST-then-GET pattern as addToOrder ("POST only stores IDs; GET
+     * enriches with unit_price and pizza object"), so price data comes from
+     * the server rather than being fabricated locally. api driver is
+     * deliberately left on the original bare getCart() path: its own
+     * confirmAddToCart is a no-op today (see pizzaBuilder-confirm.molecule's
+     * clickConfirmAddToCart), so seeding a cart there would paper over that
+     * gap instead of surfacing it.
      */
     private async readCartItems(countryCode: CountryCode): Promise<CartItemResponse[]> {
-        if ((process.env.DRIVER ?? 'playwright') !== 'playwright') {
+        const driver = process.env.DRIVER ?? 'playwright';
+        if (driver === 'appium' || driver === 'mobilewright') {
+            return this.seedAndReadCartFromDraft(countryCode);
+        }
+        if (driver !== 'playwright') {
             const { token } = this.requireAuth();
             const cart = await this.checkoutDao.getCart({ token, countryCode });
             return cart.cart_items ?? [];
@@ -197,6 +231,23 @@ export class CheckoutNonAtomicRoute {
         if (!raw.payload) return [];
         const parsed = JSON.parse(raw.payload) as { state?: { items?: CartItemResponse[] } };
         return parsed.state?.items ?? [];
+    }
+
+    private async seedAndReadCartFromDraft(countryCode: CountryCode): Promise<CartItemResponse[]> {
+        const draft = readPizzaBuilderDraft(this.world);
+        const { token } = this.requireAuth();
+        await this.checkoutDao.addToCart({
+            token,
+            countryCode,
+            items: [{ pizza_id: draft.pizzaId, size: draft.size ?? '', quantity: 1 }],
+        });
+        const cart = await this.checkoutDao.getCart({ token, countryCode });
+        if (!cart.cart_items?.length) {
+            throw new Error(
+                `Journey: seeded the backend cart for pizza "${draft.pizzaId}" but the read-back was still empty.`,
+            );
+        }
+        return cart.cart_items;
     }
 
     // -- checkout --------------------------------------------------------

@@ -20,7 +20,7 @@
       "desktop": { "kind": "testId", "value": "logout-btn" },
       "responsive": { "kind": "testId", "value": "mobile-logout-btn" }
     },
-    "mobilewright": { "kind": "testId", "value": "btn-logout" }
+    "mobilewright": { "kind": "testId", "value": "text-nav-logout" }
   },
   "usernameInput": {
     "playwright": {
