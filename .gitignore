@@ -114,3 +114,5 @@ OMNIPIZZA-PLATFORM-BUGS.md
 OMNIPIZZA-FOLLOWUP-*.md
 bugs/
 design_handoff_*/
+# Per-run orchestration scratch (scripts/orchestrate-full-run.sh recreates it).
+.ahm-orch-logs/

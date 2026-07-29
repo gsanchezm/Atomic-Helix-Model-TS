@@ -35,6 +35,36 @@ export const ADAPTERS: Record<string, AdapterEntry> = {
 };
 
 /**
+ * The tools a full run is EXPECTED to produce. These keep their card on the
+ * overview even with no JSON, rendered "No data" — a canonical tool that
+ * silently produced nothing is a gap you need to see, not one to hide.
+ *
+ * Everything else in ADAPTERS is optional: an alternate driver for a slot
+ * already covered here (webdriverio duplicates playwright's web_ui, and
+ * mobilewright duplicates appium's mobile_ui), or a tool added to the registry
+ * before it is part of the pipeline. Those appear only in runs that actually
+ * exercised them, so registering a new adapter no longer plants a permanently
+ * empty tile on every run's overview.
+ *
+ * To promote a tool, add its id here; to retire one, remove it. Membership is
+ * about "should this run have produced data", NOT about which adapters exist.
+ */
+export const CANONICAL_TOOL_IDS: readonly string[] = [
+  'playwright',
+  'appium',
+  'api',
+  'gatling',
+  'pixelmatch',
+  'axe',
+  'zap',
+  'mobsf',
+];
+
+export function isCanonicalTool(toolId: string): boolean {
+  return CANONICAL_TOOL_IDS.includes(toolId);
+}
+
+/**
  * Default display metadata for each tool. Used to build placeholder
  * `Tool`s when a run has no JSON for that tool (so the Overview still
  * shows the card with a "No data" state instead of dropping the tile).

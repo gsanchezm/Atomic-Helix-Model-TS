@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { ADAPTERS } from '../src/server/normalize/index';
+import { ADAPTERS, CANONICAL_TOOL_IDS, isCanonicalTool } from '../src/server/normalize/index';
 import { TOOL_KINDS, type ToolKind } from '../src/shared/kinds';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -16,6 +16,32 @@ describe('tool registry', () => {
       expect(TOOL_KINDS).toContain(entry.kind);
       expect(entry.id).toBe(id);
     }
+  });
+
+  it('every canonical tool id is a registered adapter', () => {
+    for (const id of CANONICAL_TOOL_IDS) {
+      expect(ADAPTERS[id], `canonical id "${id}" has no adapter`).toBeDefined();
+    }
+  });
+
+  it('every ToolKind is covered by at least one CANONICAL tool', () => {
+    // Stronger than "covered by some adapter": a kind covered only by a
+    // non-canonical adapter would vanish from every overview, since
+    // non-canonical tools are omitted when they produce no data.
+    const canonicalKinds = new Set<ToolKind>(
+      CANONICAL_TOOL_IDS.map((id) => ADAPTERS[id].kind),
+    );
+    for (const kind of TOOL_KINDS) {
+      expect(canonicalKinds.has(kind), `no canonical tool covers kind "${kind}"`).toBe(true);
+    }
+  });
+
+  it('the alternate drivers are deliberately NOT canonical', () => {
+    // webdriverio duplicates playwright's web_ui slot and mobilewright
+    // duplicates appium's mobile_ui slot; they should only surface on runs
+    // that actually exercised them.
+    expect(isCanonicalTool('webdriverio')).toBe(false);
+    expect(isCanonicalTool('mobilewright')).toBe(false);
   });
 
   it('every ToolKind is covered by at least one adapter', () => {
