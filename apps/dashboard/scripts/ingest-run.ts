@@ -796,14 +796,25 @@ async function buildZapTool(dir: string = reportsDir): Promise<WebSecurityTool |
 
   const risk = (block: ZapScanBlock | null, key: string): number => block?.byRisk?.[key] ?? 0;
 
+  // A gate the host could not run (missing scanner binary) is not a finding —
+  // counting it as failed would report an unexamined target as vulnerable. It
+  // is counted as SKIPPED rather than dropped: a dropped gate leaves 0/0/0,
+  // which the overview ToolCard renders as a green "All passed" for a run in
+  // which no scanner executed at all — the most dangerous possible summary.
+  const gateFailed = (gate: SecurityGate | null): number =>
+    gate && gate.pass === false && gate.unavailable !== true ? 1 : 0;
+  const gateSkipped = (gate: SecurityGate | null): number =>
+    gate && gate.unavailable === true ? 1 : 0;
+
   const failed =
     risk(baseline, 'High') + risk(baseline, 'Medium') +
     risk(apiScan, 'High')  + risk(apiScan, 'Medium') +
-    (tls && tls.pass === false ? 1 : 0) +
-    (schemaFuzz && schemaFuzz.pass === false ? 1 : 0);
+    gateFailed(tls) +
+    gateFailed(schemaFuzz);
   const passed =
     risk(baseline, 'Low') + risk(baseline, 'Informational') +
     risk(apiScan, 'Low')  + risk(apiScan, 'Informational');
+  const skipped = gateSkipped(tls) + gateSkipped(schemaFuzz);
 
   return {
     kind: 'security',
@@ -811,7 +822,7 @@ async function buildZapTool(dir: string = reportsDir): Promise<WebSecurityTool |
     id: 'zap',
     name: 'OWASP ZAP',
     description: 'Web application security scan',
-    passed, failed, skipped: 0,
+    passed, failed, skipped,
     duration: '0s',
     targetUrl: scratch.targetUrl ?? '',
     baseline, apiScan, tls, schemaFuzz,

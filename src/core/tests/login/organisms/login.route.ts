@@ -22,7 +22,7 @@ import type { CheckoutWorld } from '@core/tests/support/world';
 import { BROWSER_COMMAND } from '@kernel/browser-command';
 import { sendBrowserCommand } from '@core/tests/support/browser-command';
 import { SecurityContractLoader } from '@core/contracts/security-contract-loader';
-import { writeWebSecuritySection } from '@core/tests/support/security-report-writer';
+import { writeWebSecuritySection, isScannerUnavailable } from '@core/tests/support/security-report-writer';
 
 const log = logger.child({ layer: 'route', domain: 'login' });
 
@@ -276,8 +276,20 @@ export class LoginRoute {
                 writeWebSecuritySection({ schemaFuzz: { pass: true, reportPath } });
                 log.info({ reportPath }, 'Schema fuzz passed');
             } catch (err) {
-                writeWebSecuritySection({ schemaFuzz: { pass: false, reportPath: 'reports/security/schemathesis-junit.xml' } });
-                log.warn({ err: (err as Error).message }, 'Schema fuzz reported findings (recorded, non-fatal)');
+                const unavailable = isScannerUnavailable(err);
+                writeWebSecuritySection({
+                    schemaFuzz: {
+                        pass: false,
+                        reportPath: 'reports/security/schemathesis-junit.xml',
+                        ...(unavailable ? { unavailable } : {}),
+                    },
+                });
+                log.warn(
+                    { err: (err as Error).message },
+                    unavailable
+                        ? 'Schema fuzz SKIPPED — schemathesis not executable on this host (recorded as unavailable, not as a finding)'
+                        : 'Schema fuzz reported findings (recorded, non-fatal)',
+                );
             }
         }
     }

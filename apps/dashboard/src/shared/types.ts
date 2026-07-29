@@ -291,11 +291,19 @@ export interface ZapScanBlock {
   findings: ZapFinding[];
 }
 
-/** A boolean infra gate (TLS config check, schema fuzz) with its report artifact. */
+/**
+ * An infra gate (TLS config check, schema fuzz) with its report artifact.
+ *
+ * Three outcomes, not two: `unavailable` marks "the scanner could not run on
+ * this host" (binary missing / not on PATH), which must NOT be counted or
+ * rendered as a security failure — a missing testssl.sh says nothing about the
+ * target's TLS.
+ */
 export interface SecurityGate {
   pass: boolean;
   reportPath: string;
   findingsCount?: number;
+  unavailable?: boolean;
 }
 
 export interface WebSecurityTool extends BaseTool {
@@ -310,7 +318,8 @@ export interface WebSecurityTool extends BaseTool {
 
 // ---------- Security — mobile (MobSF) -------------------------------------
 
-export type MobsfSeverity = 'high' | 'warning' | 'info' | 'secure';
+/** 'hotspot' is MobSF's own bucket for risky permissions/config — dropping it under-reported findings. */
+export type MobsfSeverity = 'high' | 'warning' | 'info' | 'secure' | 'hotspot';
 
 export interface MobsfFinding {
   severity: MobsfSeverity;

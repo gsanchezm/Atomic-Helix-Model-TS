@@ -5,6 +5,13 @@
 // full screen — region cropping is left to a future enhancement so that
 // this initial implementation stays small and predictable. Region
 // selectors are still passed through and recorded in the result JSON.
+//
+// `options.maskSelectors` is likewise NOT applied here: WebdriverIO has no
+// equivalent of Playwright's `mask` screenshot option, so masking a native
+// capture would mean compositing rectangles over the PNG ourselves. Until
+// that exists, any mobile snapshot whose contract declares `maskRefs` still
+// compares those volatile pixels. Contrast with the web source, which does
+// honour masks — do not assume mask semantics are uniform across platforms.
 
 import { getActiveDriver } from '@plugins/appium/appium';
 import { ScreenshotCaptureOptions, ScreenshotSource } from '@plugins/pixelmatch/support/screenshot-source';

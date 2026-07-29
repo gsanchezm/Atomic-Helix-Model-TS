@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
+import { COMMAND_NOT_EXECUTABLE } from '@plugins/shared/command-runner';
 
 // Bridges the plugin oracles to the dashboard. Security/a11y actions run in
 // their plugin processes and return their native summary as a string; the
@@ -36,12 +37,45 @@ export interface ZapScanSection {
   findings: Array<{ name: string; risk: string; confidence: string; instances: number }>;
 }
 
+/**
+ * A gate carries THREE outcomes, not two. "The scanner ran and the target
+ * failed" and "the scanner isn't installed on this machine" are different
+ * facts, and collapsing them into `pass: false` reports a clean target as
+ * vulnerable — testssl.sh and schemathesis are not on PATH here, so both
+ * gates read FAIL on the dashboard without either tool ever having run.
+ * `unavailable` keeps that distinction so the dashboard can say "not
+ * installed" and stop counting a missing binary as a security failure.
+ */
+export interface SecurityGateResult {
+  pass: boolean;
+  reportPath: string;
+  /** True when the scanner binary could not be executed (missing/not on PATH). */
+  unavailable?: boolean;
+}
+
 export interface WebSecurityReport {
   targetUrl?: string;
   baseline?: ZapScanSection | null;
   apiScan?: ZapScanSection | null;
-  tls?: { pass: boolean; reportPath: string } | null;
-  schemaFuzz?: { pass: boolean; reportPath: string } | null;
+  tls?: SecurityGateResult | null;
+  schemaFuzz?: SecurityGateResult | null;
+}
+
+/**
+ * Distinguishes "could not execute the scanner" from "scanner ran, found
+ * problems".
+ *
+ * Matches ONLY the marker that `runCommand` attaches on a spawn failure — NOT
+ * ENOENT-shaped prose. A scanner that ran splices its stdout/stderr (which
+ * echoes the target's responses) into the thrown message, so a target replying
+ * `ENOENT: no such file or directory, open '/etc/passwd'` — the payload of a
+ * path-disclosure finding, i.e. exactly the finding you least want to lose —
+ * would otherwise be reclassified as "tool not installed" and dropped from the
+ * failure count. The marker only exists on the path where nothing was scanned.
+ */
+export function isScannerUnavailable(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err ?? '');
+  return message.includes(COMMAND_NOT_EXECUTABLE);
 }
 
 export function writeWebSecuritySection(section: Partial<WebSecurityReport>): void {
@@ -53,7 +87,7 @@ export function writeWebSecuritySection(section: Partial<WebSecurityReport>): vo
 // --- MobSF / mobile security (reports/mobsf-<platform>.json) ---------------
 
 export interface MobsfFinding {
-  severity: 'high' | 'warning' | 'info' | 'secure';
+  severity: 'high' | 'warning' | 'info' | 'secure' | 'hotspot';
   title: string;
   description?: string;
 }

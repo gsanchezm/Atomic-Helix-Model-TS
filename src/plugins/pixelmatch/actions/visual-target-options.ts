@@ -4,6 +4,10 @@
 //   platform        — overrides PLATFORM env var.
 //   viewport        — overrides VIEWPORT env var.
 //   saveActualOnly  — capture-only mode (CompareSnapshot fast path).
+//   updateBaseline  — bootstrap a missing baseline from this capture. Carried
+//                     on the intent (not just the plugin's VISUAL_UPDATE_BASELINE
+//                     env var) so a runner-side regen reaches an out-of-process
+//                     pixelmatch plugin.
 //   updateReason    — informational, recorded in telemetry metadata.
 
 import { parseContractTarget } from '@plugins/shared/parseCompositeTarget';
@@ -20,6 +24,7 @@ export interface VisualTargetOptions {
     /** BDD scenario name (pickle.name) that triggered the snapshot. Threaded through for dashboard backlinks. */
     scenario?: string;
     saveActualOnly: boolean;
+    updateBaseline: boolean;
     updateReason: string | null;
     raw: Record<string, unknown>;
 }
@@ -52,6 +57,7 @@ export function parseVisualTarget(target: string): VisualTargetOptions {
         language,
         scenario,
         saveActualOnly: variables.saveActualOnly === true,
+        updateBaseline: variables.updateBaseline === true,
         updateReason: typeof variables.updateReason === 'string' ? variables.updateReason : null,
         raw: variables,
     };

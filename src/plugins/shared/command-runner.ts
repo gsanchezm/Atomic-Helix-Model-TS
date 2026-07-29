@@ -6,6 +6,21 @@ export interface CommandResult {
     stderr: string;
 }
 
+/**
+ * Marks "this executable could not be started", as opposed to "it started and
+ * failed". Only the spawn-error path below ever emits it, and that path carries
+ * no output from whatever the tool was pointed at — so callers can key off it
+ * without a scanned target being able to forge it.
+ *
+ * That distinction is security-relevant: the non-zero-exit path splices tool
+ * stdout/stderr (which echoes target responses) into its error message, so
+ * sniffing those messages for ENOENT-shaped text lets a target that replies
+ * "No such file or directory" — precisely the payload of a path-disclosure
+ * finding — get itself reclassified as "scanner not installed" and dropped
+ * from the failure count.
+ */
+export const COMMAND_NOT_EXECUTABLE = '[COMMAND_NOT_EXECUTABLE]';
+
 // Wraps a value in single quotes for the DEVICE's POSIX shell, escaping any
 // literal single quotes it might contain (`'` -> `'\''`). Needed whenever a
 // value (e.g. a deep-link URL) gets shelled into `adb shell <command>` —
@@ -43,7 +58,16 @@ export function runCommand(
 
         child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
         child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
-        child.once('error', reject);
+        child.once('error', (err: NodeJS.ErrnoException) => {
+            if (timeout) clearTimeout(timeout);
+            // ENOENT/EACCES here mean the executable itself could not be
+            // started — never anything about the target being inspected.
+            if (err.code === 'ENOENT' || err.code === 'EACCES') {
+                reject(new Error(`${COMMAND_NOT_EXECUTABLE} ${command}: ${err.code}`));
+                return;
+            }
+            reject(err);
+        });
         child.once('exit', (code, signal) => {
             if (timeout) clearTimeout(timeout);
             if (timedOut) {
