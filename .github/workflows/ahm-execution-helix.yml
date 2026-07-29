@@ -45,11 +45,19 @@ on:
         required: false
         default: '001'
       perf_profile:
-        description: 'Gatling injection profile (perf only)'
+        description: 'Gatling injection profile — single-profile dispatches only. Ignored unless perf_profiles is left at its default.'
         required: false
         default: smoke
         type: choice
         options: [smoke, load, stress]
+      # A `choice` input can carry exactly one value, so perf_profile alone caps
+      # a run at one profile — and the workflow-level `cancel-in-progress: true`
+      # means dispatching three times just cancels the previous run. An
+      # all-test-types run therefore needs the profiles as a matrix.
+      perf_profiles:
+        description: 'JSON array of Gatling profiles to run as a matrix, e.g. ["smoke","load","stress"]. Overrides perf_profile.'
+        required: false
+        default: ''
       perf_users:
         description: 'Virtual user count (perf load/stress)'
         required: false
@@ -1196,6 +1204,12 @@ jobs:
             sleep 15
           done
           adb devices
+          # The loop exits 0 whether or not the emulator ever booted, so a dead
+          # emulator used to sail past this step and fail much later inside
+          # Appium with an error that looks like anything but a boot timeout.
+          # Assert the condition the loop was waiting for.
+          adb -s localhost:5555 shell getprop sys.boot_completed 2>/dev/null | grep -q "1" \
+            || { echo "Emulator did not report boot_completed within 600s"; exit 1; }
 
       - name: Start proxy + Appium plugin
         run: bash ci/steps/start-stack.sh android
@@ -1651,6 +1665,12 @@ jobs:
             sleep 15
           done
           adb devices
+          # The loop exits 0 whether or not the emulator ever booted, so a dead
+          # emulator used to sail past this step and fail much later inside
+          # Appium with an error that looks like anything but a boot timeout.
+          # Assert the condition the loop was waiting for.
+          adb -s localhost:5555 shell getprop sys.boot_completed 2>/dev/null | grep -q "1" \
+            || { echo "Emulator did not report boot_completed within 600s"; exit 1; }
 
       # No Appium server is started here — mobilewright drives devices via
       # `mobilecli`, not Appium/WebDriverIO remote() (mobilewrightNeedsAppiumServer:
@@ -1993,17 +2013,25 @@ jobs:
   # Job 6: Perf — Gatling Simulation
   # ---------------------------------------------------------------------------
   perf-gatling:
-    name: Perf — Gatling ${{ inputs.perf_profile || 'smoke' }}
+    name: Perf — Gatling ${{ matrix.profile }}
     needs: gate-gatling
     runs-on: ubuntu-latest
+    strategy:
+      # fail-fast off so a red `load` leg does not cancel `stress`; max-parallel 1
+      # so three load generators never hit the same backend at once (which would
+      # make every leg's numbers meaningless).
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        profile: ${{ fromJSON(inputs.perf_profiles != '' && inputs.perf_profiles || format('["{0}"]', inputs.perf_profile || 'smoke')) }}
     env:
       TOOL_NAME: gatling
       PLATFORM: performance
       DRIVER: gatling
       TOM_RUN_ID: >-
         ${{ inputs.architecture_type == 'TOM'
-            && format('tom-{0}-{1}-{2}-gatling-{3}', github.run_id, github.run_attempt, inputs.run_index || github.run_attempt, inputs.perf_profile || 'smoke')
-            || format('gh-{0}-{1}-gatling-{2}', github.run_id, github.run_attempt, inputs.perf_profile || 'smoke') }}
+            && format('tom-{0}-{1}-{2}-gatling-{3}', github.run_id, github.run_attempt, inputs.run_index || github.run_attempt, matrix.profile)
+            || format('gh-{0}-{1}-gatling-{2}', github.run_id, github.run_attempt, matrix.profile) }}
 
     steps:
       - uses: actions/checkout@v6
@@ -2038,7 +2066,7 @@ jobs:
         run: bash ci/steps/start-stack.sh gatling
 
       - name: Run simulation
-        run: pnpm perf:${{ inputs.perf_profile || 'smoke' }}
+        run: pnpm perf:${{ matrix.profile }}
         env:
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           PERF_USERS: ${{ inputs.perf_users || '20' }}
@@ -2057,7 +2085,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ahm-artifacts-${{ github.job }}-${{ inputs.perf_profile || 'smoke' }}-${{ github.run_id }}
+          name: ahm-artifacts-${{ github.job }}-${{ matrix.profile }}-${{ github.run_id }}
           path: artifacts/gatling/
           if-no-files-found: ignore
           retention-days: 30
@@ -2066,7 +2094,7 @@ jobs:
         if: ${{ always() && inputs.architecture_type != 'TOM' }}
         uses: actions/upload-artifact@v7
         with:
-          name: gatling-report-${{ inputs.perf_profile || 'smoke' }}-${{ github.run_id }}
+          name: gatling-report-${{ matrix.profile }}-${{ github.run_id }}
           path: target/gatling/
           if-no-files-found: ignore
           retention-days: 30
