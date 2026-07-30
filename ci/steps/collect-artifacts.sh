@@ -23,8 +23,17 @@ else
         # Gatling never starts the chaos-proxy — start-stack.sh's `gatling`
         # arm is a documented no-op (Gatling simulations run standalone, no
         # proxy/plugin involved) — so results/ is never populated for this
-        # profile, unlike every other one. Not a failure; informational only.
-        echo "no results/ directory — expected for the gatling profile (no proxy telemetry)"
+        # profile, unlike every other one. Collect the simulation output
+        # (HTML report + stats + simulation.log) from target/gatling instead,
+        # so the uniform ahm-artifacts upload isn't empty for perf jobs. In
+        # CI each perf job runs exactly one profile, so exactly one
+        # jssimulation-* dir lands here.
+        if [ -d target/gatling ]; then
+            cp -rf target/gatling/* "$DEST/" 2>/dev/null || true
+            echo "collected Gatling simulation output from target/gatling"
+        else
+            echo "no target/gatling output — simulation produced nothing to collect"
+        fi
     else
         echo "No results directory found. Telemetry is required for AHM runs." >&2
         exit 1
