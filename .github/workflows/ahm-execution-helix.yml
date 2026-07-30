@@ -304,6 +304,7 @@ jobs:
   # ---------------------------------------------------------------------------
   # Job 1: API E2E
   # ---------------------------------------------------------------------------
+  # Backend-traffic job — member of perf-fence's needs: list (see that job).
   api-smoke:
     name: E2E — API ${{ matrix.suite }}
     needs: gate-api
@@ -416,6 +417,7 @@ jobs:
   # the same as `visual-web` and `update-visual-baselines.yml` so any
   # rendering parity needed for the visual pass is also present here.
   # ---------------------------------------------------------------------------
+  # Backend-traffic job — member of perf-fence's needs: list (see that job).
   e2e-web:
     name: E2E — Playwright Desktop ${{ matrix.suite }} (${{ matrix.browser }})
     needs: gate-web-desktop
@@ -555,6 +557,7 @@ jobs:
   # Mirrors Job 2's design (pinned container, no pixelmatch). See Job 2's
   # header for the full rationale and the link to visual-web-responsive.
   # ---------------------------------------------------------------------------
+  # Backend-traffic job — member of perf-fence's needs: list (see that job).
   e2e-web-responsive:
     name: E2E — Playwright Responsive ${{ matrix.suite }} (${{ matrix.browser }})
     needs: gate-web-responsive
@@ -695,6 +698,7 @@ jobs:
   # shared standard-user-writes concurrency group only — see design doc §3.5
   # for why the extra needs: edge is intentionally NOT carried over.)
   # ---------------------------------------------------------------------------
+  # Backend-traffic job — member of perf-fence's needs: list (see that job).
   visual-web:
     name: Visual — Playwright Desktop (Pixelmatch)
     needs: e2e-web
@@ -845,6 +849,7 @@ jobs:
   # Mirrors visual-web. `needs: e2e-web-responsive`; both visual jobs share
   # the standard-user write queue.
   # ---------------------------------------------------------------------------
+  # Backend-traffic job — member of perf-fence's needs: list (see that job).
   visual-web-responsive:
     name: Visual — Playwright Responsive (Pixelmatch)
     needs: e2e-web-responsive
@@ -993,6 +998,7 @@ jobs:
   # read-only scenario (browse-catalog.feature), so a matrix would just
   # re-run the identical scenario N times and collide on reports/a11y.json.
   # ---------------------------------------------------------------------------
+  # Backend-traffic job — member of perf-fence's needs: list (see that job).
   a11y-web:
     name: A11y — Playwright Desktop (axe)
     needs: gate-a11y
@@ -1095,6 +1101,7 @@ jobs:
   # ---------------------------------------------------------------------------
   # Job 4: Android E2E
   # ---------------------------------------------------------------------------
+  # Backend-traffic job — member of perf-fence's needs: list (see that job).
   e2e-android:
     name: E2E — Appium Android ${{ matrix.suite }}
     needs: [gate-android, resolve-omnipizza-release]
@@ -1291,6 +1298,7 @@ jobs:
   # ---------------------------------------------------------------------------
   # Job 5: iOS E2E
   # ---------------------------------------------------------------------------
+  # Backend-traffic job — member of perf-fence's needs: list (see that job).
   e2e-ios:
     name: E2E — Appium iOS ${{ matrix.suite }}
     needs: [gate-ios, resolve-omnipizza-release]
@@ -1483,6 +1491,7 @@ jobs:
   # when someone actually dispatches platform=mobilewright does not pollute
   # any automatic run.
   # ---------------------------------------------------------------------------
+  # Backend-traffic job — member of perf-fence's needs: list (see that job).
   e2e-mobilewright:
     name: E2E — Mobilewright ${{ matrix.platform }} ${{ matrix.suite }}
     needs: [gate-mobilewright, resolve-omnipizza-release]
@@ -1775,6 +1784,7 @@ jobs:
   # is safe, not a bug. Do not "fix" this back to a `@mobsf` tag that does
   # not exist.
   # ---------------------------------------------------------------------------
+  # Backend-traffic job — member of perf-fence's needs: list (see that job).
   security-zap:
     name: Security — ZAP
     needs: gate-security
@@ -2010,6 +2020,39 @@ jobs:
         run: bash ci/steps/teardown.sh
 
   # ---------------------------------------------------------------------------
+  # Perf exclusivity fence — no-op barrier.
+  # Membership criterion: EVERY job that generates traffic against the shared
+  # OmniPizza backend under test must appear in this needs: list, so the
+  # Gatling load/stress legs (perf-gatling below) measure the backend rather
+  # than contention from the rest of the suite. If you add a backend-hitting
+  # job, add it here. Deliberately absent: security-mobsf (static APK
+  # analysis, zero backend traffic — a hung MobSF would pointlessly block
+  # perf), resolve-omnipizza-release (GitHub API only), gate-* (no-ops).
+  # `!cancelled()` (not `always()`) so the fence completes when members fail
+  # or skip, but does not resurrect on a cancelled run.
+  # Spec: docs/superpowers/specs/2026-07-29-gatling-ci-perf-isolation-design.md
+  # ---------------------------------------------------------------------------
+  perf-fence:
+    name: Perf — exclusivity fence
+    needs:
+      - api-smoke
+      - e2e-web
+      - e2e-web-responsive
+      - visual-web
+      - visual-web-responsive
+      - a11y-web
+      - e2e-android
+      - e2e-ios
+      - e2e-mobilewright
+      - security-zap
+      - e2e-webdriverio
+      - e2e-cypress
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "All backend-traffic jobs finished — Gatling load/stress may start."
+
+  # ---------------------------------------------------------------------------
   # Job 6: Perf — Gatling Simulation
   # ---------------------------------------------------------------------------
   perf-gatling:
@@ -2113,6 +2156,7 @@ jobs:
   # per-browser Selenium service declared, so no browser matrix is invented
   # here that ci/pipeline.config.json doesn't also declare.
   # ---------------------------------------------------------------------------
+  # Backend-traffic job — member of perf-fence's needs: list (see that job).
   e2e-webdriverio:
     name: E2E — WebdriverIO ${{ matrix.suite }}
     needs: gate-webdriverio
@@ -2225,6 +2269,7 @@ jobs:
   # (src/plugins/cypress/cypress.config.ts pins screenshotsFolder/
   # videosFolder under its own directory).
   # ---------------------------------------------------------------------------
+  # Backend-traffic job — member of perf-fence's needs: list (see that job).
   e2e-cypress:
     name: E2E — Cypress Desktop
     needs: gate-cypress
