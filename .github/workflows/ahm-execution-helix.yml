@@ -2153,20 +2153,41 @@ jobs:
       - run: echo "All backend-traffic jobs finished — Gatling load/stress may start."
 
   # ---------------------------------------------------------------------------
-  # Job 6: Perf — Gatling Simulation
+  # Job 6: Perf — Gatling Simulation (load/stress — EXCLUSIVE legs).
+  # smoke runs in perf-gatling-smoke above and never here (matrix exclude).
+  # These legs measure the shared backend, so they start only after
+  # perf-fence confirms every backend-traffic job finished; numbers taken
+  # while the functional suite runs are contention artifacts, not backend
+  # behavior. Runs even when functional jobs are red (perf measures the
+  # backend, not the suite) — hence !cancelled() + explicit gate check.
+  # Spec: docs/superpowers/specs/2026-07-29-gatling-ci-perf-isolation-design.md
   # ---------------------------------------------------------------------------
   perf-gatling:
     name: Perf — Gatling ${{ matrix.profile }}
-    needs: gate-gatling
+    needs: [gate-gatling, perf-fence]
+    # !cancelled(): run even when fence members failed or skipped, but not on
+    # a cancelled run. The explicit gate check is required because overriding
+    # the auto-skip also overrides it for a skipped gate-gatling. The
+    # contains() guard skips the job (instead of expanding an empty matrix)
+    # when only ["smoke"] was requested.
+    if: >-
+      ${{ !cancelled()
+          && needs.gate-gatling.result == 'success'
+          && needs.perf-fence.result == 'success'
+          && (contains(fromJSON(inputs.perf_profiles != '' && inputs.perf_profiles || format('["{0}"]', inputs.perf_profile || 'smoke')), 'load')
+              || contains(fromJSON(inputs.perf_profiles != '' && inputs.perf_profiles || format('["{0}"]', inputs.perf_profile || 'smoke')), 'stress')) }}
     runs-on: ubuntu-latest
     strategy:
       # fail-fast off so a red `load` leg does not cancel `stress`; max-parallel 1
-      # so three load generators never hit the same backend at once (which would
-      # make every leg's numbers meaningless).
+      # so two load generators never hit the same backend at once (which would
+      # make every leg's numbers meaningless). smoke is excluded — it runs in
+      # perf-gatling-smoke, without waiting for the fence.
       fail-fast: false
       max-parallel: 1
       matrix:
         profile: ${{ fromJSON(inputs.perf_profiles != '' && inputs.perf_profiles || format('["{0}"]', inputs.perf_profile || 'smoke')) }}
+        exclude:
+          - profile: smoke
     env:
       TOOL_NAME: gatling
       PLATFORM: performance
