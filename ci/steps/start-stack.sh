@@ -12,7 +12,23 @@ run_bg() { # <logfile> <script>
     npx ts-node -r tsconfig-paths/register -r dotenv/config "$1" > "logs/$PROFILE/$log" 2>&1 &
 }
 
-fail() { log "FAIL: $*"; exit 1; }
+# Dump the service logs before dying. Every wait_port failure names a service
+# ("chaos-proxy did not open :50051") while knowing nothing about it — the
+# distinction between "never started", "crashed" and "started fine but the
+# probe is broken" lives only in logs/<profile>/*.log. Without this the
+# netcat-missing bug cost two full CI runs to diagnose. Writes to the step's
+# own stdout, so it survives even when artifact collection does not.
+# Precedent: .github/workflows/update-visual-baselines.yml tails these same
+# logs on its own timeout.
+fail() {
+    log "FAIL: $*"
+    for f in "logs/$PROFILE"/*.log; do
+        [ -f "$f" ] || continue
+        log "--- tail -n 200 $f ---"
+        tail -n 200 "$f"
+    done
+    exit 1
+}
 
 case "$PROFILE" in
   api)

@@ -13,21 +13,23 @@ is_windows_bash() {
     esac
 }
 
-# port_open <port> — OS-branched: `nc` (used by both existing local
-# orchestrators' non-Windows checks and available on the ubuntu-latest/
-# macos-latest CI runners) is not reliably present under Git Bash on Windows —
-# confirmed empirically on this repo's own Windows dev box (`nc` → command not
-# found, exit 127), which is exactly why scripts/orchestrate-full-run.sh (the
-# Windows local orchestrator) already avoided nc and used this same Node
-# one-liner for its own wait_port. Branching here is the "OS-branching"
-# extraction this file's header promises — reusing that proven Windows check
-# rather than letting wait_port silently always time out on Windows.
+# port_open <port> — pure Node, on every platform. Deliberately depends on no
+# external binary: `nc` is absent from Git Bash on Windows AND from
+# mcr.microsoft.com/playwright:*-jammy, the image every containerized CI job
+# runs in. A missing binary makes bash return 127, which is indistinguishable
+# from "connection refused", so the old POSIX branch could never report a
+# healthy port inside that image — every container job burned the full
+# wait_port timeout and died with a message blaming the service
+# ("chaos-proxy did not open :50051") that was listening the whole time. Bare
+# runners only escaped it because the ubuntu-24.04 image happens to provision
+# netcat. node is a strictly weaker dependency than what start-stack.sh
+# already requires (it launches every service with `npx ts-node`), so this
+# removes the last thing the environment can silently fail to provide.
+# The port goes through argv rather than string interpolation, and the socket
+# gets a timeout so a filtered port cannot stall the poll loop.
+# Covered by ci/steps/test/port-open.smoke.sh.
 port_open() {
-    if is_windows_bash; then
-        node -e "require('net').connect($1,'127.0.0.1').on('connect',function(){process.exit(0)}).on('error',function(){process.exit(1)})" 2>/dev/null
-    else
-        nc -z 127.0.0.1 "$1" 2>/dev/null
-    fi
+    node -e 'const s=require("net").connect(Number(process.argv[1]),"127.0.0.1");s.setTimeout(1000);s.on("connect",function(){s.destroy();process.exit(0)});s.on("timeout",function(){s.destroy();process.exit(1)});s.on("error",function(){process.exit(1)})' "$1" 2>/dev/null
 }
 
 # wait_port <port> [<timeoutSecs>] — polls until the port answers or the
