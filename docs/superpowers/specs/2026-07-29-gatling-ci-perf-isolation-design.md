@@ -37,6 +37,8 @@ The local orchestrator honors it — `scripts/orchestrate-full-run.sh` PHASE 3 r
 
 ## 5. Job graph changes
 
+*Change-note 2026-07-30: member counts in §5–§7 reflect the original design; three members were later removed — the fence now has 10 members. See §4's dated amendment.*
+
 ```
 gate-gatling ──> perf-gatling-smoke ──────┐          (free overlap, early)
                                            │
