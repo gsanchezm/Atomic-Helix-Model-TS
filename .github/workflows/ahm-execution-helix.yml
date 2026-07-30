@@ -1658,6 +1658,15 @@ jobs:
         shell: bash
         run: bash ci/steps/run-suite.sh "@security-infra" mobsf security-infra
         env:
+          # BASE_URL is required even though MobSF itself only scans a local
+          # binary: this job runs the same @security-infra scenario as
+          # security-zap, and support.security.json's web scope references
+          # ${BASE_URL}. security-contract-loader.ts interpolates every
+          # placeholder while LOADING the contract, so a missing var throws
+          # before any per-plugin enabled check can skip the ZAP half.
+          # Omitting it made every MobSF run red with
+          # "env var 'BASE_URL' referenced by contract is not set".
+          BASE_URL: ${{ secrets.BASE_URL }}
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           PLATFORM: api
           DRIVER: api
