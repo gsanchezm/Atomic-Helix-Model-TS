@@ -40,25 +40,25 @@ The local orchestrator honors it — `scripts/orchestrate-full-run.sh` PHASE 3 r
 ```
 gate-gatling ──> perf-gatling-smoke                    (free overlap, early)
 
-12 backend jobs ──> perf-fence (no-op, if: always())
+12 backend jobs ──> perf-fence (no-op, if: !cancelled())
                         │
 gate-gatling ───────────┴──> perf-gatling  [load ─> stress]   (exclusive)
 ```
 
-**`perf-fence` (new).** `runs-on: ubuntu-latest`, single `echo` step. `needs:` the 12 jobs listed in §4. `if: always()` so it completes whether its dependencies passed, failed, or were skipped (e.g. `platform=gatling` skips all 12 gates → fence completes immediately → perf waits for nothing).
+**`perf-fence` (new).** `runs-on: ubuntu-latest`, single `echo` step. `needs:` the 12 jobs listed in §4. `if: ${{ !cancelled() }}` so it completes whether its dependencies passed, failed, or were skipped (e.g. `platform=gatling` skips all 12 gates → fence completes immediately → perf waits for nothing). Deliberately not `always()`: an `always()` condition resists run cancellation, so cancelling a run would still start the perf legs; `!cancelled()` keeps the pass/fail/skip tolerance without that.
 
 **`perf-gatling-smoke` (new).** Copy of today's `perf-gatling` body with no `strategy:` block and `smoke` hardcoded where `matrix.profile` appeared. `needs: gate-gatling`. Job-level `if:` additionally requires `smoke` to be among the requested profiles (`contains()` over the same profiles expression). Artifact names must stay byte-identical to today's matrix output: `ahm-artifacts-perf-gatling-smoke-${{ github.run_id }}` and `gatling-report-smoke-${{ github.run_id }}` — the `-smoke` suffix is written literally. `TOM_RUN_ID` keeps today's exact format with `gatling-smoke`.
 
 **`perf-gatling` (modified).** Keeps the matrix expression over `inputs.perf_profiles` and adds `exclude: [{profile: smoke}]`. `needs: [gate-gatling, perf-fence]`. Job-level `if` (where `PROFILES` stands for the existing matrix expression already in the workflow, repeated verbatim — `fromJSON(inputs.perf_profiles != '' && inputs.perf_profiles || format('["{0}"]', inputs.perf_profile || 'smoke'))`):
 
 ```
-always()
+!cancelled()
 && needs.gate-gatling.result == 'success'
 && needs.perf-fence.result == 'success'
 && (contains(PROFILES, 'load') || contains(PROFILES, 'stress'))
 ```
 
-`always()` is required because without it a failed/skipped fence dependency auto-skips the job; the explicit gate check is required because `always()` also disables the automatic skip when `gate-gatling` itself was skipped. The `contains()` guard prevents the empty-matrix case when only `["smoke"]` was requested. Keeps `fail-fast: false` and `max-parallel: 1` (matrix order `load` before `stress` follows the input array order).
+`!cancelled()` is required because without it a failed/skipped fence dependency auto-skips the job (and `always()` would additionally resist run cancellation — see §5 fence note); the explicit gate check is required because overriding the auto-skip also overrides it for a skipped `gate-gatling`. The `contains()` guard prevents the empty-matrix case when only `["smoke"]` was requested. Keeps `fail-fast: false` and `max-parallel: 1` (matrix order `load` before `stress` follows the input array order).
 
 **`consolidate` (modified).** Adds `perf-gatling-smoke` to its `needs:` list (it already lists `perf-gatling`; its `if: always()` tolerates skipped entries).
 
@@ -77,6 +77,6 @@ The fence's 12-name `needs:` list silently rots if a member job is renamed (GitH
 
 ## 8. Risks
 
-- **`if: always()` chains are easy to get subtly wrong** (a stray `always()` on the wrong job can resurrect a job that `platform` filtering meant to skip). Covered by shakedown #1's skip assertions.
+- **Status-check-function chains are easy to get subtly wrong** (a stray `always()`/`!cancelled()` on the wrong job can resurrect a job that `platform` filtering meant to skip; bare `always()` additionally resists run cancellation, which is why this design uses `!cancelled()`). Covered by shakedown #1's skip assertions.
 - **Wall-clock:** `load`+`stress` now run after the multi-hour functional suite instead of alongside it, lengthening total run duration by their combined runtime (~2× `perf_duration` plus JRE spin-up). Accepted — uncontaminated numbers are the entire point.
 - **`cancel-in-progress: true`** at workflow level is unchanged and now harmless to this design: everything happens inside one dispatch, so no second dispatch exists to cancel the first.
