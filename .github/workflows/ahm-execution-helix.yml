@@ -2020,6 +2020,106 @@ jobs:
         run: bash ci/steps/teardown.sh
 
   # ---------------------------------------------------------------------------
+  # Perf — Gatling smoke (free-overlap leg). The isolation constraint is
+  # asymmetric (spec §2): only load/stress need exclusivity; smoke is a
+  # 3-request probe that may overlap the functional suite freely and doubles
+  # as the fast early perf signal. Own job precisely so it does NOT wait for
+  # perf-fence. Body is a clone of perf-gatling below with smoke hardcoded.
+  # Artifact names stay byte-identical to the old matrix leg's output:
+  # github.job here is "perf-gatling-smoke", so
+  # ahm-artifacts-${{ github.job }}-<run_id> equals the old
+  # ahm-artifacts-perf-gatling-<matrix.profile>-<run_id> string for smoke.
+  # Spec: docs/superpowers/specs/2026-07-29-gatling-ci-perf-isolation-design.md
+  # ---------------------------------------------------------------------------
+  perf-gatling-smoke:
+    name: Perf — Gatling smoke
+    needs: gate-gatling
+    # Run only when 'smoke' is among the requested profiles. Same expression
+    # as perf-gatling's matrix. No !cancelled() here: if gate-gatling is
+    # skipped (platform filtering), the default auto-skip is exactly right.
+    if: >-
+      ${{ contains(fromJSON(inputs.perf_profiles != '' && inputs.perf_profiles || format('["{0}"]', inputs.perf_profile || 'smoke')), 'smoke') }}
+    runs-on: ubuntu-latest
+    env:
+      TOOL_NAME: gatling
+      PLATFORM: performance
+      DRIVER: gatling
+      TOM_RUN_ID: >-
+        ${{ inputs.architecture_type == 'TOM'
+            && format('tom-{0}-{1}-{2}-gatling-smoke', github.run_id, github.run_attempt, inputs.run_index || github.run_attempt)
+            || format('gh-{0}-{1}-gatling-smoke', github.run_id, github.run_attempt) }}
+
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+      - name: Cache pnpm store
+        uses: actions/cache@v5
+        with:
+          path: ~/.pnpm-store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+      - name: Cache Gatling JRE bundle
+        uses: actions/cache@v5
+        with:
+          path: node_modules/@gatling.io/cli/.gatling
+          key: gatling-jre-${{ runner.os }}-${{ hashFiles('node_modules/@gatling.io/cli/package.json') }}
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Capture run start time
+        if: always()
+        run: echo "RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Start stack
+        # Gatling has no proxy/plugin stack of its own — start-stack.sh's
+        # `gatling)` arm is a documented no-op, kept only for Template Method
+        # symmetry with the other jobs (see ci/steps/start-stack.sh).
+        run: bash ci/steps/start-stack.sh gatling
+
+      - name: Run simulation
+        run: pnpm perf:smoke
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          PERF_USERS: ${{ inputs.perf_users || '20' }}
+          PERF_DURATION: ${{ inputs.perf_duration || '120' }}
+          LANGUAGE: en
+
+      - name: Capture run end time
+        if: always()
+        run: echo "RUN_ENDED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Collect artifacts
+        if: always()
+        run: bash ci/steps/collect-artifacts.sh gatling
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ahm-artifacts-${{ github.job }}-${{ github.run_id }}
+          path: artifacts/gatling/
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Upload Gatling HTML report (standard)
+        if: ${{ always() && inputs.architecture_type != 'TOM' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: gatling-report-smoke-${{ github.run_id }}
+          path: target/gatling/
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Teardown
+        if: always()
+        run: bash ci/steps/teardown.sh
+
+  # ---------------------------------------------------------------------------
   # Perf exclusivity fence — no-op barrier.
   # Membership criterion: EVERY job that generates traffic against the shared
   # OmniPizza backend under test must appear in this needs: list, so the
