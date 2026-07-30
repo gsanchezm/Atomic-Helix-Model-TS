@@ -2035,10 +2035,13 @@ jobs:
     name: Perf — Gatling smoke
     needs: gate-gatling
     # Run only when 'smoke' is among the requested profiles. Same expression
-    # as perf-gatling's matrix. No !cancelled() here: if gate-gatling is
-    # skipped (platform filtering), the default auto-skip is exactly right.
+    # as perf-gatling's matrix. Explicit gate check + no !cancelled(): if
+    # gate-gatling is skipped or failed (platform filtering), this job must
+    # skip; stating it explicitly avoids relying on implicit success()
+    # semantics for ${{ }}-wrapped conditions.
     if: >-
-      ${{ contains(fromJSON(inputs.perf_profiles != '' && inputs.perf_profiles || format('["{0}"]', inputs.perf_profile || 'smoke')), 'smoke') }}
+      ${{ needs.gate-gatling.result == 'success'
+          && contains(fromJSON(inputs.perf_profiles != '' && inputs.perf_profiles || format('["{0}"]', inputs.perf_profile || 'smoke')), 'smoke') }}
     runs-on: ubuntu-latest
     env:
       TOOL_NAME: gatling
@@ -2125,9 +2128,18 @@ jobs:
   # OmniPizza backend under test must appear in this needs: list, so the
   # Gatling load/stress legs (perf-gatling below) measure the backend rather
   # than contention from the rest of the suite. If you add a backend-hitting
-  # job, add it here. Deliberately absent: security-mobsf (static APK
-  # analysis, zero backend traffic — a hung MobSF would pointlessly block
-  # perf), resolve-omnipizza-release (GitHub API only), gate-* (no-ops).
+  # job, add it here. perf-gatling-smoke is also a member, but not for that
+  # reason — smoke has no functional suite to isolate from anything, it is
+  # a Gatling leg like load/stress. Its membership exists so load/stress
+  # never overlap the smoke probe either, restoring the strictly-sequential
+  # smoke→load→stress ordering of scripts/orchestrate-full-run.sh PHASE 3 in
+  # perf-only dispatches (the old matrix's max-parallel: 1 used to provide
+  # this for free). Smoke itself still starts immediately — its own needs:
+  # is just gate-gatling, so it keeps overlapping the functional suite.
+  # Deliberately absent: security-mobsf (static APK analysis; its TLS probe
+  # is currently unavailable-on-runner so it produces no backend traffic
+  # today — excluded because a hung MobSF would pointlessly block perf for
+  # hours), resolve-omnipizza-release (GitHub API only), gate-* (no-ops).
   # `!cancelled()` (not `always()`) so the fence completes when members fail
   # or skip, but does not resurrect on a cancelled run.
   # Spec: docs/superpowers/specs/2026-07-29-gatling-ci-perf-isolation-design.md
@@ -2147,6 +2159,7 @@ jobs:
       - security-zap
       - e2e-webdriverio
       - e2e-cypress
+      - perf-gatling-smoke
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
