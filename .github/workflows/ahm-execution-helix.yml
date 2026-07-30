@@ -2482,6 +2482,7 @@ jobs:
       - e2e-android
       - e2e-ios
       - perf-gatling
+      - perf-gatling-smoke
     if: ${{ always() && inputs.architecture_type == 'TOM' }}
     runs-on: ubuntu-latest
     env:
