@@ -17,6 +17,7 @@
     "wdaLaunchTimeout": 240000,
     "wdaConnectionTimeout": 240000,
     "showXcodeLog": true,
+    "autoAcceptAlerts": true,
     "isHeadless": true
   }
 }

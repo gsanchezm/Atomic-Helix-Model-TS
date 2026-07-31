@@ -8,7 +8,16 @@ const log = logger.child({ layer: 'molecule', action: 'order' });
 
 export async function placeOrder(): Promise<void> {
     await sendIntent(INTENT.CLICK, 'placeOrderButton');
-    await sendIntent(INTENT.WAIT_FOR_ELEMENT, 'confirmOrderModal||10000');
+    // Wait on the confirm BUTTON, not the modal wrapper. This is the same RN/XCUI
+    // pathology `verifyOrderAccepted` documents below: iOS renders the modal as an
+    // empty full-screen XCUIElementTypeOther with no drawn pixels, so XCUI reports
+    // `visible="false"` and `waitForDisplayed()` never resolves — even though the
+    // modal is open and its contents (title, total, Cancel, "Confirm and Pay") are
+    // all `visible="true"` in the very same page source. The workaround was applied
+    // to the success screen but never here, which cost all 10 iOS checkout
+    // scenarios in run 30567424468. `confirmOrderYesButton` is the element we click
+    // on the next line anyway, so waiting on it is also the more precise guard.
+    await sendIntent(INTENT.WAIT_FOR_ELEMENT, 'confirmOrderYesButton||10000');
     await sendIntent(INTENT.CLICK, 'confirmOrderYesButton');
 }
 
