@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'fs';
+import { chmodSync, mkdirSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
 import { ActionHandler } from '@plugins/shared/ActionHandler';
 import { runCommand } from '@plugins/shared/command-runner';
@@ -53,6 +53,15 @@ function action(name: string, active: boolean): ActionHandler<ZapActionContext> 
             const config = requireConfig(target);
             const reportDir = resolve(config.reportDir ?? `reports/security/zap/${sessionId}`);
             mkdirSync(reportDir, { recursive: true });
+            // The ZAP image runs as `zap` (uid 1000). On a Linux runner this directory is
+            // created by the CI user (uid 1001) under umask 022, i.e. 0755 — the container
+            // can read the plan but cannot create the report, which surfaces as
+            // `AccessDeniedException /zap/wrk/zap-report.json` *after* a full scan has run.
+            // Docker Desktop on Windows hides this by presenting bind mounts as 0777, which
+            // is why the same code passes locally. Leaf only on purpose: the parents that
+            // `recursive: true` creates stay 0755 and traverse is all the container needs
+            // on them. On Windows this is a no-op — Node's chmod only maps the read-only bit.
+            chmodSync(reportDir, 0o777);
             writeFileSync(resolve(reportDir, 'zap-plan.yaml'), yaml(config, active), 'utf8');
             const env: NodeJS.ProcessEnv = {};
             if (config.authToken) {
