@@ -140,6 +140,13 @@ async function tapOutsideKeyboard(driver: Browser): Promise<void> {
 
 export async function blurActiveTextInput(driver: Browser): Promise<void> {
     if (PLATFORM !== 'ios') return;
+    // Same guard `dismissKeyboard` has had all along, and its absence here was
+    // plain inconsistency: with no keyboard up there is no focused input to blur,
+    // so the tap below is pure side effect. It is not a harmless one — a blind tap
+    // at (width/2, 150) lands on a modal's full-screen dismiss scrim and closes it.
+    // Across run 30649723752 no keyboard was up at any CLICK preamble, so every one
+    // of those taps was gratuitous.
+    if (!(await isKeyboardShown(driver))) return;
     try {
         const size = await driver.getWindowSize();
         await driver.executeScript('mobile: tap', [{
