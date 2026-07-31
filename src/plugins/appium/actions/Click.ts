@@ -74,19 +74,44 @@ export const ClickAction: ActionHandler<AppiumActionContext> = {
             process.stderr.write(`[Appium-DBG] CLICK ${target} ${phase} t+${Date.now() - t0}ms\n`);
         dbg('enter');
         const element = driver.$(target);
-        // Dismiss first so the click can't land on a keyboard key. On the
-        // checkout page XCUI's isDisplayed returns true for buttons that
-        // sit under the keyboard, so a tap at the button's hit-point would
-        // land on a keyboard key.
-        await helpers.dismissKeyboard(driver);
-        await helpers.blurActiveTextInput(driver);
-        dbg('post-dismiss');
-        await helpers.scrollIntoViewSafe(driver, element, target);
-        dbg('post-scroll');
-        // The scroll loop uses touch-based `mobile: swipe` which can graze
-        // a TextInput and reopen the keyboard. Dismiss again before the tap.
-        await helpers.dismissKeyboard(driver);
-        dbg('post-dismiss2');
+        // On iOS, skip the whole preamble when the target is ALREADY tappable.
+        // The preamble is not free: `blurActiveTextInput` issues a blind
+        // `mobile: tap` at (width/2, 150), and on a modal that coordinate lands
+        // on the full-screen press-to-dismiss scrim — closing the very dialog we
+        // are about to click. That cost all 10 iOS checkout scenarios in run
+        // 30649723752: the wait on `~btn-confirm-order-yes` resolved in under a
+        // second, the blur tap fired, and 1.5 s later the element was gone from
+        // the hierarchy entirely ("because element wasn't found" — a failed find,
+        // not a stale handle). Android passed the same 10 scenarios in the same
+        // run for one reason only: both dismiss helpers early-return on non-iOS,
+        // so the tap never happens there.
+        //
+        // This is not a new heuristic — `scrollIntoViewSafe` already opens with
+        // exactly this predicate. We only ask it BEFORE the preamble can
+        // invalidate the element the predicate is about to be asked about.
+        // `isFrameInTapZone` accounts for the keyboard (`safeBottom = kbTop - 16`),
+        // so a control genuinely trapped under the keypad still gets the full
+        // treatment below.
+        const alreadyTappable = platform === 'ios'
+            && await helpers.isFrameInTapZone(driver, element).catch(() => false);
+
+        if (alreadyTappable) {
+            dbg('preamble-skipped');
+        } else {
+            // Dismiss first so the click can't land on a keyboard key. On the
+            // checkout page XCUI's isDisplayed returns true for buttons that
+            // sit under the keyboard, so a tap at the button's hit-point would
+            // land on a keyboard key.
+            await helpers.dismissKeyboard(driver);
+            await helpers.blurActiveTextInput(driver);
+            dbg('post-dismiss');
+            await helpers.scrollIntoViewSafe(driver, element, target);
+            dbg('post-scroll');
+            // The scroll loop uses touch-based `mobile: swipe` which can graze
+            // a TextInput and reopen the keyboard. Dismiss again before the tap.
+            await helpers.dismissKeyboard(driver);
+            dbg('post-dismiss2');
+        }
 
         if (platform === 'ios') {
             const result = await clickIos({ driver, helpers, target }, element, dbg);
