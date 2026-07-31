@@ -407,6 +407,12 @@ jobs:
       options: --user 0
 
     env:
+      # Firefox refuses to start when $HOME is not owned by the running user. The
+      # container runs as root (--user 0) but Actions points HOME at /github/home,
+      # owned by uid 1001, so Firefox aborts on a sandbox EPERM while Chromium and
+      # WebKit are unaffected. This is the workaround Playwright itself prints.
+      # Only set on the two jobs that actually have a firefox matrix leg.
+      HOME: /root
       TOOL_NAME: playwright
       PLATFORM: web
       VIEWPORT: desktop
@@ -544,6 +550,9 @@ jobs:
       options: --user 0
 
     env:
+      # See the desktop job: Firefox will not launch unless $HOME is owned by the
+      # running user, and the container's HOME defaults to /github/home (uid 1001).
+      HOME: /root
       TOOL_NAME: playwright
       PLATFORM: web
       VIEWPORT: responsive
