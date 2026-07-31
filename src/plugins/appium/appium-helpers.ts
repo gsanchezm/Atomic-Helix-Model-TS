@@ -99,6 +99,16 @@ async function swipeUpW3C(driver: Browser, percent = 0.55): Promise<void> {
 // --- Keyboard handling ---
 
 export async function isKeyboardShown(driver: Browser): Promise<boolean> {
+    if (PLATFORM === 'android') {
+        // UiAutomator2 answers this directly (GET .../appium/device/is_keyboard_shown,
+        // supported since UiAutomator 4.2). There is no Android analogue of the
+        // XCUIElementTypeKeyboard query below — that element is iOS-only, which is
+        // why this function used to return a flat `false` on Android and silently
+        // turned every keyboard-handling path into a no-op.
+        const maybeDriver = driver as unknown as { isKeyboardShown?: () => Promise<boolean> };
+        if (typeof maybeDriver.isKeyboardShown !== 'function') return false;
+        return await maybeDriver.isKeyboardShown().catch(() => false);
+    }
     if (PLATFORM !== 'ios') return false;
     try {
         const kb = driver.$('XCUIElementTypeKeyboard');
@@ -150,7 +160,25 @@ export async function blurActiveTextInput(driver: Browser): Promise<void> {
     } catch { /* best effort */ }
 }
 
+// Android keeps its own path deliberately. The iOS strategies below all key off
+// `keyboardTopY`, which queries an iOS-only element and returns null on Android —
+// so `tapOutsideKeyboard` would tap a blind y=120 that can land on real content.
+// Android has a first-class primitive instead, and that is all this uses: no
+// coordinate taps, and no BACK keycode, which would navigate away from the screen
+// if the IME closed between the check and the press.
+async function dismissKeyboardAndroid(driver: Browser): Promise<void> {
+    if (!(await isKeyboardShown(driver))) return;
+    try {
+        const maybeDriver = driver as unknown as { hideKeyboard?: () => Promise<void> };
+        if (typeof maybeDriver.hideKeyboard === 'function') {
+            await maybeDriver.hideKeyboard();
+            await waitForKeyboardState(driver, false, 400);
+        }
+    } catch { /* best effort — no worse than the no-op this replaces */ }
+}
+
 export async function dismissKeyboard(driver: Browser): Promise<void> {
+    if (PLATFORM === 'android') return dismissKeyboardAndroid(driver);
     if (PLATFORM !== 'ios') return;
     if (!(await isKeyboardShown(driver))) return;
 
