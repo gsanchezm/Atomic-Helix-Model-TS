@@ -126,6 +126,8 @@ export async function assertAddToCartLabelReflects(expected: string): Promise<vo
 }
 
 const MODAL_OPEN_WAIT_MS = 15_000;
+/** How long to keep re-reading the catalog after a language switch re-render. */
+const CATALOG_REREAD_POLL_MS = 15_000;
 
 async function readAddToCartLabel(): Promise<string> {
     if (isWebDriver()) {
@@ -137,7 +139,16 @@ async function readAddToCartLabel(): Promise<string> {
         // so the visual snapshot bucket captures the catalog and not a
         // leftover modal.
         const pizzaId = await firstCatalogPizzaIdOrEmpty();
-        if (!pizzaId) return '';
+        // Returning '' here made the caller report `expected "Ajouter", got ""`,
+        // which reads as a translation bug in the app when it is really "the
+        // catalog never re-rendered". Name the actual condition.
+        if (!pizzaId) {
+            throw new Error(
+                '[navbar:language] no catalog cards after the language switch — ' +
+                `no [data-testid^='add-to-cart-'] element within ${CATALOG_REREAD_POLL_MS}ms, ` +
+                'so the add-to-cart label could not be read at all.',
+            );
+        }
 
         const viewport = (process.env.VIEWPORT ?? 'desktop').toLowerCase();
         const suffix = viewport === 'responsive' ? 'responsive' : 'desktop';
@@ -177,7 +188,26 @@ async function firstCatalogPizzaIdOrEmpty(): Promise<string> {
     // first. Best-effort: a genuine absence still falls through to '' so the
     // caller's contract (return '' when there's no catalog) is preserved.
     await sendIntent(INTENT.WAIT_FOR_ELEMENT, `[data-testid^='add-to-cart-']||${MODAL_OPEN_WAIT_MS}`)
-        .catch(() => { /* fall through; command below returns '' if truly absent */ });
-    const result = await sendBrowserCommand(BROWSER_COMMAND.GET_FIRST_PIZZA_ID);
-    return (result.payload ?? '').trim();
+        .catch((err: unknown) => {
+            // Do NOT discard this. When the catalog never comes back, this
+            // rejection is the only description of why, and the caller can
+            // otherwise only report an empty label — which is exactly what made
+            // this failure masquerade as a translation mismatch for two runs.
+            log.warn(
+                { err: (err as Error)?.message },
+                'add-to-cart wait rejected; polling for the catalog anyway',
+            );
+        });
+    // The wait and the read are two separate round trips, so a re-render landing
+    // in between still yielded ''. Poll the read instead of taking it single-shot:
+    // whichever half of the race we lose, a later poll picks the catalog up once
+    // its cards have re-mounted. A genuine absence still returns '' at the
+    // deadline, preserving the caller's contract.
+    const deadline = Date.now() + CATALOG_REREAD_POLL_MS;
+    for (;;) {
+        const result = await sendBrowserCommand(BROWSER_COMMAND.GET_FIRST_PIZZA_ID);
+        const pizzaId = (result.payload ?? '').trim();
+        if (pizzaId || Date.now() >= deadline) return pizzaId;
+        await new Promise((r) => setTimeout(r, 100));
+    }
 }
