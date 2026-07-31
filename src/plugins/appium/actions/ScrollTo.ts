@@ -44,6 +44,30 @@ export const ScrollToAction: ActionHandler<AppiumActionContext> = {
             }
         }
 
+        // Android: try UiScrollable first. It searches BOTH directions from the
+        // current offset, which the gesture fallback below cannot do — that one
+        // only scrolls downward, so it can never reach a target the view is
+        // already scrolled past. This matters after a CLICK near the bottom of a
+        // long form: `scrollIntoViewSafe` drives the ScrollView to its maximum
+        // offset, and a later SCROLL_TO back up to a top-of-form field would
+        // otherwise swipe further away from it. Same idiom as
+        // `appium-helpers.scrollIntoViewAndroid`, which is proven on this app.
+        const inner = target.startsWith('~')
+            ? `new UiSelector().description("${target.slice(1)}")`
+            : target.startsWith('android=')
+                ? target.slice('android='.length)
+                : undefined;
+        if (inner) {
+            try {
+                await driver.$(
+                    `android=new UiScrollable(new UiSelector().scrollable(true).instance(0)).scrollIntoView(${inner})`,
+                );
+                if (await driver.$(target).isDisplayed().catch(() => false)) {
+                    return `Scrolled to (UiScrollable): ${target}`;
+                }
+            } catch { /* fall through to the gesture fallback */ }
+        }
+
         // Android (UiAutomator2) gesture fallback — a screen-level scroll that
         // doesn't depend on the ScrollView class, re-checking visibility
         // between swipes.
