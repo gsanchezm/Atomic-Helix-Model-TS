@@ -25,7 +25,7 @@
   "sizeOptionsList": {
     "web": "[data-testid^='size-']",
     "mobile": {
-      "android": "android=new UiSelector().descriptionStartsWith(\"btn-size-\")",
+      "android": "android=new UiSelector().resourceIdMatches(\"btn-size-.*\")",
       "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'btn-size-'`]"
     }
   },
@@ -37,7 +37,7 @@
   },
   "sizeOptionPrice": {
     "mobile": {
-      "android": "android=new UiSelector().descriptionStartsWith(\"text-size-price-\")",
+      "android": "android=new UiSelector().resourceIdMatches(\"text-size-price-.*\")",
       "ios": "-ios class chain:**/XCUIElementTypeStaticText[`name BEGINSWITH 'text-size-price-'`]"
     }
   },
@@ -49,20 +49,20 @@
   },
   "toppingGroupList": {
     "mobile": {
-      "android": "android=new UiSelector().descriptionStartsWith(\"text-topping-group-\")",
+      "android": "android=new UiSelector().resourceIdMatches(\"text-topping-group-.*\")",
       "ios": "-ios class chain:**/XCUIElementTypeStaticText[`name BEGINSWITH 'text-topping-group-'`]"
     }
   },
   "toppingGroupTitle": {
     "mobile": {
-      "android": "android=new UiSelector().descriptionStartsWith(\"text-topping-group-\")",
+      "android": "android=new UiSelector().resourceIdMatches(\"text-topping-group-.*\")",
       "ios": "-ios class chain:**/XCUIElementTypeStaticText[`name BEGINSWITH 'text-topping-group-'`]"
     }
   },
   "toppingsList": {
     "web": "[data-testid^='topping-']",
     "mobile": {
-      "android": "android=new UiSelector().descriptionStartsWith(\"btn-topping-\")",
+      "android": "android=new UiSelector().resourceIdMatches(\"btn-topping-.*\")",
       "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'btn-topping-'`]"
     }
   },

@@ -35,7 +35,7 @@
   "categoryList": {
     "web": "[data-testid^='category-']",
     "mobile": {
-      "android": "android=new UiSelector().descriptionStartsWith(\"btn-category-\")",
+      "android": "android=new UiSelector().resourceIdMatches(\"btn-category-.*\")",
       "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'btn-category-'`]"
     }
   },
@@ -49,7 +49,7 @@
   "pizzaCardList": {
     "web": "[data-testid^='pizza-card-']",
     "mobile": {
-      "android": "android=new UiSelector().descriptionStartsWith(\"card-pizza-\")",
+      "android": "android=new UiSelector().resourceIdMatches(\"card-pizza-.*\")",
       "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'card-pizza-'`]"
     }
   },

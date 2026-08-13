@@ -20,14 +20,14 @@
   "marketButtonList": {
     "web": "[data-testid^='market-']",
     "mobile": {
-      "android": "android=new UiSelector().descriptionStartsWith(\"btn-market-\")",
+      "android": "android=new UiSelector().resourceIdMatches(\"btn-market-.*\")",
       "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'btn-market-'`]"
     }
   },
   "switzerlandLanguageList": {
     "web": "[data-testid^='lang-']",
     "mobile": {
-      "android": "android=new UiSelector().descriptionStartsWith(\"btn-lang-\")",
+      "android": "android=new UiSelector().resourceIdMatches(\"btn-lang-.*\")",
       "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'btn-lang-'`]"
     }
   },
@@ -60,7 +60,7 @@
   },
   "marketFlag": {
     "mobile": {
-      "android": "android=new UiSelector().descriptionStartsWith(\"text-flag-\")",
+      "android": "android=new UiSelector().resourceIdMatches(\"text-flag-.*\")",
       "ios": "-ios class chain:**/XCUIElementTypeStaticText[`name BEGINSWITH 'text-flag-'`]"
     }
   },
@@ -81,13 +81,13 @@
   "quickLoginUserList": {
     "web": "[data-testid^='user-']",
     "mobile": {
-      "android": "android=new UiSelector().descriptionStartsWith(\"btn-user-\")",
+      "android": "android=new UiSelector().resourceIdMatches(\"btn-user-.*\")",
       "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'btn-user-'`]"
     }
   },
   "quickLoginUserLabel": {
     "mobile": {
-      "android": "android=new UiSelector().descriptionStartsWith(\"text-user-label-\")",
+      "android": "android=new UiSelector().resourceIdMatches(\"text-user-label-.*\")",
       "ios": "-ios class chain:**/XCUIElementTypeStaticText[`name BEGINSWITH 'text-user-label-'`]"
     }
   }

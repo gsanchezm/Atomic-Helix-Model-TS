@@ -75,7 +75,7 @@
   },
   "bottomNavList": {
     "mobile": {
-      "android": "android=new UiSelector().descriptionMatches(\"nav-[a-z]+\")",
+      "android": "android=new UiSelector().resourceIdMatches(\"nav-[a-z]+\")",
       "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'nav-'`]"
     }
   },
@@ -87,13 +87,13 @@
   },
   "bottomNavBadge": {
     "mobile": {
-      "android": "android=new UiSelector().descriptionStartsWith(\"view-nav-badge-\")",
+      "android": "android=new UiSelector().resourceIdMatches(\"view-nav-badge-.*\")",
       "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'view-nav-badge-'`]"
     }
   },
   "bottomNavBadgeText": {
     "mobile": {
-      "android": "android=new UiSelector().descriptionStartsWith(\"text-nav-badge-\")",
+      "android": "android=new UiSelector().resourceIdMatches(\"text-nav-badge-.*\")",
       "ios": "-ios class chain:**/XCUIElementTypeStaticText[`name BEGINSWITH 'text-nav-badge-'`]"
     }
   }

@@ -15,7 +15,7 @@
       "desktop": "[data-testid='address-desktop']"
     },
     "mobile": {
-      "android": "android=new UiSelector().description(\"input-address\")",
+      "android": "android=new UiSelector().resourceId(\"input-address\")",
       "ios": "~input-address"
     }
   },
@@ -64,7 +64,7 @@
   "paymentMethodList": {
     "web": "[role='radiogroup'] [role='radio']",
     "mobile": {
-      "android": "android=new UiSelector().descriptionStartsWith(\"btn-payment-\")",
+      "android": "android=new UiSelector().resourceIdMatches(\"btn-payment-.*\")",
       "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'btn-payment-'`]"
     }
   },
@@ -87,7 +87,7 @@
   "cardNumberInput": {
     "web": "[data-testid='card-number']",
     "mobile": {
-      "android": "android=new UiSelector().className(\"android.widget.EditText\").description(\"input-card-number\")",
+      "android": "android=new UiSelector().className(\"android.widget.EditText\").resourceId(\"input-card-number\")",
       "ios": "-ios predicate string:type == 'XCUIElementTypeTextField' AND name == 'input-card-number'"
     }
   },
@@ -106,7 +106,7 @@
   "actionItemsList": {
     "web": "button:has-text(\"Edit\"), button:has-text(\"Remove\")",
     "mobile": {
-      "android": "android=new UiSelector().descriptionMatches(\"text-(edit|remove)-item.*\")",
+      "android": "android=new UiSelector().resourceIdMatches(\"text-(edit|remove)-item.*\")",
       "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'btn-edit-item' OR name BEGINSWITH 'btn-remove-item'`]"
     }
   },
@@ -120,7 +120,7 @@
   "tipOptionsList": {
     "web": "[data-testid^='order-tip-']",
     "mobile": {
-      "android": "android=new UiSelector().descriptionMatches(\"btn-tip-(0|5|10|15)\")",
+      "android": "android=new UiSelector().resourceIdMatches(\"btn-tip-(0|5|10|15)\")",
       "ios": "-ios predicate string:name IN {'btn-tip-0','btn-tip-5','btn-tip-10','btn-tip-15'}"
     }
   },
