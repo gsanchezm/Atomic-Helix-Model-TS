@@ -285,9 +285,17 @@ export async function tapElementCenter(driver: Browser, target: any): Promise<vo
 async function scrollIntoViewAndroid(driver: Browser, selector: string): Promise<boolean> {
     if (PLATFORM !== 'android') return false;
 
+    // Accessibility-id targets (`~key`) must scroll by resource-id, not
+    // content-desc: RN mirrors testID into both attributes by default, but a
+    // node with an explicit accessibilityLabel (e.g. catalog's add-pizza
+    // buttons carry a screen-reader label like "Add Prosciutto") overrides
+    // content-desc while resource-id still holds the raw testID — confirmed
+    // on-device 2026-08-13 via a page-source dump: description("btn-add-
+    // pizza-p02") never matches, so UiScrollable silently scrolls to the end
+    // of the list looking for a description that was never there.
     let innerSelector: string | undefined;
     if (selector.startsWith('~')) {
-        innerSelector = `new UiSelector().description("${selector.slice(1)}")`;
+        innerSelector = `new UiSelector().resourceId("${selector.slice(1)}")`;
     } else if (selector.startsWith('android=')) {
         innerSelector = selector.slice('android='.length);
     }

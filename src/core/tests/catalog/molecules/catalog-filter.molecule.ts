@@ -30,9 +30,17 @@ export async function selectCategory(categoryId: string): Promise<void> {
         // resolve the UiScrollable selector via WAIT_FOR_ELEMENT to SCROLL the
         // pill into view (no click), scoped to `view-category-pills` by
         // resourceId (the rebuilt app instruments it via getTestProps), then
-        // (2) tap the pill directly by its own accessibility id.
+        // (2) tap the pill directly by its own accessibility id (rewritten to
+        // a resourceId-based UiSelector centrally — see
+        // androidizeAccessibilitySelector in src/plugins/appium/appium.ts).
+        // The inner scrollIntoView target must ALSO match by resourceId, not
+        // description/content-desc: confirmed on-device 2026-08-13 that these
+        // pills carry a screen-reader content-desc distinct from their
+        // testID, the same content-desc/resource-id split fixed for the
+        // catalog add-pizza buttons — description(...) here never matched,
+        // so the pill never actually scrolled into view before the CLICK ran.
         const scrollSel = `android=new UiScrollable(new UiSelector().resourceId("view-category-pills").scrollable(true))`
-            + `.setAsHorizontalList().scrollIntoView(new UiSelector().description("btn-category-${id}"))`;
+            + `.setAsHorizontalList().scrollIntoView(new UiSelector().resourceId("btn-category-${id}"))`;
         await sendIntent(INTENT.WAIT_FOR_ELEMENT, `${scrollSel}||8000`);
         await sendIntent(INTENT.CLICK, `~btn-category-${id}`);
         return;

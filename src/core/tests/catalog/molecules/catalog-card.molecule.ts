@@ -15,7 +15,12 @@ const BUILDER_WAIT_TIMEOUT_MS = 15_000;
  *  - mobile: tapping `~btn-add-pizza-<id>` opens the native pizza-builder
  *    screen (`~screen-pizza-builder`). Verified on-device 2026-05-28: the
  *    card body has no handler and `omnipizza://customizer` has no deep-link
- *    route, so the add button is the only builder entry point.
+ *    route, so the add button is the only builder entry point. On Android
+ *    the appium plugin rewrites `~key` to a resource-id-based UiSelector
+ *    before it reaches WebdriverIO (see `androidizeAccessibilitySelector` in
+ *    `src/plugins/appium/appium.ts`) — these buttons carry a screen-reader
+ *    `content-desc` like "Add Pepperoni" that would otherwise shadow the
+ *    testID for UiAutomator2's `~` accessibility-id strategy.
  *
  * `pizzaId` is the backend's pizza id — an opaque cross-market identifier
  * (`p01`..`p12` in current builds). Ids are intentionally opaque and stable
