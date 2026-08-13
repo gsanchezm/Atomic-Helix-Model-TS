@@ -26,6 +26,36 @@ export function getAppId(): string {
     return cachedAppId;
 }
 
+// --- Android accessibility-id -> resource-id rewrite ---
+//
+// RN mirrors `testID` into both `content-desc` and `resource-id` by default,
+// but a node with an explicit `accessibilityLabel` (screen-reader text like
+// "Add Pepperoni" on a button whose testID is `btn-add-pizza-p02`) overrides
+// content-desc while resource-id keeps the raw testID. UiAutomator2's `~`
+// accessibility-id strategy matches content-desc, so any `~key` selector
+// whose element carries a distinct label never resolves — confirmed
+// on-device 2026-08-13 via WaitForElement's page-source dump (content-desc
+// "Add to Cart" / resource-id "btn-add-to-cart"), which manifested as a
+// silent scroll-to-end-of-list followed by "element wasn't found"/timeout.
+// resource-id has been reliable for every inspected element (including ones
+// where content-desc does equal the testID), so on Android prefer it
+// unconditionally rather than only as a fallback. iOS's XCUITest
+// accessibility-id resolution doesn't have this split.
+//
+// The proxy dispatch path (appium.ts execute()) rewrites its `target`
+// automatically, but any action that builds a NEW `~key` selector of its own
+// mid-execution (e.g. SelectOption's dropdown-option selector) bypasses that
+// single choke point — call this directly in those cases.
+export function androidizeAccessibilitySelector(target: string): string {
+    if (PLATFORM !== 'android') return target;
+    const sepIndex = target.indexOf('||');
+    const selector = sepIndex === -1 ? target : target.slice(0, sepIndex);
+    const rest = sepIndex === -1 ? '' : target.slice(sepIndex);
+    if (!selector.startsWith('~')) return target;
+    const key = selector.slice(1);
+    return `android=new UiSelector().resourceId("${key}")${rest}`;
+}
+
 // --- Android system dialog dismissal ---
 
 export async function dismissAndroidSystemDialog(driver: Browser): Promise<void> {
