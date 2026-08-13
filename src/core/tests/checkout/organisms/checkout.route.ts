@@ -1,14 +1,17 @@
 import { sendIntent } from '@kernel/client';
 import { logger } from '@utils/logger';
+import { HttpError } from '@plugins/api/http';
 import { UsersDataSource } from '@core/test-data/users.data-source';
 import { LoginDao } from '@core/tests/login/dao/login.dao';
 import { CheckoutDao } from '@core/tests/checkout/dao/checkout.dao';
 import type {
+    CartItemRequest,
     CartItemResponse,
     CheckoutRequest,
     CheckoutResponse,
     CountryCode,
     CountryInfo,
+    Pizza,
 } from '@core/tests/checkout/dao/checkout.types';
 import {
     injectBrowserSession,
@@ -153,22 +156,7 @@ export class CheckoutRoute {
     async addToOrder(item: string, size: string, qty: number): Promise<void> {
         const { token, market } = this.requireAuthAndMarket('order setup');
 
-        log.info({ market, item, size, qty }, 'Fetching pizzas');
-        const pizzas = await this.checkout.getPizzas({ token, countryCode: market });
-        if (!pizzas?.length) {
-            throw new Error(`Pizzas API empty for market "${market}". Verify /api/pizzas.`);
-        }
-
-        const pizza = pizzas.find((p) => p.name.toLowerCase() === item.toLowerCase());
-        if (!pizza) {
-            const available = pizzas.map((p) => p.name).join(', ');
-            throw new Error(`Pizza "${item}" not found for "${market}". Available: ${available}`);
-        }
-        if (!pizza.id || pizza.price <= 0) {
-            throw new Error(`Pizza "${item}" has invalid data: id="${pizza.id}", price=${pizza.price}`);
-        }
-
-        log.info({ pizzaId: pizza.id, pizzaName: pizza.name, price: pizza.price }, 'Pizza selected');
+        const pizza = await this.findPizza(token, market, item);
 
         // $S_0$ state injection via API (faster than UI cart manipulation).
         await this.checkout.addToCart({
@@ -264,6 +252,155 @@ export class CheckoutRoute {
         await verifyOrderOnUI(country, this.world.orderContext!.cartItems);
     }
 
+    // -- cart-item management (PUT/DELETE /api/cart/items/{item_id}) --
+    //
+    // Test-setup infrastructure, same category as addToOrder's addToCart
+    // call — no UI surface exists for editing/removing a single cart line
+    // (the mobile app's "Remove" button only mutates local Zustand state,
+    // never the backend), so these run @api-only.
+
+    /** Upsert one cart line. `conflictingBodyItemId`, when set, proves the
+     * backend ignores any item_id in the body — the URL id always wins. */
+    async putCartItem(
+        itemId: string,
+        pizzaName: string,
+        size: string,
+        qty: number,
+        conflictingBodyItemId?: string,
+    ): Promise<void> {
+        const { token, market } = this.requireAuthAndMarket('put cart item');
+        const pizza = await this.findPizza(token, market, pizzaName);
+
+        const item: CartItemRequest = { pizza_id: pizza.id, size, quantity: qty };
+        if (conflictingBodyItemId) item.item_id = conflictingBodyItemId;
+
+        try {
+            const session = await this.checkout.updateCartItem({ token, itemId, item });
+            this.world.cartItemResult = { ok: true, status: 200, session };
+        } catch (err) {
+            this.recordCartItemError(err);
+        }
+    }
+
+    async deleteCartItem(itemId: string): Promise<void> {
+        const token = this.world.auth?.token;
+        if (!token) throw new Error('Missing auth token at "delete cart item" stage. Run login step first.');
+
+        try {
+            const session = await this.checkout.removeCartItem({ token, itemId });
+            this.world.cartItemResult = { ok: true, status: 200, session };
+        } catch (err) {
+            this.recordCartItemError(err);
+        }
+    }
+
+    verifyCartContainsItem(itemId: string, expectedQty: number): void {
+        const result = this.world.cartItemResult;
+        if (!result?.ok) throw new Error(`Expected a successful cart-item response, got: ${JSON.stringify(result)}`);
+        const line = result.session?.cart_items.find((i) => i.item_id === itemId);
+        if (!line) throw new Error(`Expected cart to contain item_id "${itemId}". Got: ${JSON.stringify(result.session?.cart_items)}`);
+        if (line.quantity !== expectedQty) {
+            throw new Error(`Expected item "${itemId}" to have quantity ${expectedQty}, got ${line.quantity}.`);
+        }
+    }
+
+    verifyCartDoesNotContainItem(itemId: string): void {
+        const result = this.world.cartItemResult;
+        if (!result?.ok) throw new Error(`Expected a successful cart-item response, got: ${JSON.stringify(result)}`);
+        const found = result.session?.cart_items.some((i) => i.item_id === itemId);
+        if (found) throw new Error(`Expected cart NOT to contain item_id "${itemId}", but it did.`);
+    }
+
+    verifyCartItemRequestStatus(expectedStatus: number): void {
+        const result = this.world.cartItemResult;
+        if (!result) throw new Error('No cart-item request result recorded. Run a PUT/DELETE step first.');
+        if (result.ok) throw new Error(`Expected the cart-item request to fail with status ${expectedStatus}, but it succeeded.`);
+        if (result.status !== expectedStatus) {
+            throw new Error(`Expected status ${expectedStatus}, got ${result.status} ("${result.message}").`);
+        }
+    }
+
+    // -- order cancellation (PATCH /api/orders/{order_id}) --
+    //
+    // Real business capability, but still no UI trigger today (the
+    // "Cancel" button in the pre-order confirmation modal just dismisses
+    // that modal — it never PATCHes an existing order), so @api-only for
+    // now, same reasoning as the cart-item endpoints above.
+
+    /** Places a minimal real order via the API as setup for cancellation
+     * scenarios — deliberately bypasses the multi-step UI checkout flow
+     * (fillDelivery/selectPayment/etc.) since the behavior under test here
+     * is cancellation, not checkout placement. */
+    async placeQuickOrder(pizzaName: string, size: string, qty: number): Promise<void> {
+        const { token, market } = this.requireAuthAndMarket('order-cancel setup');
+        const country = this.world.orderContext!.countryInfo;
+        const pizza = await this.findPizza(token, market, pizzaName);
+
+        const body: CheckoutRequest = {
+            country_code: market,
+            items: [{ pizza_id: pizza.id, size, quantity: qty }],
+            name: 'QA Bot',
+            address: '123 Test Street',
+            phone: '+1 415 555 0199',
+            payment_method: 'card',
+        };
+        this.applyMarketFields(body, country, { zip: '00000', suburb: 'Roma Norte' });
+
+        const result = await this.checkout.placeOrder({ token, countryCode: market, body });
+        if (!result.order_id) {
+            throw new Error(`API placeOrder rejected the setup order. Response: ${JSON.stringify(result)}`);
+        }
+        this.world.placedOrderId = result.order_id;
+        log.info({ orderId: result.order_id }, 'Order placed as cancellation setup');
+    }
+
+    /** Cancels the order set up by placeQuickOrder, as the currently logged-in user. */
+    async cancelOrder(): Promise<void> {
+        const token = this.world.auth?.token;
+        if (!token) throw new Error('Missing auth token at "cancel order" stage. Run login step first.');
+        await this.cancelOrderWithToken(this.requirePlacedOrderId(), token);
+    }
+
+    /** Cancels the order set up by placeQuickOrder, as a different logged-in
+     * user — independent login, does not touch world.auth (the Background's
+     * primary user stays logged in for later steps). */
+    async cancelOrderAs(userAlias: string): Promise<void> {
+        const orderId = this.requirePlacedOrderId();
+        const user = await this.users.getUser(userAlias);
+        const loginResponse = await this.login.login({
+            username: user.username,
+            email: user.email,
+            password: user.password,
+        });
+        const token = this.login.extractToken(loginResponse);
+        if (!token) throw new Error(`Login failed for "${userAlias}". No token received.`);
+        await this.cancelOrderWithToken(orderId, token);
+    }
+
+    /** Cancels an explicit order id (e.g. a nonexistent one) as the current user. */
+    async cancelOrderById(orderId: string): Promise<void> {
+        const token = this.world.auth?.token;
+        if (!token) throw new Error('Missing auth token at "cancel order" stage. Run login step first.');
+        await this.cancelOrderWithToken(orderId, token);
+    }
+
+    verifyOrderStatus(expectedStatus: string): void {
+        const result = this.world.orderCancelResult;
+        if (!result?.ok) throw new Error(`Expected a successful order-cancel response, got: ${JSON.stringify(result)}`);
+        if (result.order?.status !== expectedStatus) {
+            throw new Error(`Expected order status "${expectedStatus}", got "${result.order?.status}".`);
+        }
+    }
+
+    verifyOrderCancelRequestStatus(expectedStatus: number): void {
+        const result = this.world.orderCancelResult;
+        if (!result) throw new Error('No order-cancel request result recorded. Run a cancel step first.');
+        if (result.ok) throw new Error(`Expected the order-cancel request to fail with status ${expectedStatus}, but it succeeded.`);
+        if (result.status !== expectedStatus) {
+            throw new Error(`Expected status ${expectedStatus}, got ${result.status} ("${result.message}").`);
+        }
+    }
+
     // -- lifecycle --
 
     // Reset strategies dispatched by DRIVER env. Adding a new driver = add an entry,
@@ -305,6 +442,69 @@ export class CheckoutRoute {
         return { token, market };
     }
 
+    // Shared by addToOrder and placeQuickOrder — both need a real, priced
+    // pizza id resolved from a human-readable name before writing to the cart
+    // or submitting a checkout body.
+    private async findPizza(token: string, market: CountryCode, name: string): Promise<Pizza> {
+        log.info({ market, item: name }, 'Fetching pizzas');
+        const pizzas = await this.checkout.getPizzas({ token, countryCode: market });
+        if (!pizzas?.length) {
+            throw new Error(`Pizzas API empty for market "${market}". Verify /api/pizzas.`);
+        }
+
+        const pizza = pizzas.find((p) => p.name.toLowerCase() === name.toLowerCase());
+        if (!pizza) {
+            const available = pizzas.map((p) => p.name).join(', ');
+            throw new Error(`Pizza "${name}" not found for "${market}". Available: ${available}`);
+        }
+        if (!pizza.id || pizza.price <= 0) {
+            throw new Error(`Pizza "${name}" has invalid data: id="${pizza.id}", price=${pizza.price}`);
+        }
+
+        log.info({ pizzaId: pizza.id, pizzaName: pizza.name, price: pizza.price }, 'Pizza selected');
+        return pizza;
+    }
+
+    // Shared by submitOrderViaApi and placeQuickOrder — maps a generic
+    // address into whichever field COUNTRY_CONFIG requires for that market
+    // (colonia/prefectura/plz/zip_code/district), plus the market's
+    // percentage-tip field, which the backend requires present even when 0.
+    private applyMarketFields(
+        body: CheckoutRequest,
+        country: CountryInfo,
+        address: { zip?: string; suburb?: string },
+    ): void {
+        for (const field of country.required_fields ?? []) {
+            if (field === 'colonia')         body.colonia    = address.suburb;
+            else if (field === 'prefectura') body.prefectura = address.suburb ?? address.zip;
+            else if (field === 'plz')        body.plz        = address.zip;
+            else if (field === 'zip_code')   body.zip_code   = address.zip;
+            else if (field === 'district')   body.district   = address.suburb ?? address.zip;
+        }
+        if (country.tip_field) body[country.tip_field] = 0;
+    }
+
+    private requirePlacedOrderId(): string {
+        const orderId = this.world.placedOrderId;
+        if (!orderId) throw new Error('No placed order to cancel. Run the order-setup step first.');
+        return orderId;
+    }
+
+    private async cancelOrderWithToken(orderId: string, token: string): Promise<void> {
+        try {
+            const order = await this.checkout.cancelOrder({ token, orderId });
+            this.world.orderCancelResult = { ok: true, status: 200, order };
+        } catch (err) {
+            if (!(err instanceof HttpError)) throw err;
+            this.world.orderCancelResult = { ok: false, status: err.status, message: err.message };
+        }
+    }
+
+    private recordCartItemError(err: unknown): void {
+        if (!(err instanceof HttpError)) throw err;
+        this.world.cartItemResult = { ok: false, status: err.status, message: err.message };
+    }
+
     // Submit the accumulated checkout state via the DAO. Mirrors the UI path's
     // placeOrder + success-screen wait: a populated `order_id` is the API's
     // analogue of the success screen rendering.
@@ -333,14 +533,7 @@ export class CheckoutRoute {
             payment_method: toApiPaymentMethod(payment.method),
         };
 
-        // Map address into the country-specific zip-shaped field.
-        for (const field of country.required_fields ?? []) {
-            if (field === 'colonia')         body.colonia    = address.suburb;
-            else if (field === 'prefectura') body.prefectura = address.suburb ?? address.zip;
-            else if (field === 'plz')        body.plz        = address.zip;
-            else if (field === 'zip_code')   body.zip_code   = address.zip;
-            else if (field === 'district')   body.district   = address.suburb ?? address.zip;
-        }
+        this.applyMarketFields(body, country, address);
 
         const isCard = payment.method.toLowerCase().includes('card');
         if (isCard) {
@@ -348,10 +541,6 @@ export class CheckoutRoute {
             body.card_expiry = payment.cardExpiry;
             body.card_cvv    = payment.cardCvv;
         }
-
-        // Tip field is required by some markets — default to 0 to stay focused
-        // on the order-accepted assertion (tip math has its own tests).
-        if (country.tip_field) body[country.tip_field] = 0;
 
         const result = await this.checkout.placeOrder({ token, countryCode: market, body });
         if (!result.order_id) {

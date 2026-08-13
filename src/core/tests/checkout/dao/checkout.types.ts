@@ -45,6 +45,11 @@ export interface CartItemRequest {
     pizza_id: string;
     size: string;
     quantity: number;
+    // Only meaningful on PUT /api/cart/items/{item_id}: the backend ignores
+    // this field there (the URL id is authoritative) and strips it before
+    // storing. Included so a scenario can prove that behavior by sending a
+    // conflicting value here.
+    item_id?: string;
 }
 
 export interface CartItemResponse {
@@ -63,6 +68,28 @@ export interface CartResponse {
     username: string;
     country_code: CountryCode;
     cart_items: CartItemResponse[];
+    updated_at: string;
+}
+
+// -- cart-item management (PUT/DELETE /api/cart/items/{item_id}) --
+//
+// These endpoints return the session's raw (unenriched) cart — the same
+// shape POST /api/cart's TestSessionStateResponse returns — not the priced
+// CartItemResponse GET /api/cart returns. Keep them separate types rather
+// than reusing CartItemResponse, which would claim fields (unit_price,
+// pizza, currency) that this wire shape doesn't have.
+export interface RawCartItem {
+    pizza_id: string;
+    item_id: string;
+    size: string;
+    quantity: number;
+    toppings: string[];
+}
+
+export interface SessionStateResponse {
+    username: string;
+    country_code: CountryCode;
+    cart_items: RawCartItem[];
     updated_at: string;
 }
 
@@ -86,16 +113,30 @@ export interface CheckoutRequest {
     [tipField: string]: unknown;
 }
 
+// Backend's OrderSummary — shared verbatim by POST /api/checkout,
+// GET /api/orders/{order_id} and PATCH /api/orders/{order_id} (cancellation).
 export interface CheckoutResponse {
     order_id: string;
     status: string;
     subtotal: number;
     delivery_fee: number;
+    tax_rate?: number;
+    tip_percentage?: number;
     tax: number;
     tip?: number;
     total: number;
     currency: string;
     currency_symbol: string;
+    items?: Array<Record<string, unknown>>;
+    timestamp?: string;
+}
+
+// -- order cancellation (PATCH /api/orders/{order_id}) --
+
+export interface OrderStatusUpdateRequest {
+    // Literal on the backend (models.OrderStatusUpdate) — cancellation is the
+    // only supported transition.
+    status: 'cancelled';
 }
 
 // -- DAO construction --

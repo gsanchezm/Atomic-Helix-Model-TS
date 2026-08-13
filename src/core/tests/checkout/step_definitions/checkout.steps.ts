@@ -52,6 +52,74 @@ Then('the order is accepted', async function () {
     await route(this).verifyOrderAccepted();
 });
 
+// -- cart-item management (PUT/DELETE /api/cart/items/{item_id}) --
+
+Given(
+    'they have a cart line {string} with {string} size {string} quantity {int}',
+    async function (itemId: string, pizza: string, size: string, qty: number) {
+        await route(this).putCartItem(itemId, pizza, size, qty);
+    },
+);
+
+When(
+    'they put cart item {string} as {string} size {string} quantity {int}',
+    async function (itemId: string, pizza: string, size: string, qty: number) {
+        await route(this).putCartItem(itemId, pizza, size, qty);
+    },
+);
+
+When(
+    'they put cart item {string} as {string} size {string} quantity {int} with a conflicting body item_id {string}',
+    async function (itemId: string, pizza: string, size: string, qty: number, conflictingBodyItemId: string) {
+        await route(this).putCartItem(itemId, pizza, size, qty, conflictingBodyItemId);
+    },
+);
+
+When('they delete cart item {string}', async function (itemId: string) {
+    await route(this).deleteCartItem(itemId);
+});
+
+Then('the cart contains item {string} with quantity {int}', async function (itemId: string, qty: number) {
+    route(this).verifyCartContainsItem(itemId, qty);
+});
+
+Then('the cart does not contain item {string}', async function (itemId: string) {
+    route(this).verifyCartDoesNotContainItem(itemId);
+});
+
+Then('the cart-item request is rejected with status {int}', async function (status: number) {
+    route(this).verifyCartItemRequestStatus(status);
+});
+
+// -- order cancellation (PATCH /api/orders/{order_id}) --
+
+Given(
+    'they have a placed order for {string} size {string} quantity {int}',
+    async function (pizza: string, size: string, qty: number) {
+        await route(this).placeQuickOrder(pizza, size, qty);
+    },
+);
+
+When('they cancel the order', async function () {
+    await route(this).cancelOrder();
+});
+
+When('{string} attempts to cancel that order', async function (userAlias: string) {
+    await route(this).cancelOrderAs(userAlias);
+});
+
+When('they cancel order {string}', async function (orderId: string) {
+    await route(this).cancelOrderById(orderId);
+});
+
+Then('the order status is {string}', async function (status: string) {
+    route(this).verifyOrderStatus(status);
+});
+
+Then('the order-cancel request is rejected with status {int}', async function (status: number) {
+    route(this).verifyOrderCancelRequestStatus(status);
+});
+
 After(async function () {
     try {
         await route(this).resetClientState();

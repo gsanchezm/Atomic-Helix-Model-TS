@@ -7,7 +7,9 @@ import type {
     CheckoutResponse,
     CountryCode,
     CountryInfo,
+    OrderStatusUpdateRequest,
     Pizza,
+    SessionStateResponse,
 } from '@core/tests/checkout/dao/checkout.types';
 
 // Internal shape — backend wraps Pizza[] in an envelope. Not exported because
@@ -26,7 +28,9 @@ const PATHS = {
     countries: '/api/countries',
     pizzas: '/api/pizzas',
     cart: '/api/cart',
+    cartItem: '/api/cart/items',
     checkout: '/api/checkout',
+    orders: '/api/orders',
 } as const;
 
 export class CheckoutDao {
@@ -91,6 +95,57 @@ export class CheckoutDao {
             headers: this.authHeaders(params.token, params.countryCode),
             body: params.body,
         });
+    }
+
+    // Upsert semantics: creates item_id if absent from the caller's session,
+    // fully replaces it otherwise. Any item_id on the body is ignored by the
+    // backend — the URL is authoritative. Does not read X-Country-Code.
+    updateCartItem(params: {
+        token: string;
+        itemId: string;
+        item: CartItemRequest;
+    }): Promise<SessionStateResponse> {
+        return this.httpClient.put<SessionStateResponse>(`${PATHS.cartItem}/${params.itemId}`, {
+            headers: this.bearerHeader(params.token),
+            body: params.item,
+        });
+    }
+
+    // 404s (via HttpError) when item_id isn't in the caller's session.
+    removeCartItem(params: {
+        token: string;
+        itemId: string;
+    }): Promise<SessionStateResponse> {
+        return this.httpClient.delete<SessionStateResponse>(`${PATHS.cartItem}/${params.itemId}`, {
+            headers: this.bearerHeader(params.token),
+        });
+    }
+
+    getOrder(params: {
+        token: string;
+        orderId: string;
+    }): Promise<CheckoutResponse> {
+        return this.httpClient.get<CheckoutResponse>(`${PATHS.orders}/${params.orderId}`, {
+            headers: this.bearerHeader(params.token),
+        });
+    }
+
+    // Single supported transition: pending -> cancelled. 409 on any other
+    // current status, 403 for another user's order (except
+    // security_glitch_user's deliberate IDOR bypass), 404 for an unknown id.
+    cancelOrder(params: {
+        token: string;
+        orderId: string;
+    }): Promise<CheckoutResponse> {
+        const body: OrderStatusUpdateRequest = { status: 'cancelled' };
+        return this.httpClient.patch<CheckoutResponse>(`${PATHS.orders}/${params.orderId}`, {
+            headers: this.bearerHeader(params.token),
+            body,
+        });
+    }
+
+    private bearerHeader(token: string): Record<string, string> {
+        return { Authorization: `Bearer ${token}` };
     }
 
     private authHeaders(

@@ -1,5 +1,11 @@
 import type { LoginResponse } from '@core/tests/login/dao/login.types';
-import type { CartItemResponse, CheckoutResponse, CountryInfo, CountryCode } from '@core/tests/checkout/dao/checkout.types';
+import type {
+    CartItemResponse,
+    CheckoutResponse,
+    CountryInfo,
+    CountryCode,
+    SessionStateResponse,
+} from '@core/tests/checkout/dao/checkout.types';
 
 export interface CheckoutWorld {
     auth?: {
@@ -61,7 +67,27 @@ export interface CheckoutWorld {
     };
     // Populated by OrderSuccessRoute.createPlacedOrder so openSuccessScreen
     // can rehydrate the success-screen via deep link (mobile) or query param
-    // (web) without re-running the placement flow.
+    // (web) without re-running the placement flow. Also reused by
+    // CheckoutRoute's order-cancellation setup (placeQuickOrder) as the
+    // target order id for PATCH /api/orders/{order_id}.
     placedOrderId?: string;
+    // Set by CheckoutRoute.putCartItem/deleteCartItem — PUT/DELETE
+    // /api/cart/items/{item_id} results. Same ok/status/message shape as
+    // loginAttempt, for the same reason: DRIVER=api has no UI to assert
+    // against, so the Then-step reads this instead.
+    cartItemResult?: {
+        ok: boolean;
+        status?: number;
+        message?: string;
+        session?: SessionStateResponse;
+    };
+    // Set by CheckoutRoute.cancelOrder/cancelOrderAs/cancelOrderById —
+    // PATCH /api/orders/{order_id} results.
+    orderCancelResult?: {
+        ok: boolean;
+        status?: number;
+        message?: string;
+        order?: CheckoutResponse;
+    };
     languageOverride?: 'en' | 'es' | 'de' | 'fr' | 'ja' | 'ar';
 }
