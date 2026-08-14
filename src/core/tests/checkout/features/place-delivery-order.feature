@@ -41,8 +41,8 @@ Feature: Place a delivery order across markets
       | JP     | Pepperoni  | Family |   2 |     1-2-3 Shibuya | 150-0002 | Tokyo   | 佐藤 明美         |  +81 3 9876 5432 |
       | SA     | Pepperoni  | Large  |   1 | 123 شارع الفخامة  |          | العليا  | سارة القحطاني     | +966 55 987 6543 |
 
-  @api @writes-shared-state
-  Scenario: Place an API order using the PayPal payment literal
+  @desktop @responsive @android @ios @api @writes-shared-state
+  Scenario: Place an order paying with PayPal
     Given they are ordering in market "US"
     And they have an order with "Pepperoni" size "Large" quantity 1
     When they provide delivery details "123 Luxury Avenue" "90210", "" for "Ada Lovelace" "+1 415 555 0110"
