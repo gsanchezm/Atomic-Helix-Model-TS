@@ -208,6 +208,7 @@ export class ProfileRoute {
                     phone:     update.phone,
                     address:   update.address,
                     notes:     update.notes,
+                    birthday:  update.birthday,
                 },
             });
             this.world.profileLastResponse = response;
@@ -294,6 +295,7 @@ export class ProfileRoute {
             ['phone',     profile.phone,     values.phone],
             ['address',   profile.address,   values.address],
             ['notes',     profile.notes,     values.notes],
+            ['birthday',  profile.birthday,  values.birthday],
         ];
         for (const [name, actual, expected] of cmps) {
             const actualStr = typeof actual === 'string' ? actual : actual == null ? '' : String(actual);

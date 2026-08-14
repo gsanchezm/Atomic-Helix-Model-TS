@@ -56,6 +56,22 @@
     "web": "[data-testid='profile-notes']",
     "mobile": "~input-profile-notes"
   },
+  "birthdayLabel": {
+    "web": "[data-testid='label-profile-birthday']",
+    "mobile": "~label-birthday"
+  },
+  "birthdayInput": {
+    "web": "[data-testid='profile-birthday']"
+  },
+  "birthdayDayInput": {
+    "mobile": "~input-birthday-day"
+  },
+  "birthdayMonthInput": {
+    "mobile": "~input-birthday-month"
+  },
+  "birthdayYearInput": {
+    "mobile": "~input-birthday-year"
+  },
   "cancelButton": {
     "web": "[data-testid='profile-cancel-btn']",
     "mobile": "~btn-cancel-profile"

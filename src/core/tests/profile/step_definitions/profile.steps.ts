@@ -29,7 +29,7 @@ Then(
     },
 );
 
-Then('the full name, phone, address, and notes inputs are visible', async function () {
+Then('the full name, phone, address, birthday, and notes inputs are visible', async function () {
     await route(this).verifyFormInputsVisible();
 });
 
@@ -46,9 +46,9 @@ Then(
 );
 
 When(
-    'they update the profile with full name {string}, phone {string}, address {string}, notes {string}',
-    async function (fullName: string, phone: string, address: string, notes: string) {
-        await route(this).updateProfileFields({ fullName, phone, address, notes });
+    'they update the profile with full name {string}, phone {string}, address {string}, notes {string}, birthday {string}',
+    async function (fullName: string, phone: string, address: string, notes: string, birthday: string) {
+        await route(this).updateProfileFields({ fullName, phone, address, notes, birthday });
     },
 );
 
@@ -61,15 +61,15 @@ When('they reload the profile screen', async function () {
 });
 
 Then(
-    'the profile fields show full name {string}, phone {string}, address {string}, notes {string}',
-    async function (fullName: string, phone: string, address: string, notes: string) {
-        await route(this).verifyProfileFields({ fullName, phone, address, notes });
+    'the profile fields show full name {string}, phone {string}, address {string}, notes {string}, birthday {string}',
+    async function (fullName: string, phone: string, address: string, notes: string, birthday: string) {
+        await route(this).verifyProfileFields({ fullName, phone, address, notes, birthday });
     },
 );
 
 Then(
-    'the profile API reports full name {string}, phone {string}, address {string}, notes {string}',
-    async function (fullName: string, phone: string, address: string, notes: string) {
-        await route(this).verifyProfileApi({ fullName, phone, address, notes });
+    'the profile API reports full name {string}, phone {string}, address {string}, notes {string}, birthday {string}',
+    async function (fullName: string, phone: string, address: string, notes: string, birthday: string) {
+        await route(this).verifyProfileApi({ fullName, phone, address, notes, birthday });
     },
 );

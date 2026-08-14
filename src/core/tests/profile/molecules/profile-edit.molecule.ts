@@ -9,6 +9,8 @@ export interface ProfileUpdateInputs {
     phone: string;
     address: string;
     notes: string;
+    // ISO date "YYYY-MM-DD".
+    birthday: string;
 }
 
 // CLEAR_TEXT before TYPE is required because:
@@ -34,6 +36,30 @@ export async function fillProfileForm(values: ProfileUpdateInputs): Promise<void
         log.info({ field: 'addressInput' }, 'Skipping address — locator is web-only and DRIVER is mobile');
     }
     await typeField('notesInput', values.notes);
+    await fillBirthday(values.birthday);
+}
+
+// Web: a single native `<input type="date">` accepts a plain ISO string.
+// Mobile: OmniPizza's Dropdown component (Dropdown.tsx) — 3 separate
+// day/month/year selects, whose options carry zero-padded "01".."31" /
+// "01".."12" values (year is plain "1950".."2015", NOT zero-padded — see
+// BIRTHDAY_YEAR_OPTIONS in ProfileScreen.tsx). Mobile's option range only
+// covers 1950-2015, so any ISO date used in a scenario must fall in that
+// window or the dropdown option won't exist.
+async function fillBirthday(isoDate: string): Promise<void> {
+    if (isoDate.length === 0) return;
+    const [year, month, day] = isoDate.split('-');
+    if (!year || !month || !day) {
+        throw new Error(`fillBirthday expected an ISO "YYYY-MM-DD" date, got "${isoDate}".`);
+    }
+    if (isMobileDriver()) {
+        await sendIntent(INTENT.SCROLL_TO, 'birthdayDayInput');
+        await sendIntent(INTENT.SELECT_OPTION, `birthdayDayInput||${day}`);
+        await sendIntent(INTENT.SELECT_OPTION, `birthdayMonthInput||${month}`);
+        await sendIntent(INTENT.SELECT_OPTION, `birthdayYearInput||${year}`);
+        return;
+    }
+    await typeField('birthdayInput', isoDate);
 }
 
 async function typeField(key: string, value: string): Promise<void> {

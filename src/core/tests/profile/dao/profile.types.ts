@@ -1,11 +1,9 @@
 // Public HTTP contract for the Profile DAO.
 //
-// TDD-style scaffolding: NO existing backend endpoint backs this DAO today.
-// Shapes are derived from `profile.api.contract.json` — when the OmniPizza
-// backend ships the `/api/users/me/profile` endpoints these types are what
-// the route will read against. Kept separate from profile.dao.ts so
-// consumers (route, molecules, fixtures) can import the shape without
-// pulling the DAO class (SRP).
+// Shapes mirror `profile.api.contract.json` and the live backend
+// (backend/models.py's UserProfileDetails/UserProfileUpdate). Kept separate
+// from profile.dao.ts so consumers (route, molecules, fixtures) can import
+// the shape without pulling the DAO class (SRP).
 
 import type { CountryCode } from '@plugins/api/http';
 
@@ -19,6 +17,8 @@ export interface ProfileResponse {
     phone: string;
     address: string;
     notes: string;
+    // ISO date "YYYY-MM-DD" (backend/models.py's UserProfileDetails.birthday).
+    birthday: string;
     premium: boolean;
     // Optional fields the backend may echo back; not load-bearing for the
     // current scenarios but useful when validating multi-user fixtures.
@@ -39,6 +39,8 @@ export interface ProfileUpdateRequest {
     phone?: string;
     address?: string;
     notes?: string;
+    // ISO date "YYYY-MM-DD" (backend/models.py's UserProfileUpdate.birthday).
+    birthday?: string;
     [key: string]: unknown;
 }
 

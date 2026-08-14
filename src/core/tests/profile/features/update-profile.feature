@@ -1,8 +1,10 @@
 Feature: View and update the OmniPizza user profile across markets
   The OmniPizza profile screen shows the signed-in user's profile card
   (avatar, username, premium badge, meta) and lets them edit full name,
-  phone, address, and order notes. After saving, the values persist
-  across reloads. Form labels are translated per market language.
+  phone, address, birthday, and order notes. Birthday is a date picker —
+  a single native date input on web, three separate day/month/year
+  dropdowns on mobile. After saving, the values persist across reloads.
+  Form labels are translated per market language.
 
     As an OmniPizza user,
     I want to keep my delivery details accurate in my market's language,
@@ -15,7 +17,7 @@ Feature: View and update the OmniPizza user profile across markets
   Scenario Outline: Profile renders for <user> in <market>/<language>
     Given they are on the profile screen in market "<market>" using language "<language>"
     Then the profile card shows username "<user>" and the premium badge is visible
-    And the full name, phone, address, and notes inputs are visible
+    And the full name, phone, address, birthday, and notes inputs are visible
 
     Examples:
       | market | language | user           |
@@ -55,18 +57,18 @@ Feature: View and update the OmniPizza user profile across markets
   @desktop @responsive @android @ios @visual @writes-shared-state
   Scenario Outline: The profile form is editable and the save is accepted in <market>
     Given they are on the profile screen in market "<market>" using language "<language>"
-    When they update the profile with full name "<fullName>", phone "<phone>", address "<address>", notes "<notes>"
+    When they update the profile with full name "<fullName>", phone "<phone>", address "<address>", notes "<notes>", birthday "<birthday>"
     And they save the profile
-    Then the full name, phone, address, and notes inputs are visible
+    Then the full name, phone, address, birthday, and notes inputs are visible
 
     Examples:
-      | market | language | fullName            | phone            | address           | notes                |
-      | US     | en       | Julian Casablancas  | +1 415 555 0101  | 123 Luxury Avenue | Leave at the door    |
-      | MX     | es       | Guillermo Alcantara | +52 55 1234 5678 | Av. Carranza 123  | Dejar en recepción   |
-      | CH     | de       | Lukas Baumgartner   | +41 44 668 18 00 | Bahnhofstrasse 12 | An der Tür abgeben   |
-      | CH     | fr       | Lukas Baumgartner   | +41 44 668 18 00 | Bahnhofstrasse 12 | Laisser à la porte   |
-      | JP     | ja       | 田中 健太           | +81 3 1234 5678  | 1-2-3 Shibuya     | ドアに置いてください |
-      | SA     | ar       | محمد العتيبي       | +966 50 123 4567 | 123 شارع الفخامة | اترك الطلب عند الباب |
+      | market | language | fullName            | phone            | address           | notes                | birthday   |
+      | US     | en       | Julian Casablancas  | +1 415 555 0101  | 123 Luxury Avenue | Leave at the door    | 1978-08-04 |
+      | MX     | es       | Guillermo Alcantara | +52 55 1234 5678 | Av. Carranza 123  | Dejar en recepción   | 1982-03-21 |
+      | CH     | de       | Lukas Baumgartner   | +41 44 668 18 00 | Bahnhofstrasse 12 | An der Tür abgeben   | 1990-11-09 |
+      | CH     | fr       | Lukas Baumgartner   | +41 44 668 18 00 | Bahnhofstrasse 12 | Laisser à la porte   | 1990-11-09 |
+      | JP     | ja       | 田中 健太           | +81 3 1234 5678  | 1-2-3 Shibuya     | ドアに置いてください | 1985-06-15 |
+      | SA     | ar       | محمد العتيبي       | +966 50 123 4567 | 123 شارع الفخامة | اترك الطلب عند الباب | 1988-01-27 |
 
   # API-only: this checks the PATCH /api/users/me/profile contract under the api driver
   # (no UI reload race). Not run in UI/mobile suites, where the demo app's lack of
@@ -74,15 +76,15 @@ Feature: View and update the OmniPizza user profile across markets
   @api @writes-shared-state
   Scenario Outline: Updated profile is readable through the profile API in <market>
     Given they are on the profile screen in market "<market>" using language "<language>"
-    When they update the profile with full name "<fullName>", phone "<phone>", address "<address>", notes "<notes>"
+    When they update the profile with full name "<fullName>", phone "<phone>", address "<address>", notes "<notes>", birthday "<birthday>"
     And they save the profile
-    Then the profile API reports full name "<fullName>", phone "<phone>", address "<address>", notes "<notes>"
+    Then the profile API reports full name "<fullName>", phone "<phone>", address "<address>", notes "<notes>", birthday "<birthday>"
 
     Examples:
-      | market | language | fullName            | phone            | address           | notes                |
-      | US     | en       | Phoebe Bridgers     | +1 415 555 0202  | 123 Luxury Avenue | Leave at the door    |
-      | MX     | es       | Valentina Herrera   | +52 55 9876 5432 | Av. Carranza 123  | Dejar en recepción   |
-      | CH     | de       | Anna Keller         | +41 44 668 19 00 | Bahnhofstrasse 12 | An der Tür abgeben   |
-      | CH     | fr       | Anna Keller         | +41 44 668 19 00 | Bahnhofstrasse 12 | Laisser à la porte   |
-      | JP     | ja       | 佐藤 明美           | +81 3 9876 5432  | 1-2-3 Shibuya     | ドアに置いてください |
-      | SA     | ar       | سارة القحطاني      | +966 55 987 6543 | 123 شارع الفخامة | اترك الطلب عند الباب |
+      | market | language | fullName            | phone            | address           | notes                | birthday   |
+      | US     | en       | Phoebe Bridgers     | +1 415 555 0202  | 123 Luxury Avenue | Leave at the door    | 1979-02-17 |
+      | MX     | es       | Valentina Herrera   | +52 55 9876 5432 | Av. Carranza 123  | Dejar en recepción   | 1993-09-30 |
+      | CH     | de       | Anna Keller         | +41 44 668 19 00 | Bahnhofstrasse 12 | An der Tür abgeben   | 1987-04-12 |
+      | CH     | fr       | Anna Keller         | +41 44 668 19 00 | Bahnhofstrasse 12 | Laisser à la porte   | 1987-04-12 |
+      | JP     | ja       | 佐藤 明美           | +81 3 9876 5432  | 1-2-3 Shibuya     | ドアに置いてください | 1991-12-03 |
+      | SA     | ar       | سارة القحطاني      | +966 55 987 6543 | 123 شارع الفخامة | اترك الطلب عند الباب | 1984-10-22 |

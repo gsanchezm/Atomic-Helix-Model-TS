@@ -142,12 +142,19 @@ export async function waitForProfileScreen(): Promise<void> {
 const MOBILE_ONLY_KEYS = new Set([
     'profileUsernameText',
     'premiumBadgeText',
+    'birthdayDayInput',
+    'birthdayMonthInput',
+    'birthdayYearInput',
 ]);
 
 // Conversely, `addressInput` is web-only in the contract (no `mobile` key).
 // Under appium/mobilewright we have to skip its presence/typing wait.
+// `birthdayInput` is also web-only — mobile splits the same field into the
+// three MOBILE_ONLY_KEYS above (a single native `<input type="date">` on
+// web vs. three separate Dropdown triggers on mobile).
 const WEB_ONLY_KEYS = new Set([
     'addressInput',
+    'birthdayInput',
 ]);
 
 function isMobileDriver(): boolean {
@@ -222,6 +229,17 @@ export async function assertFormInputsVisible(): Promise<void> {
         await sendIntent(INTENT.SCROLL_TO, 'notesInput');
     }
     await sendIntent(INTENT.WAIT_FOR_ELEMENT, `notesInput||${PRESENCE_WAIT_MS}`);
+    // Birthday renders below notes on mobile — same below-the-fold reasoning.
+    // Web is a single `birthdayInput`; mobile splits into 3 Dropdown triggers.
+    if (!skipIfWebOnlyOnMobile('birthdayInput', 'assertFormInputsVisible.birthday')) {
+        await sendIntent(INTENT.WAIT_FOR_ELEMENT, `birthdayInput||${PRESENCE_WAIT_MS}`);
+    }
+    if (!skipIfMobileOnlyOnWeb('birthdayDayInput', 'assertFormInputsVisible.birthdayDay')) {
+        await sendIntent(INTENT.SCROLL_TO, 'birthdayDayInput');
+        await sendIntent(INTENT.WAIT_FOR_ELEMENT, `birthdayDayInput||${PRESENCE_WAIT_MS}`);
+        await sendIntent(INTENT.WAIT_FOR_ELEMENT, `birthdayMonthInput||${PRESENCE_WAIT_MS}`);
+        await sendIntent(INTENT.WAIT_FOR_ELEMENT, `birthdayYearInput||${PRESENCE_WAIT_MS}`);
+    }
 }
 
 export async function assertFormLabels(labels: {
