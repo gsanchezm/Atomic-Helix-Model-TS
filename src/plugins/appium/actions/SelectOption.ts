@@ -8,6 +8,13 @@ export const SelectOptionAction: ActionHandler<AppiumActionContext> = {
     async execute({ driver, target, helpers }) {
         const { selector, value } = parseSelectorValue(target, 'SELECT_OPTION action');
         const trigger = driver.$(selector);
+        // iOS: a still-open keyboard from a preceding TYPE (e.g. card number)
+        // can occlude/absorb the scroll gesture before it reaches this
+        // trigger — same class of issue Click.ts already guards against.
+        // TYPE's own dismissKeyboard() is best-effort and not guaranteed to
+        // have succeeded by the time this action runs.
+        await helpers.dismissKeyboard(driver);
+        await helpers.blurActiveTextInput(driver);
         await helpers.scrollIntoViewSafe(driver, trigger, selector, 5);
         await (trigger.click() as Promise<void>);
 
