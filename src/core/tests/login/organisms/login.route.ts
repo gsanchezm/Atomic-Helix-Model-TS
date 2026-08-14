@@ -175,22 +175,32 @@ export class LoginRoute {
         }
         if (actual.toLowerCase().includes(expected.toLowerCase())) return;
 
-        // The OmniPizza FE handles 401 by reloading the page (verified via DOM
-        // probe — DevTools shows `[data-testid='login-error']` then reload wipes
-        // it, while 422 / 403 paths render the banner directly). When the
+        // The OmniPizza web FE handles 401 by reloading the page (verified via
+        // DOM probe — DevTools shows `[data-testid='login-error']` then reload
+        // wipes it, while 422 / 403 paths render the banner directly). When the
         // banner is empty AFTER our poll window, detect the reload by checking
         // for the sentinel planted before the click: a missing sentinel means
         // the FE reloaded → the rejection happened, just via the 401-reload
         // code path rather than the banner code path. Treat that as an
-        // equivalent "Invalid credentials" outcome so the assertion stays
-        // platform-agnostic.
-        const sentinelStillThere = await loginAttemptSentinelPresent().catch(() => false);
-        if (!sentinelStillThere) {
-            log.info(
-                { expected },
-                'Login banner empty but sentinel wiped — FE reloaded on 401; treating as auth-rejected.',
-            );
-            return;
+        // equivalent auth-rejected outcome so the assertion stays accurate on
+        // web regardless of which failure code path OmniPizza took.
+        //
+        // Web-only: the sentinel is a Playwright browser command
+        // (SET_LOGIN_ATTEMPT_SENTINEL, only planted in submitInvalidCredentials
+        // when isWebDriver()). On mobile it was never planted, so
+        // loginAttemptSentinelPresent() always resolved falsy there — silently
+        // treating EVERY mobile text mismatch as "reloaded, must be correct",
+        // regardless of what the banner actually said. Confirmed 2026-08-13:
+        // this masked a real assertion gap on @android/@ios for this scenario.
+        if (this.driver === 'playwright') {
+            const sentinelStillThere = await loginAttemptSentinelPresent().catch(() => false);
+            if (!sentinelStillThere) {
+                log.info(
+                    { expected },
+                    'Login banner empty but sentinel wiped — FE reloaded on 401; treating as auth-rejected.',
+                );
+                return;
+            }
         }
         throw new Error(
             `[ui] login error mismatch — expected to contain "${expected}", got "${actual}".`,
