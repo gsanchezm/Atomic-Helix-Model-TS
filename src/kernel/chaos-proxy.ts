@@ -225,6 +225,8 @@ const PASSTHROUGH_ACTIONS = new Set<string>([
     INTENT.ACQUIRE_WRITE_LOCK, INTENT.RELEASE_WRITE_LOCK,
     // Failure screenshot: carries no logical target — passes empty string directly.
     INTENT.SCREENSHOT,
+    // Diagnostic accessibility-tree/page-source dump: same shape as SCREENSHOT.
+    INTENT.GET_PAGE_SOURCE,
     // Visual oracle: targets are `feature||snapshotId||{json}`, resolved
     // internally via VisualContractLoader + locator-resolver. The proxy
     // must not touch them.

@@ -13,6 +13,7 @@ import { WaitForElementAction } from '@plugins/appium/actions/WaitForElement';
 import { AssertTextAction } from '@plugins/appium/actions/AssertText';
 import { ScrollToAction } from '@plugins/appium/actions/ScrollTo';
 import { ScreenshotAction } from '@plugins/appium/actions/Screenshot';
+import { GetPageSourceAction } from '@plugins/appium/actions/GetPageSource';
 
 let cachedRegistry: ActionRegistry<AppiumActionContext> | null = null;
 
@@ -33,7 +34,8 @@ export function getAppiumActionRegistry(): ActionRegistry<AppiumActionContext> {
         .register(WaitForElementAction)
         .register(AssertTextAction)
         .register(ScrollToAction)
-        .register(ScreenshotAction);
+        .register(ScreenshotAction)
+        .register(GetPageSourceAction);
 
     cachedRegistry = registry;
     return registry;
