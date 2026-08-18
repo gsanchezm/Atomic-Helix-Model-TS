@@ -71,6 +71,33 @@ export async function locate(device: Device, strategy: LocatorStrategy): Promise
     return handlers[strategy.kind](strategy as never);
 }
 
+/**
+ * Scroll a locator into view, falling back to a swipe anchored away from
+ * screen-center if the vendored default attempt fails. When the target node
+ * hasn't rendered yet, `Locator.scrollIntoViewIfNeeded()` blindly swipes from
+ * screen-center — on some layouts that point lands on an already-rendered
+ * EditText, and the drag gets consumed as a text-cursor move instead of
+ * reaching the parent scroll container, so the swipe is a no-op every time.
+ * Confirmed on-device: SA/ar's checkout form puts a filled "full name" field
+ * exactly at vertical-center, silently blocking the scroll needed to reveal
+ * the credit-card fields below it. One swipe anchored lower on the screen
+ * (clear of that field) is enough to unstick it.
+ */
+export async function scrollIntoViewSafe(device: Device, locator: Locator): Promise<void> {
+    try {
+        await locator.scrollIntoViewIfNeeded();
+        return;
+    } catch {
+        const screen = await device.screenSize();
+        await device.driver.swipe('up', {
+            startX: screen.width / 2,
+            startY: screen.height * 0.85,
+            distance: screen.height * 0.5,
+        });
+        await locator.scrollIntoViewIfNeeded();
+    }
+}
+
 // Lazy ESM import — see mobilewright-lifecycle.ts for the same pattern.
 const dynamicImport = new Function('s', 'return import(s)') as <T = unknown>(s: string) => Promise<T>;
 let cachedCore: typeof import('mobilewright') | null = null;

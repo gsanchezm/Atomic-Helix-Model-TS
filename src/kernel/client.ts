@@ -2,7 +2,7 @@ import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
 import * as path from 'path';
 import type { IntentAction } from '@kernel/intents';
-import { createClientCredentials } from '@kernel/grpc-security';
+import { createClientCredentials, GRPC_CHANNEL_OPTIONS } from '@kernel/grpc-security';
 
 const PROTO_PATH = path.resolve(__dirname, '../proto/ptom.proto');
 
@@ -33,9 +33,17 @@ const PROXY_ADDRESS = process.env.PROXY_ADDRESS || 'localhost:50051';
 const client = new ptomProto.ActionService(
     PROXY_ADDRESS,
     createClientCredentials(),
+    GRPC_CHANNEL_OPTIONS,
 );
 
 // --- Public API ---
+
+// Drivers whose actions run inside the Playwright plugin process and read
+// its in-memory session map (pixelmatch is co-located there — see
+// plugins.config.ts) must resolve to the SAME composed session key that
+// playwright.ts's ensureSession() registers, or getActivePage() finds
+// nothing under the raw worker ID and throws "No active session".
+const PLAYWRIGHT_HOSTED_DRIVERS = new Set(['playwright', 'pixelmatch']);
 
 export function sendIntent(
     actionId: IntentAction,
@@ -45,7 +53,7 @@ export function sendIntent(
     const driver = platform || process.env.DRIVER || 'playwright';
     // Append worker ID so the plugin can isolate browser contexts per parallel worker
     const workerId = process.env.CUCUMBER_WORKER_ID ?? '0';
-    const sessionId = driver.toLowerCase() === 'playwright'
+    const sessionId = PLAYWRIGHT_HOSTED_DRIVERS.has(driver.toLowerCase())
         ? playwrightSessionId(workerId)
         : workerId;
     const resolvedPlatform = `${driver}:${sessionId}`;

@@ -1,0 +1,73 @@
+# AWS CodeBuild buildspec for the "playwright-desktop" profile (ci/pipeline.config.json).
+# Static translation of the `e2e-web` job in .github/workflows/ahm-execution-helix.yml.
+#
+# Runs under mcr.microsoft.com/playwright:v1.61.1-jammy on the CodeBuild project side
+# (see pipeline-stack.ts) — browsers/system deps are baked into that image, matching
+# GHA's e2e-web job.
+#
+# Batch build-matrix (BROWSER: [chromium, firefox, webkit], SUITE: [reads, writes]) is
+# the CodeBuild equivalent of that job's `strategy.matrix.browser`/`strategy.matrix.suite`.
+
+version: 0.2
+
+env:
+  variables:
+    PLATFORM: web
+    VIEWPORT: desktop
+    DRIVER: playwright
+    HEADLESS: 'true'
+    PLAYWRIGHT_ADDRESS: 127.0.0.1:50052
+    API_ADAPTER_ADDRESS: 127.0.0.1:50055
+    PLUGIN_PLAYWRIGHT: 'true'
+    PLUGIN_PIXELMATCH: 'false'
+    PLUGIN_API: 'true'
+    CUCUMBER_PARALLEL: '4'
+    PROXY_ADDRESS: 127.0.0.1:50051
+  secrets-manager:
+    API_BASE_URL: "ahm/ci:API_BASE_URL"
+    BASE_URL: "ahm/ci:BASE_URL"
+
+batch:
+  fast-fail: false
+  build-matrix:
+    static:
+      ignore-failure: false
+    dynamic:
+      env:
+        variables:
+          BROWSER: [chromium, firefox, webkit]
+          SUITE: [reads, writes]
+
+phases:
+  install:
+    commands:
+      - bash ci/steps/setup-environment.sh
+
+  build:
+    commands:
+      # GHA step "Start proxy + plugins". $BROWSER is the batch build-matrix
+      # dynamic env variable declared above (same key as GHA's matrix.browser).
+      - bash ci/steps/start-stack.sh web
+
+      # GHA step "Run E2E tests" — one run: block, one commands: entry.
+      - |
+          if [ "$SUITE" = "reads" ]; then
+            TAG_EXPRESSION="@desktop and not @writes-shared-state"
+          else
+            TAG_EXPRESSION="@desktop and @writes-shared-state"
+          fi
+          bash ci/steps/run-suite.sh "$TAG_EXPRESSION" playwright-desktop "$BROWSER"
+
+  post_build:
+    # teardown.sh must run even if collect-artifacts.sh fails (GHA's "Collect
+    # artifacts" / "Teardown" steps both use `if: always()` independently of each
+    # other) — see api.buildspec.yml for why this needs `finally:` rather than a
+    # plain `commands:` entry or `on-failure: CONTINUE`.
+    commands:
+      - bash ci/steps/collect-artifacts.sh playwright-desktop
+    finally:
+      - bash ci/steps/teardown.sh
+
+artifacts:
+  files:
+    - 'artifacts/playwright-desktop/**/*'

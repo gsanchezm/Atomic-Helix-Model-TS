@@ -16,6 +16,7 @@ import { After } from '@cucumber/cucumber';
 import { sendIntent } from '@kernel/client';
 import { INTENT } from '@kernel/intents';
 import { VisualContractLoader } from '@core/contracts/visual-contract-loader';
+import { buildVisualOptions } from '@core/tests/support/visual-intent-options';
 import { logger } from '@utils/logger';
 import type { CheckoutWorld } from '@core/tests/support/world';
 
@@ -88,9 +89,7 @@ After({ tags: '@visual' }, async function ({ pickle, result }) {
     if (market) bucket.market = market;
     if (language) bucket.language = language;
     if (pickle.name) bucket.scenario = pickle.name;
-    const optionsJson = Object.keys(bucket).length > 0
-        ? `||${JSON.stringify(bucket)}`
-        : '';
+    const optionsJson = buildVisualOptions(bucket);
 
     for (const snap of matched) {
         // Third arg routes the intent to the pixelmatch plugin (port 50056) —

@@ -4,6 +4,7 @@ import express from 'express';
 
 import { REPORTS_DIR } from './runs-repo.js';
 import { runsErrorHandler, runsRouter } from './routes/runs.js';
+import { efficiencyRouter } from './routes/efficiency.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dashboardRoot = path.resolve(__dirname, '../..');
@@ -19,6 +20,7 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.use(runsRouter);
+app.use(efficiencyRouter);
 
 // Serve PixelMatch images (and any future per-run static files).
 // express.static is path-traversal-safe by default — it normalizes the

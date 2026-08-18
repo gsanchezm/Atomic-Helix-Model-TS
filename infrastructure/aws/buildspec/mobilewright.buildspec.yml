@@ -1,0 +1,196 @@
+# AWS CodeBuild buildspec for the "mobilewright" profile (ci/pipeline.config.json).
+# Static translation of the `e2e-mobilewright` job in
+# .github/workflows/ahm-execution-helix.yml.
+#
+# Device bring-up is IDENTICAL to android.buildspec.yml/ios.buildspec.yml's device
+# bring-up steps, just gated by `if [ "$PLATFORM" = "android" ]` / `elif [ "$PLATFORM"
+# = "ios" ]` shell branches within each command block — this mirrors the GHA job's own
+# per-step `if: matrix.platform == 'android'` conditionals (same content, translated to
+# runtime shell branches instead of static per-step `if:`, since one buildspec's
+# commands run unconditionally once selected by the batch build-matrix cell, and the
+# branch must happen inside the shell).
+#
+# CAP_PROFILE is a strict function of PLATFORM (docker_android for android,
+# ci_ios_headless for ios), not an independent axis, so it is computed inline via a
+# shell conditional (`CAP_PROFILE=$([ "$PLATFORM" = "android" ] && echo docker_android
+# || echo ci_ios_headless)`) rather than being made a batch-matrix dynamic variable.
+#
+# KNOWN GAP (mirrors ci/pipeline.config.json's own `mobilewright` entry notes):
+# src/devices/docker_android.json / ci_ios_headless.json don't yet list "mobilewright"
+# in `compatibleDrivers`, so this will fail at DeviceLoader.forWorker() even once infra
+# exists — that's a known, pre-existing gap outside this task's file scope, not
+# something to fix here.
+#
+# CAVEATS: the android leg needs the same privilegedMode:true + /dev/kvm passthrough
+# unavailable on stock CodeBuild compute as android.buildspec.yml; the ios leg needs the
+# same dedicated macOS CodeBuild fleet as ios.buildspec.yml. Neither is solved here.
+#
+# Batch build-matrix (PLATFORM: [android, ios], SUITE: [reads, writes]) is the CodeBuild
+# equivalent of that job's `strategy.matrix.platform`/`strategy.matrix.suite`.
+
+version: 0.2
+
+env:
+  variables:
+    DRIVER: mobilewright
+    ANDROID_APP_PATH: assets/apps/android/app-release.apk
+    ANDROID_UDID: localhost:5555
+    PLUGIN_MOBILEWRIGHT: 'true'
+    PLUGIN_API: 'true'
+    MINIO_ENDPOINT: localhost
+    MINIO_PORT: '9000'
+    MINIO_ACCESS_KEY: minioadmin
+    MINIO_SECRET_KEY: minioadmin
+    ANDROID_API_LEVEL: '33'
+  secrets-manager:
+    API_BASE_URL: "ahm/ci:API_BASE_URL"
+
+batch:
+  fast-fail: false
+  build-matrix:
+    static:
+      ignore-failure: false
+    dynamic:
+      env:
+        variables:
+          PLATFORM: [android, ios]
+          SUITE: [reads, writes]
+
+phases:
+  install:
+    commands:
+      - bash ci/steps/setup-environment.sh
+
+  build:
+    commands:
+      # GHA step "Install Android platform tools" (if: matrix.platform == 'android').
+      - |
+          if [ "$PLATFORM" = "android" ]; then
+            sudo apt-get update
+            sudo apt-get install -y android-sdk-platform-tools
+            adb version
+          fi
+
+      # GHA steps "Download Android app artifact" / "Download iOS simulator artifact" /
+      # "Unpack iOS simulator app" / "Select and boot iOS simulator", combined per
+      # platform branch. OMNIPIZZA_RELEASE_BASE_URL comes from the pipeline's Resolve
+      # stage — a CodePipeline variable, injected as a CodeBuild plaintext env var by
+      # the CDK stack, NOT declared in this buildspec's own env: block (same note as
+      # android.buildspec.yml/ios.buildspec.yml).
+      - |
+          if [ "$PLATFORM" = "android" ]; then
+            mkdir -p assets/apps/android
+            curl -fL "$OMNIPIZZA_RELEASE_BASE_URL/omnipizza-release.apk" -o assets/apps/android/app-release.apk
+            ls -lh assets/apps/android/app-release.apk
+          elif [ "$PLATFORM" = "ios" ]; then
+            mkdir -p assets/apps/ios
+            curl -fL "$OMNIPIZZA_RELEASE_BASE_URL/OmniPizza-Simulator.zip" -o assets/apps/ios/OmniPizza-Simulator.zip
+            rm -rf assets/apps/ios/unpacked
+            mkdir -p assets/apps/ios/unpacked
+            unzip -q assets/apps/ios/OmniPizza-Simulator.zip -d assets/apps/ios/unpacked
+            IOS_APP_PATH=$(find assets/apps/ios/unpacked -maxdepth 3 -name '*.app' -type d | head -n 1)
+            [ -n "$IOS_APP_PATH" ] || { echo "No .app bundle found"; exit 1; }
+            echo "export IOS_APP_PATH=\"$IOS_APP_PATH\"" >> /tmp/ahm-ci-env.sh
+            DEVICE_LINE=$(xcrun simctl list devices available | grep -E 'iPhone .*\([A-F0-9-]+\) \((Shutdown|Booted)\)' | head -n 1)
+            [ -n "$DEVICE_LINE" ] || { echo "No available iPhone simulator found"; exit 1; }
+            IOS_DEVICE_NAME=$(echo "$DEVICE_LINE" | sed -E 's/^[[:space:]]*([^()]+)[[:space:]]+\(.*/\1/' | xargs)
+            IOS_UDID=$(echo "$DEVICE_LINE" | sed -E 's/.*\(([A-F0-9-]+)\).*/\1/')
+            echo "export IOS_DEVICE_NAME=\"$IOS_DEVICE_NAME\"" >> /tmp/ahm-ci-env.sh
+            echo "export IOS_UDID=\"$IOS_UDID\"" >> /tmp/ahm-ci-env.sh
+            xcrun simctl boot "$IOS_UDID" || true
+            xcrun simctl bootstatus "$IOS_UDID" -b
+          fi
+
+      # MinIO — Linux (docker compose) for android, native minio binary for ios.
+      - |
+          if [ "$PLATFORM" = "android" ]; then
+            if docker compose version >/dev/null 2>&1; then
+              docker compose -f infrastructure/minio-compose.yml up -d
+            else
+              docker-compose -f infrastructure/minio-compose.yml up -d
+            fi
+            sleep 5
+          elif [ "$PLATFORM" = "ios" ]; then
+            MACHINE_ARCH=$(uname -m)
+            MINIO_ARCH=$(node -p "({ arm64: 'arm64', x86_64: 'amd64' })[process.argv[1]] || ''" "$MACHINE_ARCH")
+            [ -n "$MINIO_ARCH" ] || { echo "Unsupported macOS architecture: $MACHINE_ARCH"; exit 1; }
+            curl -fL "https://dl.min.io/server/minio/release/darwin-${MINIO_ARCH}/minio" -o /tmp/minio
+            chmod +x /tmp/minio
+            mkdir -p /tmp/ahm-minio-data
+            MINIO_ROOT_USER=minioadmin MINIO_ROOT_PASSWORD=minioadmin /tmp/minio server /tmp/ahm-minio-data --address ":9000" --console-address ":9001" &
+            for i in $(seq 1 30); do
+              curl -fsS http://localhost:9000/minio/health/live >/dev/null && { echo "MinIO ready"; break; }
+              sleep 1
+            done
+          fi
+
+      # GHA step "Start Android emulator (docker-android)" + "Wait for emulator to be
+      # ready" (both if: matrix.platform == 'android'). No Appium daemon is started for
+      # either platform — mobilewright drives devices via `mobilecli`, not an Appium
+      # server (mobilewrightNeedsAppiumServer: false in ci/pipeline.config.json). This
+      # matches start-stack.sh's mobilewright arm, which never starts/waits on :4723.
+      - |
+          if [ "$PLATFORM" = "android" ]; then
+            docker run -d --name android-emulator --privileged --device /dev/kvm \
+              -p 5554:5554 -p 5555:5555 \
+              -e API_LEVEL=${ANDROID_API_LEVEL:-33} -e IMG_TYPE=google_apis -e ARCHITECTURE=x86_64 \
+              -e DEVICE_ID=pixel -e MEMORY=4096 -e CORES=2 -e DISABLE_ANIMATION=true \
+              -e DISABLE_HIDDEN_POLICY=true -e SKIP_AUTH=1 \
+              halimqarroum/docker-android:api-${ANDROID_API_LEVEL:-33}
+            adb connect localhost:5555
+            for i in $(seq 1 40); do
+              adb -s localhost:5555 shell getprop sys.boot_completed 2>/dev/null | grep -q "1" && break
+              sleep 15
+            done
+            adb devices
+          fi
+
+      # GHA step "Start proxy + Mobilewright plugin". CAP_PROFILE is derived from
+      # $PLATFORM inline (see header comment). Sources the persisted env file — a
+      # no-op on the android leg, where it's never written.
+      - |
+          source /tmp/ahm-ci-env.sh 2>/dev/null || true
+          CAP_PROFILE=$([ "$PLATFORM" = "android" ] && echo docker_android || echo ci_ios_headless)
+          export CAP_PROFILE
+          bash ci/steps/start-stack.sh mobilewright
+
+      # GHA step "Run E2E tests" — one run: block, one commands: entry. $PLATFORM/
+      # $SUITE come from the batch build-matrix dynamic env variables declared above
+      # (same keys as GHA's matrix.platform/matrix.suite). CAP_PROFILE is recomputed
+      # here too (not sourced from /tmp/ahm-ci-env.sh, since the previous command's
+      # `export CAP_PROFILE` does not survive into this separate shell invocation) —
+      # src/devices/device-loader.ts's DeviceLoader.forWorker() reads
+      # process.env.CAP_PROFILE as a fallback at cucumber-js run time (not just at
+      # plugin-startup time), so run-suite.sh's cucumber-js process needs it set too,
+      # matching GHA setting CAP_PROFILE on both its "Start proxy" and "Run E2E tests"
+      # steps.
+      - |
+          source /tmp/ahm-ci-env.sh 2>/dev/null || true
+          CAP_PROFILE=$([ "$PLATFORM" = "android" ] && echo docker_android || echo ci_ios_headless)
+          export CAP_PROFILE
+          if [ "$PLATFORM" = "android" ]; then BASE_TAG="@android"; else BASE_TAG="@ios"; fi
+          if [ "$SUITE" = "reads" ]; then
+            TAG_EXPRESSION="$BASE_TAG and not @writes-shared-state"
+          else
+            TAG_EXPRESSION="$BASE_TAG and @writes-shared-state"
+          fi
+          bash ci/steps/run-suite.sh "$TAG_EXPRESSION" mobilewright "${PLATFORM}-${SUITE}"
+
+  post_build:
+    # GHA's "Collect artifacts" / "Stop emulator" / "Teardown" steps all use
+    # `if: always()` (the emulator-stop step is additionally gated on
+    # matrix.platform == 'android'). post_build already runs regardless of the build
+    # phase's outcome, but WITHIN this phase, if collect-artifacts.sh itself fails, a
+    # plain `commands:` list would skip the remaining entries — so the emulator-stop/
+    # teardown cleanup goes in `finally:`, which (per AWS's buildspec reference) runs
+    # even if an earlier command in this same phase's `commands:` block fails.
+    commands:
+      - bash ci/steps/collect-artifacts.sh mobilewright
+    finally:
+      - |
+          if [ "$PLATFORM" = "android" ]; then docker rm -f android-emulator || true; fi
+      - bash ci/steps/teardown.sh
+
+artifacts:
+  files:
+    - 'artifacts/mobilewright/**/*'

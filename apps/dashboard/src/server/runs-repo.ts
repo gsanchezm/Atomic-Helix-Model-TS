@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import type { ManifestEntry, RunInfo } from '../shared/types.js';
+import type { ManifestEntry, RunInfo, ToolTiming } from '../shared/types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../../../..');
@@ -97,4 +97,14 @@ export async function listToolIds(runId: string): Promise<string[]> {
 
 export function getRunDir(runId: string): string {
   return safeResolve(runId);
+}
+
+export async function getTiming(runId: string): Promise<ToolTiming[]> {
+  const filePath = safeResolve(runId, 'timing.json');
+  try {
+    return await readJson<ToolTiming[]>(filePath);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw err;
+  }
 }

@@ -10,14 +10,16 @@ interface ToolLogoProps {
  * default `<toolId>.svg`).
  */
 const TOOL_LOGO_FILES: Record<string, string> = {
-  playwright: 'playwright-logo.svg',
-  appium:     'appium-logo.png',
-  gatling:    'gatling.png',
-  pixelmatch: 'pixelmatch-logo.png',
-  api:        'api.svg',
-  axe:        'aXe-logo.png',
-  zap:        'zap.png',
-  mobsf:      'mobsf.png',
+  playwright:   'playwright-logo.svg',
+  webdriverio:  'webdriverio.png',
+  appium:       'appium-logo.png',
+  mobilewright: 'mobilewright-logo.png',
+  gatling:      'gatling.png',
+  pixelmatch:   'pixelmatch-logo.png',
+  api:          'api.svg',
+  axe:          'aXe-logo.png',
+  zap:          'zap.png',
+  mobsf:        'mobsf.png',
 };
 
 const PLATFORM_LOGO_FILES: Record<'android' | 'ios', string> = {

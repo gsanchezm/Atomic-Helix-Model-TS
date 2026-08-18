@@ -1,0 +1,20 @@
+{
+  "legacyFallbackTestId": {
+    "web": "[data-testid='legacy-fallback']",
+    "mobile": {
+      "android": "~legacy-fallback-id",
+      "ios": "~legacy-fallback-id"
+    }
+  },
+  "legacyFallbackHeader": {
+    "web": "h1:has-text(\"Legacy Fallback\")",
+    "mobile": "~legacy-fallback-header"
+  },
+  "legacyFallbackList": {
+    "web": "[role='radiogroup'] [role='radio']",
+    "mobile": {
+      "android": "android=new UiSelector().descriptionStartsWith(\"btn-legacy-\")",
+      "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'btn-legacy-'`]"
+    }
+  }
+}

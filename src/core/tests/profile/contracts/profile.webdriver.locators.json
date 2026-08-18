@@ -1,0 +1,170 @@
+{
+  "profileScreen": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"screen-profile\")",
+      "ios": "~screen-profile"
+    }
+  },
+  "profileCard": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"view-profile-card\")",
+      "ios": "~view-profile-card"
+    }
+  },
+  "profileAvatar": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"img-profile-avatar\")",
+      "ios": "~img-profile-avatar"
+    }
+  },
+  "profileSubtitleText": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-profile-subtitle\")",
+      "ios": "~text-profile-subtitle"
+    }
+  },
+  "profileUsernameText": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-profile-username\")",
+      "ios": "~text-profile-username"
+    }
+  },
+  "premiumBadgeText": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-premium-badge\")",
+      "ios": "~text-premium-badge"
+    }
+  },
+  "profileMetaText": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-profile-meta\")",
+      "ios": "~text-profile-meta"
+    }
+  },
+  "formTitleText": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-form-title\")",
+      "ios": "~text-form-title"
+    }
+  },
+  "fullNameLabel": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"label-profile-fullname\")",
+      "ios": "~label-profile-fullname"
+    }
+  },
+  "profileFullNameInput": {
+    "webdriverio": {
+      "responsive": "[data-testid='profile-fullname-responsive']",
+      "desktop": "[data-testid='profile-fullname-desktop']"
+    },
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"input-profile-fullname\")",
+      "ios": "~input-profile-fullname"
+    }
+  },
+  "phoneNumberLabel": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"label-profile-phone\")",
+      "ios": "~label-profile-phone"
+    }
+  },
+  "profilePhoneNumberInput": {
+    "webdriverio": "[data-testid='profile-phone']",
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"input-profile-phone\")",
+      "ios": "~input-profile-phone"
+    }
+  },
+  "addressLabel": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"label-profile-address\")",
+      "ios": "~label-profile-address"
+    }
+  },
+  "addressInput": {
+    "webdriverio": {
+      "responsive": "[data-testid='profile-address-responsive']",
+      "desktop": "[data-testid='profile-address-desktop']"
+    }
+  },
+  "notesLabel": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"label-profile-notes\")",
+      "ios": "~label-profile-notes"
+    }
+  },
+  "notesInput": {
+    "webdriverio": "[data-testid='profile-notes']",
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"input-profile-notes\")",
+      "ios": "~input-profile-notes"
+    }
+  },
+  "birthdayLabel": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"label-birthday\")",
+      "ios": "~label-birthday"
+    }
+  },
+  "birthdayDayInput": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"input-birthday-day\")",
+      "ios": "~input-birthday-day"
+    }
+  },
+  "birthdayMonthInput": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"input-birthday-month\")",
+      "ios": "~input-birthday-month"
+    }
+  },
+  "birthdayYearInput": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"input-birthday-year\")",
+      "ios": "~input-birthday-year"
+    }
+  },
+  "cancelButton": {
+    "webdriverio": "[data-testid='profile-cancel-btn']",
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"btn-cancel-profile\")",
+      "ios": "~btn-cancel-profile"
+    }
+  },
+  "cancelButtonLabel": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-cancel-profile\")",
+      "ios": "~text-cancel-profile"
+    }
+  },
+  "saveButton": {
+    "webdriverio": {
+      "responsive": "[data-testid='profile-save-btn-responsive']",
+      "desktop": "[data-testid='profile-save-btn-desktop']"
+    },
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"btn-save-profile\")",
+      "ios": "~btn-save-profile"
+    }
+  },
+  "saveButtonLabel": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-save-profile\")",
+      "ios": "~text-save-profile"
+    }
+  },
+  "deleteAccountButton": {
+    "webdriverio": "[data-testid='delete-account-btn']",
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"btn-delete-account\")",
+      "ios": "~btn-delete-account"
+    }
+  },
+  "deleteAccountLabel": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-delete-account\")",
+      "ios": "~text-delete-account"
+    }
+  }
+}

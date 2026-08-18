@@ -1,0 +1,142 @@
+{
+  "navbarContainer": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"view-navbar\")",
+      "ios": "~view-navbar"
+    }
+  },
+  "locationHeaderContainer": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"view-location-header\")",
+      "ios": "~view-location-header"
+    }
+  },
+  "headerLogoImage": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"img-header-logo\")",
+      "ios": "~img-header-logo"
+    }
+  },
+  "headerBrandText": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-header-brand\")",
+      "ios": "~text-header-brand"
+    }
+  },
+  "navLogo": {
+    "webdriverio": "[data-testid='nav-logo']"
+  },
+  "navCatalogLink": {
+    "webdriverio": "[data-testid='nav-catalog']"
+  },
+  "navCheckoutLink": {
+    "webdriverio": "[data-testid='nav-checkout']"
+  },
+  "navCartCount": {
+    "webdriverio": "[data-testid='nav-cart-count']"
+  },
+  "navProfileLink": {
+    "webdriverio": "[data-testid='nav-profile']"
+  },
+  "navbarTitleText": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-navbar-title\")",
+      "ios": "~text-navbar-title"
+    }
+  },
+  "languageDEButton": {
+    "webdriverio": "[data-testid='lang-de']",
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"btn-lang-de\")",
+      "ios": "~btn-lang-de"
+    }
+  },
+  "languageDELabel": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-lang-de\")",
+      "ios": "~text-lang-de"
+    }
+  },
+  "languageFRButton": {
+    "webdriverio": "[data-testid='lang-fr']",
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"btn-lang-fr\")",
+      "ios": "~btn-lang-fr"
+    }
+  },
+  "languageFRLabel": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-lang-fr\")",
+      "ios": "~text-lang-fr"
+    }
+  },
+  "headerLanguageDEButton": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"btn-header-lang-de\")",
+      "ios": "~btn-header-lang-de"
+    }
+  },
+  "headerLanguageDELabel": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-header-lang-de\")",
+      "ios": "~text-header-lang-de"
+    }
+  },
+  "headerLanguageFRButton": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"btn-header-lang-fr\")",
+      "ios": "~btn-header-lang-fr"
+    }
+  },
+  "headerLanguageFRLabel": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-header-lang-fr\")",
+      "ios": "~text-header-lang-fr"
+    }
+  },
+  "mobileMenuButton": {
+    "webdriverio": "[data-testid='mobile-menu-btn']"
+  },
+  "mobileNavCatalogLink": {
+    "webdriverio": "[data-testid='mobile-nav-catalog']"
+  },
+  "mobileNavCheckoutLink": {
+    "webdriverio": "[data-testid='mobile-nav-checkout']"
+  },
+  "mobileNavProfileLink": {
+    "webdriverio": "[data-testid='mobile-nav-profile']"
+  },
+  "mobileLogoutButton": {
+    "webdriverio": "[data-testid='mobile-logout-btn']"
+  },
+  "bottomNavContainer": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"view-bottom-nav\")",
+      "ios": "~view-bottom-nav"
+    }
+  },
+  "bottomNavList": {
+    "appium": {
+      "android": "android=new UiSelector().resourceIdMatches(\"nav-[a-z]+\")",
+      "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'nav-'`]"
+    }
+  },
+  "bottomNavLabel": {
+    "appium": {
+      "android": "android=new UiSelector().resourceIdMatches(\"text-nav-(?!badge-).*\")",
+      "ios": "-ios class chain:**/XCUIElementTypeStaticText[`name BEGINSWITH 'text-nav-' AND NOT (name BEGINSWITH 'text-nav-badge-')`]"
+    }
+  },
+  "bottomNavBadge": {
+    "appium": {
+      "android": "android=new UiSelector().resourceIdMatches(\"view-nav-badge-.*\")",
+      "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'view-nav-badge-'`]"
+    }
+  },
+  "bottomNavBadgeText": {
+    "appium": {
+      "android": "android=new UiSelector().resourceIdMatches(\"text-nav-badge-.*\")",
+      "ios": "-ios class chain:**/XCUIElementTypeStaticText[`name BEGINSWITH 'text-nav-badge-'`]"
+    }
+  }
+}

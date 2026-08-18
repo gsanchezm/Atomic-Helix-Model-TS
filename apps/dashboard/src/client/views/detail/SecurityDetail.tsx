@@ -167,11 +167,12 @@ function ZapAlertTable({ block }: { block: ZapScanBlock }) {
 
 function gateLabel(gate: SecurityGate | null): string {
   if (!gate) return '—';
+  if (gate.unavailable) return 'N/A';
   return gate.pass ? 'PASS' : 'FAIL';
 }
 
 function gateTone(gate: SecurityGate | null): 'pass' | 'fail' | undefined {
-  if (!gate) return undefined;
+  if (!gate || gate.unavailable) return undefined;
   return gate.pass ? 'pass' : 'fail';
 }
 
@@ -190,6 +191,10 @@ function GateRow({ name, gate }: { name: string; gate: SecurityGate | null }) {
       <div style={{ fontWeight: 600 }}>{name}</div>
       {gate === null ? (
         <span className="pill" style={{ color: 'var(--text-dim)' }}>not run</span>
+      ) : gate.unavailable ? (
+        <span className="pill" style={{ color: 'var(--text-dim)' }} title="Scanner not installed on the runner — the target was never checked">
+          not installed
+        </span>
       ) : (
         <SeverityPill
           label={gate.pass ? 'PASS' : 'FAIL'}
@@ -212,10 +217,11 @@ function GateRow({ name, gate }: { name: string; gate: SecurityGate | null }) {
 
 /* ═══════════════════════════ MobSF (mobile scope) ═══════════════════════ */
 
-const MOBSF_SEVERITY_ORDER = ['high', 'warning', 'info', 'secure'] as const;
+const MOBSF_SEVERITY_ORDER = ['high', 'hotspot', 'warning', 'info', 'secure'] as const;
 
 const MOBSF_SEVERITY_COLOR: Record<string, string> = {
   high:    'var(--fail)',
+  hotspot: 'var(--skip)',
   warning: 'var(--skip)',
   info:    'var(--text-mute)',
   secure:  'var(--pass)',

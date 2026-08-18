@@ -86,6 +86,12 @@ const plugins: PluginDefinition[] = [
         envVar: 'PLUGIN_MOBSF',
         get enabled() { return isEnabled(this.envVar); },
     },
+    {
+        name: 'WebdriverIO',
+        script: 'plugin:webdriverio',
+        envVar: 'PLUGIN_WEBDRIVERIO',
+        get enabled() { return isEnabled(this.envVar); },
+    },
 ];
 
 export default plugins;

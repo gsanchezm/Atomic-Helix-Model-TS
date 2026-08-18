@@ -1,4 +1,5 @@
 import type { ToolKind } from './kinds.js';
+import type { PerfTestType } from './perf-types.js';
 
 export type Status = 'passed' | 'failed' | 'skipped';
 
@@ -21,17 +22,48 @@ export interface ManifestEntry {
   startedAt: string;
 }
 
-export interface TestCase {
-  name: string;
+export type TestCase = TestCaseSingle | TestCaseGroup;
+
+interface TestCaseBase {
   suite: string;
   file: string;
   dur: string;
   status: Status;
+}
+
+export interface TestCaseSingle extends TestCaseBase {
+  /** Optional so pre-existing report JSON (ingested before Scenario Outline grouping shipped) keeps parsing unchanged. */
+  kind?: 'single';
+  name: string;
   error?: string;
   steps?: TestStep[];
   failedStepIndex?: number;
   /** URL of a failure screenshot PNG, served from /reports/<runId>/screenshots/. Present only when the scenario failed and an image/png attachment was captured in the After hook. */
   screenshot?: string;
+}
+
+export interface TestCaseGroup extends TestCaseBase {
+  kind: 'group';
+  /** Scenario Outline template name, placeholders intact, e.g. "Logout label is translated to <language> after market <market>". */
+  name: string;
+  /** One per Examples row, ordered by source line (not execution/arrival order). */
+  iterations: TestCaseIteration[];
+}
+
+export interface TestCaseIteration {
+  /** Interpolated name, e.g. "Logout label is translated to Spanish after market MX". */
+  name: string;
+  /** Examples row data keyed by column header, e.g. { market: 'MX', language: 'Spanish', logoutLabel: 'Salir' }. */
+  example: Record<string, string>;
+  status: Status;
+  error?: string;
+  steps?: TestStep[];
+  failedStepIndex?: number;
+  screenshot?: string;
+}
+
+export function isTestCaseGroup(t: TestCase): t is TestCaseGroup {
+  return t.kind === 'group';
 }
 
 export interface TestStep {
@@ -141,8 +173,10 @@ export interface PerfScenario {
 export interface PerfBlock {
   rps: number;
   avgMs: number;
+  p75Ms: number;
   p95Ms: number;
   p99Ms: number;
+  maxMs: number;
   errorRate: number;
   requests: number;
   maxRps: number;
@@ -150,9 +184,16 @@ export interface PerfBlock {
   scenarios: PerfScenario[];
 }
 
+export interface PerfTypeBlock {
+  type: PerfTestType;
+  perf: PerfBlock | null;
+}
+
 export interface PerformanceTool extends BaseTool {
   kind: 'performance';
   perf: PerfBlock;
+  byType: PerfTypeBlock[];
+  unclassified?: PerfBlock;
 }
 
 export interface VisualDiffImages {
@@ -250,11 +291,19 @@ export interface ZapScanBlock {
   findings: ZapFinding[];
 }
 
-/** A boolean infra gate (TLS config check, schema fuzz) with its report artifact. */
+/**
+ * An infra gate (TLS config check, schema fuzz) with its report artifact.
+ *
+ * Three outcomes, not two: `unavailable` marks "the scanner could not run on
+ * this host" (binary missing / not on PATH), which must NOT be counted or
+ * rendered as a security failure — a missing testssl.sh says nothing about the
+ * target's TLS.
+ */
 export interface SecurityGate {
   pass: boolean;
   reportPath: string;
   findingsCount?: number;
+  unavailable?: boolean;
 }
 
 export interface WebSecurityTool extends BaseTool {
@@ -269,7 +318,8 @@ export interface WebSecurityTool extends BaseTool {
 
 // ---------- Security — mobile (MobSF) -------------------------------------
 
-export type MobsfSeverity = 'high' | 'warning' | 'info' | 'secure';
+/** 'hotspot' is MobSF's own bucket for risky permissions/config — dropping it under-reported findings. */
+export type MobsfSeverity = 'high' | 'warning' | 'info' | 'secure' | 'hotspot';
 
 export interface MobsfFinding {
   severity: MobsfSeverity;
@@ -324,8 +374,13 @@ export type ToolSummary =
         ios: Omit<PlatformBlock, 'tests'>;
       };
     })
-  | (Omit<PerformanceTool, 'perf'> & {
+  | (Omit<PerformanceTool, 'perf' | 'byType' | 'unclassified'> & {
       perf: Omit<PerfBlock, 'distribution' | 'scenarios'>;
+      byType: Array<{
+        type: PerfTestType;
+        perf: Omit<PerfBlock, 'distribution' | 'scenarios'> | null;
+      }>;
+      unclassified?: Omit<PerfBlock, 'distribution' | 'scenarios'>;
     })
   | Omit<VisualTool, 'diffs'>
   | Omit<AccessibilityTool, 'audits'>
@@ -347,4 +402,22 @@ export interface RunPayload {
 
 export function toolKindOf(tool: Tool | ToolSummary): ToolKind {
   return tool.kind;
+}
+
+// ---------- Tool Efficiency (per-tool wall-clock execution timing) --------
+
+export interface ToolTiming {
+  tool: string;
+  category: ToolKind;
+  subtype: string;
+  startedAt: string;
+  endedAt: string;
+  durationMs: number;
+}
+
+/** One entry per run that has a timing.json, used by the Efficiency charts. */
+export interface EfficiencyRunPoint {
+  runId: string;
+  startedAt: string;
+  timings: ToolTiming[];
 }

@@ -1,16 +1,31 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
-import type { PerfScenario, Tool } from '@shared/types';
+import { PERF_TEST_TYPES, type PerfTestType } from '@shared/perf-types';
+import type { PerfBlock, PerfScenario, Tool } from '@shared/types';
 
 import { DetailHead } from '../../components/DetailHead';
+import { PendingMetricsPanel } from '../../components/PendingMetricsPanel';
+import { PerfTypeTabs } from '../../components/PerfTypeTabs';
 import { Speedometer } from '../../components/Speedometer';
+import { FIELD_GAUGE_CONFIG, PERF_TYPE_META } from '../../perf-type-meta';
 
 interface PerformanceDetailProps {
   runId: string;
   tool: Tool;
 }
 
+function isPerfTestType(value: string | null): value is PerfTestType {
+  return value !== null && (PERF_TEST_TYPES as readonly string[]).includes(value);
+}
+
 export function PerformanceDetail({ runId, tool }: PerformanceDetailProps) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeType, setActiveType] = useState<PerfTestType>(() => {
+    const typeParam = searchParams.get('type');
+    return isPerfTestType(typeParam) ? typeParam : 'load';
+  });
+
   if (tool.kind !== 'performance') {
     return (
       <div className="state">
@@ -22,11 +37,20 @@ export function PerformanceDetail({ runId, tool }: PerformanceDetailProps) {
     );
   }
 
-  const p = tool.perf;
-  const noData = tool.missing === true || p.requests === 0;
-  const maxDist = p.distribution.length
-    ? Math.max(...p.distribution.map((d) => d.pct))
-    : 1;
+  const selectType = (type: PerfTestType) => {
+    setActiveType(type);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('type', type);
+      return next;
+    });
+  };
+
+  const activeBlock = tool.byType.find((b) => b.type === activeType);
+  const p = activeBlock?.perf ?? null;
+  const meta = PERF_TYPE_META[activeType];
+  const noData = tool.missing === true || p === null || p.requests === 0;
+  const maxDist = p && p.distribution.length ? Math.max(...p.distribution.map((d) => d.pct)) : 1;
 
   return (
     <div className="detail fade-in">
@@ -41,52 +65,23 @@ export function PerformanceDetail({ runId, tool }: PerformanceDetailProps) {
         }
       />
 
+      <PerfTypeTabs byType={tool.byType} active={activeType} onSelect={selectType} />
+
       <div className="panel">
-        <h3>Performance gauges</h3>
+        <h3>{meta.label} gauges</h3>
         {noData ? (
-          <div className="empty">No data generated for this tool in this run.</div>
+          <div className="empty">No data generated for {meta.label} in this run.</div>
         ) : (
           <div className="gauge-grid">
-            <Speedometer
-              label="Throughput"
-              value={p.rps}
-              max={p.maxRps}
-              unit={`req/s · peak ${p.maxRps}`}
-              thresholdGood={p.maxRps * 0.4}
-              thresholdBad={p.maxRps * 0.7}
-            />
-            <Speedometer
-              label="Avg response"
-              value={p.avgMs}
-              max={1000}
-              unit="milliseconds"
-              invert
-              thresholdGood={200}
-              thresholdBad={500}
-            />
-            <Speedometer
-              label="P95 latency"
-              value={p.p95Ms}
-              max={1500}
-              unit="milliseconds"
-              invert
-              thresholdGood={400}
-              thresholdBad={800}
-            />
-            <Speedometer
-              label="Error rate"
-              value={p.errorRate}
-              max={5}
-              unit="% of requests"
-              invert
-              thresholdGood={0.5}
-              thresholdBad={1.5}
-            />
+            {meta.gauges.map((g) => (
+              <PerfFieldTile key={g.field} label={g.label} field={g.field} perf={p as PerfBlock} />
+            ))}
           </div>
         )}
+        <PendingMetricsPanel items={meta.pending} />
       </div>
 
-      {!noData && (
+      {!noData && p && (
         <div className="perf-grid">
           <div className="panel">
             <h3>Response time distribution</h3>
@@ -128,6 +123,37 @@ export function PerformanceDetail({ runId, tool }: PerformanceDetailProps) {
         </div>
       )}
     </div>
+  );
+}
+
+function PerfFieldTile({ label, field, perf }: { label: string; field: keyof PerfBlock; perf: PerfBlock }) {
+  const config = FIELD_GAUGE_CONFIG[field];
+  const value = perf[field] as number;
+
+  if (!config || config.kind === 'stat') {
+    return (
+      <div className="gauge">
+        <div className="label">{label}</div>
+        <div className="value">{value.toLocaleString()}</div>
+        <div className="unit">{config?.unit ?? ''}</div>
+      </div>
+    );
+  }
+
+  const max = config.maxField ? (perf[config.maxField] as number) : config.max!;
+  const thresholdGood = config.thresholdGoodFactor ? max * config.thresholdGoodFactor : config.thresholdGood!;
+  const thresholdBad = config.thresholdBadFactor ? max * config.thresholdBadFactor : config.thresholdBad!;
+
+  return (
+    <Speedometer
+      label={label}
+      value={value}
+      max={max}
+      unit={config.unit}
+      invert={config.invert}
+      thresholdGood={thresholdGood}
+      thresholdBad={thresholdBad}
+    />
   );
 }
 

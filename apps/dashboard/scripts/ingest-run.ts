@@ -46,14 +46,20 @@ import type {
   SecurityGate,
   Status,
   TestCase,
+  TestCaseGroup,
+  TestCaseIteration,
+  TestCaseSingle,
   TestStep,
+  ToolTiming,
   ViewportBlock,
   WebSecurityTool,
   WebUiTool,
   ZapScanBlock,
 } from '../src/shared/types.js';
+import { isTestCaseGroup } from '../src/shared/types.js';
 import { ingestGatling } from './ingest-gatling.js';
 import { ingestPixelmatch } from './ingest-pixelmatch.js';
+import { parseOutlineRows, type OutlineRow } from './lib/outline-parser.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../../..');
@@ -88,6 +94,10 @@ interface CucumberElement {
   name?: string;
   type?: string;
   steps?: CucumberStep[];
+  /** Literal keyword text, e.g. "Scenario Outline" for Examples-row-derived elements. */
+  keyword?: string;
+  /** Source line of THIS Examples row (not the outline's own declaration line). */
+  line?: number;
 }
 interface CucumberFeature {
   name?: string;
@@ -102,7 +112,7 @@ const TERMINAL_STATUSES = new Set(['passed', 'failed', 'skipped', 'pending', 'un
  * without adding a transient field to the `TestCase` object (which would leak into
  * the written JSON and break vitest deep-equality assertions).
  */
-const screenshotData = new WeakMap<TestCase, { b64: string }>();
+const screenshotData = new WeakMap<TestCase | TestCaseIteration, { b64: string }>();
 
 function safeSegment(s: string): string {
   return s.replace(/[^A-Za-z0-9_.-]/g, '_');
@@ -164,7 +174,7 @@ export interface IngestedSuite {
   tests: TestCase[];
 }
 
-export function ingestCucumber(features: CucumberFeature[]): IngestedSuite {
+export async function ingestCucumber(features: CucumberFeature[]): Promise<IngestedSuite> {
   const tests: TestCase[] = [];
   const suiteSet = new Set<string>();
   let totalNs = 0;
@@ -173,6 +183,18 @@ export function ingestCucumber(features: CucumberFeature[]): IngestedSuite {
     const suite = feature.name ?? '(unnamed feature)';
     suiteSet.add(suite);
     const uri = (feature.uri ?? '').replace(/\\/g, '/');
+
+    const hasOutlineElement = (feature.elements ?? []).some((el) => el.keyword === 'Scenario Outline');
+    const outlineRows = hasOutlineElement && uri
+      ? await parseOutlineRows(path.resolve(repoRoot, uri))
+      : new Map<number, OutlineRow>();
+
+    // outlineKey -> accumulated iterations (with their source ns/line, for
+    // later sorting/summing), finalized into a TestCaseGroup after the loop.
+    const groupBuckets = new Map<
+      string,
+      { templateName: string; entries: { line: number; ns: number; iteration: TestCaseIteration }[] }
+    >();
 
     for (const el of feature.elements ?? []) {
       if (el.type !== 'scenario') continue;
@@ -190,7 +212,6 @@ export function ingestCucumber(features: CucumberFeature[]): IngestedSuite {
         const stepStatus = normalizeStatus(r.status);
 
         const isHidden = step.hidden === true;
-        // Hidden hook that passed: skip — it adds noise without value.
         if (isHidden && stepStatus !== 'failed') {
           continue;
         }
@@ -216,8 +237,44 @@ export function ingestCucumber(features: CucumberFeature[]): IngestedSuite {
       }
 
       const failedStepIndex = stepsOut.findIndex((s) => s.status === 'failed');
+      totalNs += scenarioNs;
 
-      const tc: TestCase = {
+      const outlineRow =
+        el.keyword === 'Scenario Outline' && typeof el.line === 'number'
+          ? outlineRows.get(el.line)
+          : undefined;
+
+      if (outlineRow) {
+        const iteration: TestCaseIteration = {
+          name: el.name ?? '(unnamed scenario)',
+          example: outlineRow.example,
+          status: worst,
+          ...(errorMsg ? { error: errorMsg } : {}),
+          steps: stepsOut,
+          ...(failedStepIndex >= 0 ? { failedStepIndex } : {}),
+        };
+        if (worst === 'failed') {
+          const b64 = extractImageAttachment(el.steps ?? []);
+          if (b64) screenshotData.set(iteration, { b64 });
+        }
+
+        let bucket = groupBuckets.get(outlineRow.outlineKey);
+        if (!bucket) {
+          bucket = { templateName: outlineRow.templateName, entries: [] };
+          groupBuckets.set(outlineRow.outlineKey, bucket);
+        }
+        bucket.entries.push({ line: el.line as number, ns: scenarioNs, iteration });
+        continue;
+      }
+
+      if (el.keyword === 'Scenario Outline' && typeof el.line === 'number') {
+        console.warn(
+          `[ingest] warning: ${uri}:${el.line} looks like a Scenario Outline row but no matching ` +
+          `Examples row was found in the .feature source -- ingesting "${el.name}" as a standalone scenario.`,
+        );
+      }
+
+      const tc: TestCaseSingle = {
         name: el.name ?? '(unnamed scenario)',
         suite,
         file: uri,
@@ -227,16 +284,32 @@ export function ingestCucumber(features: CucumberFeature[]): IngestedSuite {
         steps: stepsOut,
         ...(failedStepIndex >= 0 ? { failedStepIndex } : {}),
       };
-
-      // If the scenario failed, scan ALL raw steps (including hidden/passed
-      // hooks that are skipped by the main loop) for an image attachment.
       if (worst === 'failed') {
         const b64 = extractImageAttachment(el.steps ?? []);
         if (b64) screenshotData.set(tc, { b64 });
       }
-
-      totalNs += scenarioNs;
       tests.push(tc);
+    }
+
+    for (const bucket of groupBuckets.values()) {
+      const entries = [...bucket.entries].sort((a, b) => a.line - b.line);
+      const iterations = entries.map((e) => e.iteration);
+      const durNs = entries.reduce((sum, e) => sum + e.ns, 0);
+      const status: Status = iterations.some((i) => i.status === 'failed')
+        ? 'failed'
+        : iterations.some((i) => i.status === 'skipped')
+          ? 'skipped'
+          : 'passed';
+      const group: TestCaseGroup = {
+        kind: 'group',
+        name: bucket.templateName,
+        suite,
+        file: uri,
+        dur: formatNs(durNs),
+        status,
+        iterations,
+      };
+      tests.push(group);
     }
   }
 
@@ -268,13 +341,12 @@ async function materializeScreenshots(
   const outDir = path.join(runDir, 'screenshots');
   const usedKeys = new Set<string>();
 
-  for (const tc of tests) {
+  const writeOne = async (tc: TestCaseSingle | TestCaseIteration, keyPrefix: string): Promise<void> => {
     const entry = screenshotData.get(tc);
-    if (!entry) continue;
+    if (!entry) return;
     screenshotData.delete(tc);
 
-    // Build a filename-safe key from suite + scenario name, unique within this run.
-    let baseKey = `${safeSegment(tc.suite)}__${safeSegment(tc.name)}`;
+    let baseKey = `${keyPrefix}__${safeSegment(tc.name)}`;
     let key = baseKey;
     let suffix = 2;
     while (usedKeys.has(key)) {
@@ -290,6 +362,16 @@ async function materializeScreenshots(
     } catch (err) {
       // Non-fatal: the screenshot is a nice-to-have; don't fail the whole ingest.
       console.warn(`[ingest] warning: could not write screenshot ${pngPath}:`, (err as Error).message);
+    }
+  };
+
+  for (const tc of tests) {
+    if (isTestCaseGroup(tc)) {
+      for (const iteration of tc.iterations) {
+        await writeOne(iteration, safeSegment(tc.suite));
+      }
+    } else {
+      await writeOne(tc, safeSegment(tc.suite));
     }
   }
 }
@@ -378,15 +460,29 @@ function browserBlockFromSuite(browser: string, s: IngestedSuite): BrowserBlock 
 }
 
 /**
- * Build the Playwright tool, in this precedence order:
- *   1. Viewport(+browser) files: `playwright-<viewport>-<browser>.json` and
- *      legacy `playwright-<viewport>.json` → `viewports[]` with nested
+ * Build a WebUiTool from cucumber JSON files following the `<toolId>*.json`
+ * naming convention, in this precedence order:
+ *   1. Viewport(+browser) files: `<toolId>-<viewport>-<browser>.json` and
+ *      legacy `<toolId>-<viewport>.json` → `viewports[]` with nested
  *      per-browser breakdown (outer viewport tabs, inner browser tabs).
- *   2. Per-browser files `playwright-<browser>.json` → `browsers[]` (browser
+ *   2. Per-browser files `<toolId>-<browser>.json` → `browsers[]` (browser
  *      sub-tabs, no viewport axis).
- *   3. Flat `playwright.json` → single flat test list (no tabs).
+ *   3. Flat `<toolId>.json` → single flat test list (no tabs).
+ *
+ * Originally Playwright-only (hence the name); WebdriverIO reuses it as-is
+ * since both drivers' cucumber-js output shares the same shape and the same
+ * run-suite.sh filename convention.
  */
-async function buildPlaywrightTool(dir: string = reportsDir): Promise<WebUiTool | null> {
+async function buildPlaywrightTool(
+  dir: string = reportsDir,
+  toolId: string = 'playwright',
+  toolName: string = 'Playwright',
+  descriptions: { viewport: string; browser: string; flat: string } = {
+    viewport: 'End-to-end browser tests across desktop and responsive viewports.',
+    browser: 'End-to-end browser tests across Chromium, Firefox, Edge and WebKit.',
+    flat: 'End-to-end browser tests across Chromium, Firefox and WebKit.',
+  },
+): Promise<WebUiTool | null> {
   let files: string[] = [];
   try {
     files = await fs.readdir(dir);
@@ -394,13 +490,18 @@ async function buildPlaywrightTool(dir: string = reportsDir): Promise<WebUiTool 
     files = [];
   }
 
+  const escapedId = toolId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const viewportBrowserRe = new RegExp(`^${escapedId}-(desktop|responsive)-([a-z0-9]+)\\.json$`, 'i');
+  const viewportLegacyRe = new RegExp(`^${escapedId}-(desktop|responsive)\\.json$`, 'i');
+  const perBrowserRe = new RegExp(`^${escapedId}-(.+)\\.json$`, 'i');
+
   // ---- 1. Viewport(+browser) files --------------------------------------
   // Group browser files per viewport. A viewport file may be either
-  // `playwright-<viewport>-<browser>.json` or legacy `playwright-<viewport>.json`
+  // `<toolId>-<viewport>-<browser>.json` or legacy `<toolId>-<viewport>.json`
   // (browser defaults to $BROWSER or 'chromium').
   const viewportFiles = new Map<KnownViewport, { file: string; browser: string }[]>();
   for (const f of files) {
-    const withBrowser = /^playwright-(desktop|responsive)-([a-z0-9]+)\.json$/i.exec(f);
+    const withBrowser = viewportBrowserRe.exec(f);
     if (withBrowser) {
       const viewport = withBrowser[1].toLowerCase() as KnownViewport;
       const browser = withBrowser[2].toLowerCase();
@@ -410,7 +511,7 @@ async function buildPlaywrightTool(dir: string = reportsDir): Promise<WebUiTool 
       viewportFiles.set(viewport, list);
       continue;
     }
-    const legacy = /^playwright-(desktop|responsive)\.json$/i.exec(f);
+    const legacy = viewportLegacyRe.exec(f);
     if (legacy) {
       const viewport = legacy[1].toLowerCase() as KnownViewport;
       const list = viewportFiles.get(viewport) ?? [];
@@ -428,7 +529,7 @@ async function buildPlaywrightTool(dir: string = reportsDir): Promise<WebUiTool 
       for (const { file, browser } of entries) {
         const raw = await readCucumberJson(path.join(dir, file));
         if (!raw) continue;
-        browsers.push(browserBlockFromSuite(browser, ingestCucumber(raw)));
+        browsers.push(browserBlockFromSuite(browser, await ingestCucumber(raw)));
       }
       if (browsers.length === 0) continue;
       browsers.sort((a, b) => a.browser.localeCompare(b.browser));
@@ -453,9 +554,9 @@ async function buildPlaywrightTool(dir: string = reportsDir): Promise<WebUiTool 
       const suites  = [...new Set(allBrowsers.flatMap((b) => b.suites))];
       return {
         kind: 'web_ui',
-        id: 'playwright',
-        name: 'Playwright',
-        description: 'End-to-end browser tests across desktop and responsive viewports.',
+        id: toolId,
+        name: toolName,
+        description: descriptions.viewport,
         passed, failed, skipped,
         duration: `${viewports.length} viewport${viewports.length > 1 ? 's' : ''}`,
         suites,
@@ -468,7 +569,7 @@ async function buildPlaywrightTool(dir: string = reportsDir): Promise<WebUiTool 
   // ---- 2. Per-browser files ---------------------------------------------
   const browserFiles = files
     .map((f) => {
-      const m = /^playwright-(.+)\.json$/i.exec(f);
+      const m = perBrowserRe.exec(f);
       if (!m) return null;
       const browser = m[1].toLowerCase();
       return KNOWN_BROWSERS.has(browser) ? { file: f, browser } : null;
@@ -480,7 +581,7 @@ async function buildPlaywrightTool(dir: string = reportsDir): Promise<WebUiTool 
     for (const { file, browser } of browserFiles) {
       const raw = await readCucumberJson(path.join(dir, file));
       if (!raw) continue;
-      browsers.push(browserBlockFromSuite(browser, ingestCucumber(raw)));
+      browsers.push(browserBlockFromSuite(browser, await ingestCucumber(raw)));
     }
     if (browsers.length > 0) {
       browsers.sort((a, b) => a.browser.localeCompare(b.browser));
@@ -490,9 +591,9 @@ async function buildPlaywrightTool(dir: string = reportsDir): Promise<WebUiTool 
       const suites  = [...new Set(browsers.flatMap((b) => b.suites))];
       return {
         kind: 'web_ui',
-        id: 'playwright',
-        name: 'Playwright',
-        description: 'End-to-end browser tests across Chromium, Firefox, Edge and WebKit.',
+        id: toolId,
+        name: toolName,
+        description: descriptions.browser,
         passed, failed, skipped,
         duration: `${browsers.length} browser${browsers.length > 1 ? 's' : ''}`,
         suites,
@@ -503,14 +604,14 @@ async function buildPlaywrightTool(dir: string = reportsDir): Promise<WebUiTool 
   }
 
   // ---- 3. Fallback: single flat run (no breakdown → flat list, no tabs). -
-  const flat = await readCucumberJson(path.join(dir, 'playwright.json'));
+  const flat = await readCucumberJson(path.join(dir, `${toolId}.json`));
   if (!flat) return null;
-  const s = ingestCucumber(flat);
+  const s = await ingestCucumber(flat);
   return {
     kind: 'web_ui',
-    id: 'playwright',
-    name: 'Playwright',
-    description: 'End-to-end browser tests across Chromium, Firefox and WebKit.',
+    id: toolId,
+    name: toolName,
+    description: descriptions.flat,
     passed: s.passed, failed: s.failed, skipped: s.skipped, duration: s.duration,
     suites: s.suites,
     tests: s.tests,
@@ -546,10 +647,10 @@ async function buildAppiumTool(dir: string = reportsDir): Promise<MobileUiTool |
   });
 
   const android = androidRaw
-    ? platformBlock(ingestCucumber(androidRaw), process.env.ANDROID_DEVICE ?? 'Android device')
+    ? platformBlock(await ingestCucumber(androidRaw), process.env.ANDROID_DEVICE ?? 'Android device')
     : emptyPlatformBlock();
   const ios = iosRaw
-    ? platformBlock(ingestCucumber(iosRaw), process.env.IOS_DEVICE ?? 'iOS device')
+    ? platformBlock(await ingestCucumber(iosRaw), process.env.IOS_DEVICE ?? 'iOS device')
     : emptyPlatformBlock();
 
   const durationParts: string[] = [];
@@ -565,6 +666,40 @@ async function buildAppiumTool(dir: string = reportsDir): Promise<MobileUiTool |
     failed: android.failed + ios.failed,
     skipped: android.skipped + ios.skipped,
     duration: durationParts.join(' + '),
+    platforms: { android, ios },
+  };
+}
+
+/**
+ * Build the Mobilewright (mobile_ui) tool from `mobilewright.json` — unlike
+ * Appium's platform-named android.json/ios.json (one driver, two platform
+ * files), mobilewright's run-suite.sh profile is tool-named (single file)
+ * because the plugin only drives Android in this repo today (see
+ * start-stack.sh's mobilewright arm comment). Returns null when the file is
+ * absent (e.g. no device was connected this run).
+ */
+async function buildMobilewrightTool(dir: string = reportsDir): Promise<MobileUiTool | null> {
+  const androidRaw = await readCucumberJson(path.join(dir, 'mobilewright.json'));
+  if (!androidRaw) return null;
+
+  const s = await ingestCucumber(androidRaw);
+  const android: PlatformBlock = {
+    passed: s.passed, failed: s.failed, skipped: s.skipped, duration: s.duration,
+    device: process.env.ANDROID_DEVICE ?? 'Android device',
+    suites: s.suites,
+    tests: s.tests,
+  };
+  const ios = emptyPlatformBlock();
+
+  return {
+    kind: 'mobile_ui',
+    id: 'mobilewright',
+    name: 'Mobilewright',
+    description: 'Playwright-on-mobile flows, driven via mobilecli (Android).',
+    passed: android.passed,
+    failed: android.failed,
+    skipped: android.skipped,
+    duration: `${android.duration} (Android)`,
     platforms: { android, ios },
   };
 }
@@ -661,14 +796,25 @@ async function buildZapTool(dir: string = reportsDir): Promise<WebSecurityTool |
 
   const risk = (block: ZapScanBlock | null, key: string): number => block?.byRisk?.[key] ?? 0;
 
+  // A gate the host could not run (missing scanner binary) is not a finding —
+  // counting it as failed would report an unexamined target as vulnerable. It
+  // is counted as SKIPPED rather than dropped: a dropped gate leaves 0/0/0,
+  // which the overview ToolCard renders as a green "All passed" for a run in
+  // which no scanner executed at all — the most dangerous possible summary.
+  const gateFailed = (gate: SecurityGate | null): number =>
+    gate && gate.pass === false && gate.unavailable !== true ? 1 : 0;
+  const gateSkipped = (gate: SecurityGate | null): number =>
+    gate && gate.unavailable === true ? 1 : 0;
+
   const failed =
     risk(baseline, 'High') + risk(baseline, 'Medium') +
     risk(apiScan, 'High')  + risk(apiScan, 'Medium') +
-    (tls && tls.pass === false ? 1 : 0) +
-    (schemaFuzz && schemaFuzz.pass === false ? 1 : 0);
+    gateFailed(tls) +
+    gateFailed(schemaFuzz);
   const passed =
     risk(baseline, 'Low') + risk(baseline, 'Informational') +
     risk(apiScan, 'Low')  + risk(apiScan, 'Informational');
+  const skipped = gateSkipped(tls) + gateSkipped(schemaFuzz);
 
   return {
     kind: 'security',
@@ -676,7 +822,7 @@ async function buildZapTool(dir: string = reportsDir): Promise<WebSecurityTool |
     id: 'zap',
     name: 'OWASP ZAP',
     description: 'Web application security scan',
-    passed, failed, skipped: 0,
+    passed, failed, skipped,
     duration: '0s',
     targetUrl: scratch.targetUrl ?? '',
     baseline, apiScan, tls, schemaFuzz,
@@ -742,6 +888,29 @@ async function buildMobsfTool(dir: string = reportsDir): Promise<MobileSecurityT
 
 export { buildPlaywrightTool, buildAppiumTool, buildAxeTool, buildZapTool, buildMobsfTool, materializeScreenshots };
 
+// ---------- Tool Efficiency timing ----------------------------------------
+
+async function collectTiming(runDir: string): Promise<ToolTiming[]> {
+  const timingDir = path.join(runDir, 'timing');
+  let files: string[];
+  try {
+    files = await fs.readdir(timingDir);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw err;
+  }
+  const timings: ToolTiming[] = [];
+  for (const file of files.filter((f) => f.endsWith('.json'))) {
+    try {
+      const raw = await fs.readFile(path.join(timingDir, file), 'utf8');
+      timings.push(JSON.parse(raw) as ToolTiming);
+    } catch (err) {
+      console.error(`[ingest] skipping unreadable timing file ${file}: ${(err as Error).message}`);
+    }
+  }
+  return timings;
+}
+
 async function main(): Promise<void> {
   const { runId: argRunId } = parseArgs();
   const runId = argRunId ?? defaultRunId();
@@ -771,10 +940,24 @@ async function main(): Promise<void> {
     );
   }
 
+  // ---- WebdriverIO (web_ui) ----------------------------------------------
+  const webdriverioTool = await buildPlaywrightTool(reportsDir, 'webdriverio', 'WebdriverIO', {
+    viewport: 'End-to-end browser tests (WebdriverIO/Selenium) across desktop and responsive viewports.',
+    browser: 'End-to-end browser tests (WebdriverIO/Selenium) across browsers.',
+    flat: 'End-to-end browser tests via WebdriverIO/Selenium.',
+  });
+  if (webdriverioTool) {
+    await materializeScreenshots(webdriverioTool.tests, runDir, runId);
+    await writeJson(path.join(runDir, 'webdriverio.json'), webdriverioTool);
+    wroteTools.push(
+      `webdriverio (${webdriverioTool.passed}P/${webdriverioTool.failed}F/${webdriverioTool.skipped}S)`,
+    );
+  }
+
   // ---- API (api) --------------------------------------------------------
   const apiRaw = await readCucumberJson(path.join(reportsDir, 'api.json'));
   if (apiRaw) {
-    const s = ingestCucumber(apiRaw);
+    const s = await ingestCucumber(apiRaw);
     const tool: ApiTool = {
       kind: 'api',
       id: 'api',
@@ -801,6 +984,16 @@ async function main(): Promise<void> {
     );
     await writeJson(path.join(runDir, 'appium.json'), appiumTool);
     wroteTools.push(`appium (${appiumTool.passed}P/${appiumTool.failed}F/${appiumTool.skipped}S)`);
+  }
+
+  // ---- Mobilewright (mobile_ui) — Android-only, tool-named report file ----
+  const mobilewrightTool = await buildMobilewrightTool();
+  if (mobilewrightTool) {
+    await materializeScreenshots(mobilewrightTool.platforms.android.tests, runDir, runId);
+    await writeJson(path.join(runDir, 'mobilewright.json'), mobilewrightTool);
+    wroteTools.push(
+      `mobilewright (${mobilewrightTool.passed}P/${mobilewrightTool.failed}F/${mobilewrightTool.skipped}S)`,
+    );
   }
 
   // ---- Gatling (performance) --------------------------------------------
@@ -857,6 +1050,13 @@ async function main(): Promise<void> {
     console.error('Run `pnpm test:json:playwright`, `pnpm test:json:api`, etc. first.');
     process.exitCode = 1;
     return;
+  }
+
+  // ---- timing (Tool Efficiency) -----------------------------------------
+  const timings = await collectTiming(runDir);
+  if (timings.length > 0) {
+    await writeJson(path.join(runDir, 'timing.json'), timings);
+    console.log(`[ingest] wrote timing.json (${timings.length} tool timing entr${timings.length === 1 ? 'y' : 'ies'})`);
   }
 
   // ---- run.json + manifest ---------------------------------------------

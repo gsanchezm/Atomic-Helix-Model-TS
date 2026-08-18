@@ -1,0 +1,71 @@
+# AWS CodeBuild buildspec for the "mobsf" profile (ci/pipeline.config.json).
+# Static translation of the `security-mobsf` job in .github/workflows/ahm-execution-helix.yml.
+#
+# No batch build-matrix — ci/pipeline.config.json's mobsf entry has an empty
+# `matrix: {}`, matching security-mobsf's single-cell (no strategy.matrix) job.
+
+version: 0.2
+
+env:
+  variables:
+    PLATFORM: api
+    DRIVER: api
+    PLUGIN_MOBSF: 'true'
+    PLUGIN_API: 'true'
+    MOBSF_URL: http://127.0.0.1:8000
+  secrets-manager:
+    API_BASE_URL: "ahm/ci:API_BASE_URL"
+
+phases:
+  install:
+    commands:
+      - bash ci/steps/setup-environment.sh
+
+  build:
+    commands:
+      # GHA step "Download Android APK for MobSF scan". filePath MUST be
+      # omnipizza-release.apk here, NOT app-release.apk — different from
+      # android.buildspec.yml's copy, because support.security.json's mobile.mobsf[]
+      # filePath entries expect this exact name. OMNIPIZZA_RELEASE_BASE_URL — a
+      # CodePipeline variable, same note as android.buildspec.yml/ios.buildspec.yml.
+      - |
+          mkdir -p assets/apps/android
+          curl -fL "$OMNIPIZZA_RELEASE_BASE_URL/omnipizza-release.apk" -o assets/apps/android/omnipizza-release.apk
+          ls -lh assets/apps/android/omnipizza-release.apk
+
+      # GHA step "Download + unpack iOS app for MobSF scan". support.security.json's
+      # ios mobsf entry expects a literal .app DIRECTORY at
+      # assets/apps/ios/OmniPizza.app.
+      - |
+          mkdir -p assets/apps/ios
+          curl -fL "$OMNIPIZZA_RELEASE_BASE_URL/OmniPizza-Simulator.zip" -o assets/apps/ios/OmniPizza-Simulator.zip
+          rm -rf assets/apps/ios/unpacked assets/apps/ios/OmniPizza.app
+          mkdir -p assets/apps/ios/unpacked
+          unzip -q assets/apps/ios/OmniPizza-Simulator.zip -d assets/apps/ios/unpacked
+          APP_PATH=$(find assets/apps/ios/unpacked -maxdepth 3 -name '*.app' -type d | head -n 1)
+          if [ -z "$APP_PATH" ]; then echo "No .app bundle found"; exit 1; fi
+          cp -R "$APP_PATH" assets/apps/ios/OmniPizza.app
+          ls -ld assets/apps/ios/OmniPizza.app
+
+      # GHA step "Start proxy + API + MobSF plugin". Needs Docker (privilegedMode:
+      # true on the CodeBuild project), since start-stack.sh's mobsf arm does
+      # `docker run -d --name mobsf ...`.
+      - bash ci/steps/start-stack.sh mobsf
+
+      # GHA step "Run security-infra suite (MobSF static scan)".
+      - bash ci/steps/run-suite.sh "@security-infra" mobsf security-infra
+
+  post_build:
+    # GHA's "Collect artifacts" / "Stop MobSF container" / "Teardown" steps all use
+    # `if: always()` independently of each other — the container-stop and teardown
+    # cleanup must still run even if collect-artifacts.sh fails, so they go in
+    # `finally:` (see api.buildspec.yml for why).
+    commands:
+      - bash ci/steps/collect-artifacts.sh mobsf
+    finally:
+      - docker rm -f mobsf 2>/dev/null || true
+      - bash ci/steps/teardown.sh
+
+artifacts:
+  files:
+    - 'artifacts/mobsf/**/*'

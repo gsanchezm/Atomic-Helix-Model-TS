@@ -1,15 +1,15 @@
 @security-infra
-Feature: OmniPizza whole-app security infrastructure scan
+Feature: OmniPizza's deployed footprint is checked for exposed security risk
 
-  Infra-shaped security. These probes have no single owning domain — the ZAP
-  baseline crawls the entire running frontend, testssl inspects the deployed
-  API host's certificate, and MobSF statically analyzes the whole APK / IPA.
-  They live in support/ (the cross-cutting glue layer) and RECORD findings to
-  the dashboard rather than gate the build. Run once, out of band, selected by
-  the security-infra tag.
+  These checks have no single owning domain — one crawls the entire running
+  frontend for exposed vulnerabilities, one inspects the deployed backend's
+  transport security, and one statically analyzes the mobile app binaries as
+  a whole. They live in support/ (the cross-cutting glue layer) and RECORD
+  findings to the dashboard rather than block the build. Run once, out of
+  band, selected by the security-infra tag.
 
-  Scenario: The deployed OmniPizza app passes the infrastructure security scan
-    When the ZAP baseline crawl runs against the frontend
-    And the TLS configuration of the API host is inspected
-    And MobSF statically analyzes the mobile app binaries
-    Then the infrastructure security report is captured
+  Scenario: The deployed app's frontend, backend, and mobile binaries are checked for exposed security risk
+    When the live frontend is crawled for exposed vulnerabilities
+    And the backend's transport security is inspected
+    And the mobile app binaries are statically analyzed for exposed vulnerabilities
+    Then the findings are captured for review

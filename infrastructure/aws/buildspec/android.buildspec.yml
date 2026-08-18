@@ -1,0 +1,147 @@
+# AWS CodeBuild buildspec for the "android" profile (ci/pipeline.config.json).
+# Static translation of the `e2e-android` job in .github/workflows/ahm-execution-helix.yml.
+#
+# CAVEAT: this CodeBuild project needs privilegedMode: true (Docker-in-Docker for the
+# emulator) AND /dev/kvm passthrough, which standard CodeBuild compute types do NOT
+# expose (see plan §3.6) — this buildspec is written for structural/static parity with
+# e2e-android; it will not actually boot a hardware-accelerated emulator on stock
+# CodeBuild compute. A KVM-capable custom/bare-metal fleet is a real prerequisite, not
+# solved here (same caveat the plan itself states for GitLab/Azure's Linux runners).
+#
+# Batch build-matrix (SUITE: [reads, writes]) is the CodeBuild equivalent of that job's
+# `strategy.matrix.suite`.
+
+version: 0.2
+
+env:
+  variables:
+    PLATFORM: android
+    DRIVER: appium
+    APPIUM_HOST: localhost
+    APPIUM_PORT: '4723'
+    CAP_PROFILE: docker_android
+    ANDROID_APP_PATH: assets/apps/android/app-release.apk
+    ANDROID_UDID: localhost:5555
+    PLUGIN_APPIUM: 'true'
+    PLUGIN_API: 'true'
+    MINIO_ENDPOINT: localhost
+    MINIO_PORT: '9000'
+    MINIO_ACCESS_KEY: minioadmin
+    MINIO_SECRET_KEY: minioadmin
+    # Overridable — matches GHA's workflow_dispatch `android_api_level` input default.
+    ANDROID_API_LEVEL: '33'
+  secrets-manager:
+    API_BASE_URL: "ahm/ci:API_BASE_URL"
+
+batch:
+  fast-fail: false
+  build-matrix:
+    static:
+      ignore-failure: false
+    dynamic:
+      env:
+        variables:
+          SUITE: [reads, writes]
+
+phases:
+  install:
+    commands:
+      - bash ci/steps/setup-environment.sh
+
+  build:
+    commands:
+      # GHA step "Install Android platform tools".
+      - |
+          sudo apt-get update
+          sudo apt-get install -y android-sdk-platform-tools
+          adb version
+
+      # GHA step "Download Android app artifact". OMNIPIZZA_RELEASE_BASE_URL comes from
+      # the pipeline's Resolve stage — a CodePipeline variable, injected as a CodeBuild
+      # plaintext env var by the CDK stack, NOT declared in this buildspec's own env:
+      # block, since its value is set per-execution by the pipeline, not a static
+      # secret/config value.
+      - |
+          mkdir -p assets/apps/android
+          curl -fL "$OMNIPIZZA_RELEASE_BASE_URL/omnipizza-release.apk" -o assets/apps/android/app-release.apk
+          ls -lh assets/apps/android/app-release.apk
+
+      # GHA step "Start MinIO Telemetry Storage".
+      - |
+          if docker compose version >/dev/null 2>&1; then
+            docker compose -f infrastructure/minio-compose.yml up -d
+          else
+            docker-compose -f infrastructure/minio-compose.yml up -d
+          fi
+          sleep 5
+
+      # GHA step "Start Android emulator (docker-android)".
+      - |
+          docker run -d \
+            --name android-emulator \
+            --privileged \
+            --device /dev/kvm \
+            -p 5554:5554 \
+            -p 5555:5555 \
+            -e API_LEVEL=${ANDROID_API_LEVEL:-33} \
+            -e IMG_TYPE=google_apis \
+            -e ARCHITECTURE=x86_64 \
+            -e DEVICE_ID=pixel \
+            -e MEMORY=4096 \
+            -e CORES=2 \
+            -e DISABLE_ANIMATION=true \
+            -e DISABLE_HIDDEN_POLICY=true \
+            -e SKIP_AUTH=1 \
+            halimqarroum/docker-android:api-${ANDROID_API_LEVEL:-33}
+
+      # GHA step "Start Appium server".
+      - |
+          pnpm exec appium --relaxed-security &
+          sleep 5
+
+      # GHA step "Wait for emulator to be ready".
+      - |
+          echo "Waiting for ADB device to appear..."
+          adb connect localhost:5555
+          for i in $(seq 1 40); do
+            if adb -s localhost:5555 shell getprop sys.boot_completed 2>/dev/null | grep -q "1"; then
+              echo "Emulator ready after $((i * 15))s"
+              break
+            fi
+            echo "  Attempt $i/40 — waiting 15s..."
+            sleep 15
+          done
+          adb devices
+
+      # GHA step "Start proxy + Appium plugin".
+      - bash ci/steps/start-stack.sh android
+
+      # GHA step "Run E2E tests" — one run: block, one commands: entry. $SUITE comes
+      # from the batch build-matrix dynamic env variable declared above (same key as
+      # GHA's matrix.suite).
+      - |
+          if [ "$SUITE" = "reads" ]; then
+            TAG_EXPRESSION="@android and not @writes-shared-state"
+          else
+            TAG_EXPRESSION="@android and @writes-shared-state"
+          fi
+          bash ci/steps/run-suite.sh "$TAG_EXPRESSION" android "$SUITE"
+
+  post_build:
+    # GHA's "Collect artifacts" / "Stop emulator" / "Teardown" steps all use
+    # `if: always()`. post_build already runs regardless of the build phase's outcome
+    # (CodeBuild always attempts subsequent phases after a failure), but WITHIN this
+    # phase, if collect-artifacts.sh itself fails, a plain `commands:` list would skip
+    # the remaining entries — so the emulator-stop/teardown cleanup goes in `finally:`,
+    # which (per AWS's buildspec reference) runs even if an earlier command in this same
+    # phase's `commands:` block fails. `on-failure: CONTINUE` would not achieve this —
+    # it governs phase-to-phase transition, not intra-phase continuation.
+    commands:
+      - bash ci/steps/collect-artifacts.sh android
+    finally:
+      - docker rm -f android-emulator || true
+      - bash ci/steps/teardown.sh
+
+artifacts:
+  files:
+    - 'artifacts/android/**/*'

@@ -1,12 +1,15 @@
 import type { Tool } from '../../shared/types.js';
 import type { ToolKind } from '../../shared/kinds.js';
+import { PERF_TEST_TYPES } from '../../shared/perf-types.js';
 import { apiAdapter } from './api.js';
 import { appiumAdapter } from './appium.js';
 import { axeAdapter } from './axe.js';
 import { gatlingAdapter } from './gatling.js';
+import { mobilewrightAdapter } from './mobilewright.js';
 import { mobsfAdapter } from './mobsf.js';
 import { pixelmatchAdapter } from './pixelmatch.js';
 import { playwrightAdapter } from './playwright.js';
+import { webdriverioAdapter } from './webdriverio.js';
 import { zapAdapter } from './zap.js';
 import type { Adapter, AdapterContext } from './shared.js';
 
@@ -19,15 +22,47 @@ export interface AdapterEntry {
 }
 
 export const ADAPTERS: Record<string, AdapterEntry> = {
-  playwright: { id: 'playwright', kind: 'web_ui',      adapter: playwrightAdapter },
-  appium:     { id: 'appium',     kind: 'mobile_ui',   adapter: appiumAdapter     },
-  api:        { id: 'api',        kind: 'api',         adapter: apiAdapter        },
-  gatling:    { id: 'gatling',    kind: 'performance', adapter: gatlingAdapter    },
-  pixelmatch: { id: 'pixelmatch', kind: 'visual',      adapter: pixelmatchAdapter },
-  axe:        { id: 'axe',        kind: 'accessibility', adapter: axeAdapter      },
-  zap:        { id: 'zap',        kind: 'security',    adapter: zapAdapter        },
-  mobsf:      { id: 'mobsf',      kind: 'security',    adapter: mobsfAdapter      },
+  playwright:   { id: 'playwright',   kind: 'web_ui',      adapter: playwrightAdapter   },
+  webdriverio:  { id: 'webdriverio',  kind: 'web_ui',      adapter: webdriverioAdapter  },
+  appium:       { id: 'appium',       kind: 'mobile_ui',   adapter: appiumAdapter       },
+  mobilewright: { id: 'mobilewright', kind: 'mobile_ui',   adapter: mobilewrightAdapter },
+  api:          { id: 'api',          kind: 'api',         adapter: apiAdapter          },
+  gatling:      { id: 'gatling',      kind: 'performance', adapter: gatlingAdapter      },
+  pixelmatch:   { id: 'pixelmatch',   kind: 'visual',      adapter: pixelmatchAdapter   },
+  axe:          { id: 'axe',          kind: 'accessibility', adapter: axeAdapter        },
+  zap:          { id: 'zap',          kind: 'security',    adapter: zapAdapter          },
+  mobsf:        { id: 'mobsf',        kind: 'security',    adapter: mobsfAdapter        },
 };
+
+/**
+ * The tools a full run is EXPECTED to produce. These keep their card on the
+ * overview even with no JSON, rendered "No data" — a canonical tool that
+ * silently produced nothing is a gap you need to see, not one to hide.
+ *
+ * Everything else in ADAPTERS is optional: an alternate driver for a slot
+ * already covered here (webdriverio duplicates playwright's web_ui, and
+ * mobilewright duplicates appium's mobile_ui), or a tool added to the registry
+ * before it is part of the pipeline. Those appear only in runs that actually
+ * exercised them, so registering a new adapter no longer plants a permanently
+ * empty tile on every run's overview.
+ *
+ * To promote a tool, add its id here; to retire one, remove it. Membership is
+ * about "should this run have produced data", NOT about which adapters exist.
+ */
+export const CANONICAL_TOOL_IDS: readonly string[] = [
+  'playwright',
+  'appium',
+  'api',
+  'gatling',
+  'pixelmatch',
+  'axe',
+  'zap',
+  'mobsf',
+];
+
+export function isCanonicalTool(toolId: string): boolean {
+  return CANONICAL_TOOL_IDS.includes(toolId);
+}
 
 /**
  * Default display metadata for each tool. Used to build placeholder
@@ -39,9 +74,17 @@ export const TOOL_META: Record<string, { name: string; description: string }> = 
     name: 'Playwright',
     description: 'End-to-end browser tests across Chromium, Firefox and WebKit.',
   },
+  webdriverio: {
+    name: 'WebdriverIO',
+    description: 'End-to-end browser tests via WebdriverIO/Selenium.',
+  },
   appium: {
     name: 'Appium',
     description: 'Native mobile flows on iOS simulators and Android emulators.',
+  },
+  mobilewright: {
+    name: 'Mobilewright',
+    description: 'Playwright-on-mobile flows, driven via mobilecli (Android).',
   },
   api: {
     name: 'API Suite',
@@ -102,7 +145,11 @@ export function makeMissingTool(toolId: string): Tool {
     performance: () => ({
       ...base,
       kind: 'performance',
-      perf: { rps: 0, avgMs: 0, p95Ms: 0, p99Ms: 0, errorRate: 0, requests: 0, maxRps: 0, distribution: [], scenarios: [] },
+      perf: {
+        rps: 0, avgMs: 0, p75Ms: 0, p95Ms: 0, p99Ms: 0, maxMs: 0,
+        errorRate: 0, requests: 0, maxRps: 0, distribution: [], scenarios: [],
+      },
+      byType: PERF_TEST_TYPES.map((type) => ({ type, perf: null })),
     }),
     visual: () => ({ ...base, kind: 'visual', diffs: [] }),
     accessibility: () => ({ ...base, kind: 'accessibility', audits: [] }),

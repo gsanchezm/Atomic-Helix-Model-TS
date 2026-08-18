@@ -1,0 +1,112 @@
+{
+  "orderSuccessScreen": {
+    "playwright": {
+      "desktop": { "kind": "testId", "value": "order-success-title-desktop" },
+      "responsive": { "kind": "testId", "value": "order-success-title-responsive" }
+    },
+    "mobilewright": {
+      "android": { "kind": "testId", "value": "screen-order-success" },
+      "ios": { "kind": "testId", "value": "btn-order-details" }
+    }
+  },
+  "orderIdLabel": {
+    "playwright": { "kind": "testId", "value": "order-id" }
+  },
+  "orderSuccessTitle": {
+    "playwright": {
+      "responsive": { "kind": "testId", "value": "order-success-title-responsive" },
+      "desktop": { "kind": "testId", "value": "order-success-title-desktop" }
+    }
+  },
+  "backToCatalogButton": {
+    "playwright": {
+      "responsive": { "kind": "testId", "value": "back-to-catalog-responsive" },
+      "desktop": { "kind": "testId", "value": "back-to-catalog-desktop" }
+    },
+    "mobilewright": { "kind": "testId", "value": "btn-back-catalog" }
+  },
+  "liveBadgeContainer": {
+    "mobilewright": { "kind": "testId", "value": "view-live-badge" }
+  },
+  "liveTrackingText": {
+    "playwright": { "kind": "testId", "value": "live-tracking-status" },
+    "mobilewright": { "kind": "testId", "value": "text-live-tracking" }
+  },
+  "courierTagText": {
+    "mobilewright": { "kind": "testId", "value": "text-courier-tag" }
+  },
+  "statusTitleText": {
+    "mobilewright": { "kind": "testId", "value": "text-status-title" }
+  },
+  "statusSubtitleText": {
+    "playwright": { "kind": "testId", "value": "expected-arrival" },
+    "mobilewright": { "kind": "testId", "value": "text-status-sub" }
+  },
+  "timeEstimateText": {
+    "playwright": { "kind": "testId", "value": "delivery-time-min" },
+    "mobilewright": { "kind": "testId", "value": "text-time-estimate" }
+  },
+  "minLabelText": {
+    "playwright": { "kind": "testId", "value": "delivery-time-label" },
+    "mobilewright": { "kind": "testId", "value": "text-min-label" }
+  },
+  "bottomSheetContainer": {
+    "mobilewright": { "kind": "testId", "value": "view-bottom-sheet" }
+  },
+  "courierInfoContainer": {
+    "playwright": { "kind": "testId", "value": "courier-info" },
+    "mobilewright": { "kind": "testId", "value": "view-courier-card" }
+  },
+  "courierRatingText": {
+    "playwright": { "kind": "testId", "value": "courier-rating" },
+    "mobilewright": { "kind": "testId", "value": "text-courier-rating" }
+  },
+  "courierLabelText": {
+    "playwright": { "kind": "testId", "value": "courier-role-label" },
+    "mobilewright": { "kind": "testId", "value": "text-courier-label" }
+  },
+  "courierNameText": {
+    "playwright": { "kind": "testId", "value": "courier-name" },
+    "mobilewright": { "kind": "testId", "value": "text-courier-name" }
+  },
+  "courierVehicleText": {
+    "playwright": { "kind": "testId", "value": "courier-vehicle" },
+    "mobilewright": { "kind": "testId", "value": "text-courier-vehicle" }
+  },
+  "courierImage": {
+    "playwright": { "kind": "testId", "value": "img-courier" },
+    "mobilewright": { "kind": "testId", "value": "img-courier-avatar" }
+  },
+  "courierChatButton": {
+    "playwright": {
+      "responsive": { "kind": "testId", "value": "courier-chat-responsive" },
+      "desktop": { "kind": "testId", "value": "courier-chat-desktop" }
+    },
+    "mobilewright": { "kind": "testId", "value": "btn-courier-chat" }
+  },
+  "courierCallButton": {
+    "playwright": {
+      "responsive": { "kind": "testId", "value": "courier-call-responsive" },
+      "desktop": { "kind": "testId", "value": "courier-call-desktop" }
+    },
+    "mobilewright": { "kind": "testId", "value": "btn-courier-call" }
+  },
+  "orderIdText": {
+    "playwright": { "kind": "testId", "value": "order-id" }
+  },
+  "orderTotalText": {
+    "playwright": { "kind": "testId", "value": "order-total" }
+  },
+  "viewOrderDetailsButton": {
+    "playwright": { "kind": "testId", "value": "order-details-toggle" },
+    "mobilewright": { "kind": "testId", "value": "btn-order-details" }
+  },
+  "orderDetailsPanel": {
+    "playwright": { "kind": "testId", "value": "order-details-panel" },
+    "mobilewright": { "kind": "testId", "value": "view-order-details-panel" }
+  },
+  "orderDetailsLabel": {
+    "playwright": { "kind": "testId", "value": "order-details-label" },
+    "mobilewright": { "kind": "testId", "value": "text-order-details" }
+  }
+}

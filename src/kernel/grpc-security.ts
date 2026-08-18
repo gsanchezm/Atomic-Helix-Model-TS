@@ -29,6 +29,14 @@ function requirePair(
     }
 }
 
+// Some plugin responses (e.g. MobSF's full JSON static-analysis report) exceed
+// grpc-js's 4MB default message-size limit; raise it for every server/client
+// in the mesh so a large payload doesn't RESOURCE_EXHAUSTED on either hop.
+export const GRPC_CHANNEL_OPTIONS: Readonly<Record<string, number>> = {
+    'grpc.max_receive_message_length': 16 * 1024 * 1024,
+    'grpc.max_send_message_length': 16 * 1024 * 1024,
+};
+
 export function tlsEnabled(): boolean {
     return isEnabled(process.env.TOM_TLS_ENABLED)
         || Boolean(process.env.TOM_TLS_CA_PATH)

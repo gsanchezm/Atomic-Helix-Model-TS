@@ -7,6 +7,7 @@ import {
     assertActionAllowed,
     bindAddress,
     createServerCredentials,
+    GRPC_CHANNEL_OPTIONS,
     tlsEnabled,
 } from '@kernel/grpc-security';
 
@@ -53,7 +54,7 @@ export function startPluginServer(
         }
     }
 
-    const server = new grpc.Server();
+    const server = new grpc.Server(GRPC_CHANNEL_OPTIONS);
     server.addService(ptomProto.ActionService.service, {
         ExecuteIntent: handleExecuteIntent,
     });

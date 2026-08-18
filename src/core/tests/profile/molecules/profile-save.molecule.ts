@@ -40,8 +40,24 @@ export async function saveProfile(): Promise<void> {
     // Re-anchor the next assertion on a stable element after the save. We
     // anchor on `profileFullNameInput` (not `profileCard`) because the card
     // wrapper is mobile-only in the locator contract; the fullName input
-    // carries both `web.{responsive,desktop}` and `mobile` keys and stays
-    // mounted across the save side-effect.
+    // carries both `web.{responsive,desktop}` and `mobile` keys.
+    //
+    // On mobile that input stays MOUNTED across the save, but mounted is not
+    // displayed: CLICK on the save button runs `scrollIntoViewSafe`, which drives
+    // the form's ScrollView to its maximum offset, and at that offset the
+    // top-of-form fullName input is gone from the hierarchy entirely — page
+    // sources captured at the failure show the topmost surviving child clipped by
+    // 27 px. `waitForDisplayed` then burns its whole budget on an element that
+    // exists and is simply scrolled past (all 6 markets, both attempts, run
+    // 30567424468). Scroll it back into view first. The very next step,
+    // `assertFormInputsVisible`, waits on the same input with no scroll of its
+    // own, so restoring the offset here is what unblocks it too. Web renders the
+    // whole form at once and needs no scroll.
+    if (isMobileDriver()) {
+        await sendIntent(INTENT.SCROLL_TO, 'profileFullNameInput').catch(() => {
+            /* best effort — the WAIT below is still the real assertion */
+        });
+    }
     await sendIntent(INTENT.WAIT_FOR_ELEMENT, `profileFullNameInput||${SAVE_SETTLE_WAIT_MS}`);
 }
 

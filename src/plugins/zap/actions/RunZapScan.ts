@@ -1,9 +1,22 @@
-import { mkdirSync, writeFileSync } from 'fs';
+import { chmodSync, mkdirSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
 import { ActionHandler } from '@plugins/shared/ActionHandler';
 import { runCommand } from '@plugins/shared/command-runner';
 import { ZapActionContext } from '@plugins/zap/actions/ZapActionContext';
 import { setZapRun } from '@plugins/zap/zap-state';
+
+// An UNBOUNDED active scan is not a stricter gate — it is a gate that reports
+// nothing. Against a slow target the scan outruns the calling step's budget,
+// cucumber kills the step, the container is orphaned, and `apiScan`/`schemaFuzz`
+// land as null in the dashboard: strictly less signal than a capped scan that
+// finishes and reports what it found in the time it had. So the scan carries its
+// own cap, and the deadlines are ordered
+//   scan cap  <  docker timeout  <  calling step timeout
+// with real margin between each, so whichever budget is exceeded first fails
+// loudly and specifically instead of as an opaque step timeout.
+const DEFAULT_MAX_SCAN_MINS = 20;
+/** Headroom over the scan cap for OpenAPI import, report rendering and container teardown. */
+const DOCKER_TIMEOUT_MARGIN_MINS = 8;
 
 interface ZapScanConfig {
     targetUrl: string;
@@ -11,6 +24,8 @@ interface ZapScanConfig {
     authToken?: string;
     reportDir?: string;
     timeoutMs?: number;
+    /** Wall-clock cap for the active scan itself. Keep well under the calling step's timeout. */
+    maxScanDurationMins?: number;
     image?: string;
 }
 
@@ -24,8 +39,9 @@ function yaml(config: ZapScanConfig, active: boolean): string {
     const jobs = config.openApiUrl
         ? `  - type: openapi\n    parameters:\n      apiUrl: ${JSON.stringify(config.openApiUrl)}\n      targetUrl: ${JSON.stringify(config.targetUrl)}\n`
         : `  - type: spider\n    parameters:\n      url: ${JSON.stringify(config.targetUrl)}\n      maxDuration: 5\n`;
+    const maxScanMins = config.maxScanDurationMins ?? DEFAULT_MAX_SCAN_MINS;
     const scan = active
-        ? `  - type: activeScan\n    parameters:\n      policy: Default Policy\n`
+        ? `  - type: activeScan\n    parameters:\n      policy: Default Policy\n      maxScanDurationInMins: ${maxScanMins}\n`
         : `  - type: passiveScan-wait\n    parameters:\n      maxDuration: 10\n`;
     return `env:\n  contexts:\n    - name: omnipizza\n      urls:\n        - ${JSON.stringify(config.targetUrl)}\n      includePaths:\n        - ${JSON.stringify(`${config.targetUrl}.*`)}\njobs:\n${jobs}${scan}  - type: report\n    parameters:\n      template: traditional-json\n      reportDir: /zap/wrk\n      reportFile: zap-report.json\n  - type: report\n    parameters:\n      template: traditional-html\n      reportDir: /zap/wrk\n      reportFile: zap-report.html\n`;
 }
@@ -37,6 +53,15 @@ function action(name: string, active: boolean): ActionHandler<ZapActionContext> 
             const config = requireConfig(target);
             const reportDir = resolve(config.reportDir ?? `reports/security/zap/${sessionId}`);
             mkdirSync(reportDir, { recursive: true });
+            // The ZAP image runs as `zap` (uid 1000). On a Linux runner this directory is
+            // created by the CI user (uid 1001) under umask 022, i.e. 0755 — the container
+            // can read the plan but cannot create the report, which surfaces as
+            // `AccessDeniedException /zap/wrk/zap-report.json` *after* a full scan has run.
+            // Docker Desktop on Windows hides this by presenting bind mounts as 0777, which
+            // is why the same code passes locally. Leaf only on purpose: the parents that
+            // `recursive: true` creates stay 0755 and traverse is all the container needs
+            // on them. On Windows this is a no-op — Node's chmod only maps the read-only bit.
+            chmodSync(reportDir, 0o777);
             writeFileSync(resolve(reportDir, 'zap-plan.yaml'), yaml(config, active), 'utf8');
             const env: NodeJS.ProcessEnv = {};
             if (config.authToken) {
@@ -49,7 +74,12 @@ function action(name: string, active: boolean): ActionHandler<ZapActionContext> 
                 ...(config.authToken ? ['-e', 'ZAP_AUTH_HEADER', '-e', 'ZAP_AUTH_HEADER_VALUE'] : []),
                 config.image ?? 'ghcr.io/zaproxy/zaproxy:stable',
                 'zap.sh', '-cmd', '-autorun', '/zap/wrk/zap-plan.yaml',
-            ], { env, timeoutMs: config.timeoutMs ?? 30 * 60_000 });
+            ], {
+                env,
+                timeoutMs:
+                    config.timeoutMs ??
+                    ((config.maxScanDurationMins ?? DEFAULT_MAX_SCAN_MINS) + DOCKER_TIMEOUT_MARGIN_MINS) * 60_000,
+            });
             if (result.exitCode !== 0) {
                 throw new Error(`[ZAP] scan failed (exit=${result.exitCode}): ${result.stderr.slice(-2000)}`);
             }

@@ -1,10 +1,13 @@
 // Navbar header-language molecule.
 //
 // CH is the only market with a header language switcher (DE/FR). The
-// navbar.locators.json defines BOTH a `languageDEButton` / `languageFRButton`
-// pair (used on the login screen and visible in the header on web) and a
+// navbar.locators.json defines a `languageDEButton` / `languageFRButton`
+// pair (desktop web header, and the login screen), a `mobileLanguageDEButton`
+// / `mobileLanguageFRButton` pair (the same toggle duplicated inside the
+// web-responsive hamburger drawer — the desktop copy sits in a
+// `hidden md:flex` container and is never visible below 768px), and a
 // `headerLanguageDEButton` / `headerLanguageFRButton` pair specific to the
-// mobile header. We pick the right key by driver.
+// native mobile header. We pick the right key by driver + viewport.
 //
 // The verification step `Then the catalog add-to-cart label reflects "<x>"`
 // is intentionally cross-slice: switching the navbar language must drive
@@ -29,9 +32,10 @@
 import { sendIntent } from '@kernel/client';
 import { logger } from '@utils/logger';
 import { INTENT } from '@kernel/intents';
-import { getDriver, isApiDriver, isNativeMobileDriver, isWebDriver } from './navbar-shell.molecule';
+import { getDriver, isApiDriver, isNativeMobileDriver, isWebDriver, isWebResponsive, openMobileMenu } from './navbar-shell.molecule';
 import { BROWSER_COMMAND } from '@kernel/browser-command';
 import { sendBrowserCommand } from '@core/tests/support/browser-command';
+import { mobileTestId } from '@core/tests/support/mobile-selector';
 
 const log = logger.child({ layer: 'molecule', domain: 'navbar', action: 'language' });
 
@@ -55,8 +59,11 @@ const CH_WITNESS_PIZZA_ID = 'marinara';
  * Locator key selection:
  *   - native mobile: `headerLanguageDEButton` / `headerLanguageFRButton`
  *     (RN's in-app header, distinct from the login-screen switcher).
- *   - web (desktop or responsive): `languageDEButton` / `languageFRButton`
- *     (the navbar surfaces the same testid set as the login screen).
+ *   - web desktop: `languageDEButton` / `languageFRButton` (the navbar
+ *     surfaces the same testid set as the login screen).
+ *   - web responsive: the toggle is duplicated inside the hamburger drawer
+ *     under `mobileLanguageDEButton` / `mobileLanguageFRButton` — open the
+ *     drawer first, since the desktop copy is never visible below 768px.
  *
  * Waits briefly for a re-render anchor (`catalogScreen`) after the click
  * so downstream catalog reads don't race the i18n re-flow.
@@ -65,6 +72,10 @@ export async function switchHeaderLanguage(targetLanguage: CHLanguageCode): Prom
     if (isApiDriver()) {
         log.info({ targetLanguage }, 'switchHeaderLanguage skipped (api driver)');
         return;
+    }
+
+    if (isWebResponsive()) {
+        await openMobileMenu();
     }
 
     const key = pickLanguageButtonKey(targetLanguage);
@@ -81,9 +92,11 @@ function pickLanguageButtonKey(lang: CHLanguageCode): string {
     if (isNativeMobileDriver()) {
         return lang === 'fr' ? 'headerLanguageFRButton' : 'headerLanguageDEButton';
     }
-    // Web (playwright, both desktop and responsive viewports). The login
-    // and navbar share `languageDEButton` / `languageFRButton` testids,
-    // and the locator JSON serves the same data-testid for both.
+    if (isWebResponsive()) {
+        return lang === 'fr' ? 'mobileLanguageFRButton' : 'mobileLanguageDEButton';
+    }
+    // Web desktop. The login screen and desktop navbar share `languageDEButton`
+    // / `languageFRButton` testids.
     return lang === 'fr' ? 'languageFRButton' : 'languageDEButton';
 }
 
@@ -113,6 +126,8 @@ export async function assertAddToCartLabelReflects(expected: string): Promise<vo
 }
 
 const MODAL_OPEN_WAIT_MS = 15_000;
+/** How long to keep re-reading the catalog after a language switch re-render. */
+const CATALOG_REREAD_POLL_MS = 15_000;
 
 async function readAddToCartLabel(): Promise<string> {
     if (isWebDriver()) {
@@ -124,7 +139,16 @@ async function readAddToCartLabel(): Promise<string> {
         // so the visual snapshot bucket captures the catalog and not a
         // leftover modal.
         const pizzaId = await firstCatalogPizzaIdOrEmpty();
-        if (!pizzaId) return '';
+        // Returning '' here made the caller report `expected "Ajouter", got ""`,
+        // which reads as a translation bug in the app when it is really "the
+        // catalog never re-rendered". Name the actual condition.
+        if (!pizzaId) {
+            throw new Error(
+                '[navbar:language] no catalog cards after the language switch — ' +
+                `no [data-testid^='add-to-cart-'] element within ${CATALOG_REREAD_POLL_MS}ms, ` +
+                'so the add-to-cart label could not be read at all.',
+            );
+        }
 
         const viewport = (process.env.VIEWPORT ?? 'desktop').toLowerCase();
         const suffix = viewport === 'responsive' ? 'responsive' : 'desktop';
@@ -146,7 +170,7 @@ async function readAddToCartLabel(): Promise<string> {
         // the resolver. Build the raw accessibility-id locally and pass
         // it through; locator-resolver passes unknown keys/raw selectors
         // through with a warning.
-        const rawSelector = `~text-add-pizza-${CH_WITNESS_PIZZA_ID}`;
+        const rawSelector = mobileTestId(`text-add-pizza-${CH_WITNESS_PIZZA_ID}`);
         const result = await sendIntent(INTENT.READ_TEXT, rawSelector);
         return (result.payload ?? '').trim();
     }
@@ -164,7 +188,26 @@ async function firstCatalogPizzaIdOrEmpty(): Promise<string> {
     // first. Best-effort: a genuine absence still falls through to '' so the
     // caller's contract (return '' when there's no catalog) is preserved.
     await sendIntent(INTENT.WAIT_FOR_ELEMENT, `[data-testid^='add-to-cart-']||${MODAL_OPEN_WAIT_MS}`)
-        .catch(() => { /* fall through; command below returns '' if truly absent */ });
-    const result = await sendBrowserCommand(BROWSER_COMMAND.GET_FIRST_PIZZA_ID);
-    return (result.payload ?? '').trim();
+        .catch((err: unknown) => {
+            // Do NOT discard this. When the catalog never comes back, this
+            // rejection is the only description of why, and the caller can
+            // otherwise only report an empty label — which is exactly what made
+            // this failure masquerade as a translation mismatch for two runs.
+            log.warn(
+                { err: (err as Error)?.message },
+                'add-to-cart wait rejected; polling for the catalog anyway',
+            );
+        });
+    // The wait and the read are two separate round trips, so a re-render landing
+    // in between still yielded ''. Poll the read instead of taking it single-shot:
+    // whichever half of the race we lose, a later poll picks the catalog up once
+    // its cards have re-mounted. A genuine absence still returns '' at the
+    // deadline, preserving the caller's contract.
+    const deadline = Date.now() + CATALOG_REREAD_POLL_MS;
+    for (;;) {
+        const result = await sendBrowserCommand(BROWSER_COMMAND.GET_FIRST_PIZZA_ID);
+        const pizzaId = (result.payload ?? '').trim();
+        if (pizzaId || Date.now() >= deadline) return pizzaId;
+        await new Promise((r) => setTimeout(r, 100));
+    }
 }

@@ -1,0 +1,45 @@
+# AWS CodeBuild buildspec for the "gatling" profile (ci/pipeline.config.json).
+# Static translation of the `perf-gatling` job in .github/workflows/ahm-execution-helix.yml.
+#
+# No batch build-matrix — ci/pipeline.config.json's gatling entry has an empty
+# `matrix: {}`, matching perf-gatling's single-cell (no strategy.matrix) job.
+
+version: 0.2
+
+env:
+  variables:
+    # Overridable — mirror GHA's workflow_dispatch `perf_profile`/`perf_users`/
+    # `perf_duration` input defaults.
+    PERF_PROFILE: smoke
+    PERF_USERS: '20'
+    PERF_DURATION: '120'
+    LANGUAGE: en
+  secrets-manager:
+    API_BASE_URL: "ahm/ci:API_BASE_URL"
+
+phases:
+  install:
+    commands:
+      - bash ci/steps/setup-environment.sh
+
+  build:
+    commands:
+      # GHA step "Start stack" — start-stack.sh's `gatling)` arm is a documented
+      # no-op, kept only for Template Method symmetry with the other jobs.
+      - bash ci/steps/start-stack.sh gatling
+
+      # GHA step "Run simulation".
+      - pnpm perf:${PERF_PROFILE:-smoke}
+
+  post_build:
+    # teardown.sh must run even if collect-artifacts.sh fails — see
+    # api.buildspec.yml for why this needs `finally:`.
+    commands:
+      - bash ci/steps/collect-artifacts.sh gatling
+    finally:
+      - bash ci/steps/teardown.sh
+
+artifacts:
+  files:
+    - 'artifacts/gatling/**/*'
+    - 'target/gatling/**/*'

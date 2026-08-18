@@ -18,6 +18,7 @@ services:
       - APPIUM_ADDRESS=appium-plugin:50053
       - GATLING_ADDRESS=gatling-plugin:50054
       - API_ADAPTER_ADDRESS=api-plugin:50055
+      - WEBDRIVERIO_ADDRESS=webdriverio-plugin:50060
       - PLATFORM=${PLATFORM:-web}
       - VIEWPORT=${VIEWPORT:-desktop}
     volumes:
@@ -46,6 +47,39 @@ services:
       resources:
         limits:
           memory: 512M
+
+  # ─── WebdriverIO Web Plugin (alternate web engine to Playwright) ───────────
+
+  selenium-standalone:
+    image: selenium/standalone-chrome:latest
+    shm_size: 2gb
+    ports:
+      - "4444:4444"
+    profiles:
+      - webdriverio
+
+  webdriverio-plugin:
+    build:
+      context: .
+      target: webdriverio-plugin
+    environment:
+      - TOM_BIND_ADDRESS=0.0.0.0
+      - TOM_TLS_ENABLED=true
+      - TOM_TLS_CA_PATH=/run/tom-tls/ca.pem
+      - TOM_TLS_SERVER_CERT_PATH=/run/tom-tls/webdriverio-plugin.pem
+      - TOM_TLS_SERVER_KEY_PATH=/run/tom-tls/webdriverio-plugin-key.pem
+      - WEBDRIVERIO_PLUGIN_PORT=50060
+      - SELENIUM_HOST=selenium-standalone
+      - SELENIUM_PORT=4444
+      - SELENIUM_PATH=/wd/hub
+      - VIEWPORT=${VIEWPORT:-desktop}
+      - BROWSER=${BROWSER:-chromium}
+    volumes:
+      - ./certs/grpc:/run/tom-tls:ro
+    depends_on:
+      - selenium-standalone
+    profiles:
+      - webdriverio
 
   # ─── Mobile Plugin ──────────────────────────────────────────────────────────
 

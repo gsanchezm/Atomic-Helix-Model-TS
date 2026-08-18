@@ -3,6 +3,7 @@ import { Router, type Request, type Response, type NextFunction } from 'express'
 import type { RunPayload, Tool } from '../../shared/types.js';
 import {
   ADAPTERS,
+  isCanonicalTool,
   makeMissingTool,
   normalizeTool,
   type AdapterContext,
@@ -39,9 +40,13 @@ runsRouter.get('/api/runs/:runId', async (req, res, next) => {
       runInfo,
     };
 
-    // Always emit one ToolSummary per known tool id. Missing JSON → placeholder
-    // with `missing: true` and zeroed counts so the overview shows all cards.
-    const tools = await Promise.all(
+    // Emit a ToolSummary for every tool that produced data, plus a
+    // `missing: true` placeholder for any CANONICAL tool that did not — a
+    // canonical tool with no output is a gap worth showing. Non-canonical
+    // adapters (alternate drivers, tools registered ahead of the pipeline)
+    // are omitted entirely when they have no data, so they stop occupying a
+    // permanently empty card on every run.
+    const summaries = await Promise.all(
       Object.keys(ADAPTERS).map(async (id) => {
         try {
           const raw = await getRawToolReport(runId, id);
@@ -49,12 +54,13 @@ runsRouter.get('/api/runs/:runId', async (req, res, next) => {
           return summarize(tool);
         } catch (err) {
           if (err instanceof ToolReportMissingError) {
-            return summarize(makeMissingTool(id));
+            return isCanonicalTool(id) ? summarize(makeMissingTool(id)) : null;
           }
           throw err;
         }
       }),
     );
+    const tools = summaries.filter((t): t is NonNullable<typeof t> => t !== null);
 
     const payload: RunPayload = { run: runInfo, tools };
     res.json(payload);

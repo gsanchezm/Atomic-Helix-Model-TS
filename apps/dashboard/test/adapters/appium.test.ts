@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 
 import { appiumAdapter } from '../../src/server/normalize/appium';
 import type { MobileUiTool } from '../../src/shared/types';
+import { isTestCaseGroup } from '../../src/shared/types';
 import { ctx } from './_helpers';
 
 describe('appiumAdapter', () => {
@@ -49,8 +50,12 @@ describe('appiumAdapter', () => {
     expect(out.kind).toBe('mobile_ui');
     expect(out.platforms.android.tests).toHaveLength(1);
     expect(out.platforms.ios.passed).toBe(4);
-    expect(out.platforms.android.tests[0].steps).toHaveLength(2);
-    expect(out.platforms.android.tests[0].failedStepIndex).toBe(1);
-    expect(out.platforms.ios.tests[0].steps).toHaveLength(1);
+    const androidTest = out.platforms.android.tests[0];
+    if (isTestCaseGroup(androidTest)) throw new Error('expected a single test case');
+    expect(androidTest.steps).toHaveLength(2);
+    expect(androidTest.failedStepIndex).toBe(1);
+    const iosTest = out.platforms.ios.tests[0];
+    if (isTestCaseGroup(iosTest)) throw new Error('expected a single test case');
+    expect(iosTest.steps).toHaveLength(1);
   });
 });

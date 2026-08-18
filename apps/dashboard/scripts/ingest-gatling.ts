@@ -31,11 +31,13 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
+import { PERF_TEST_TYPES, type PerfTestType } from '../src/shared/perf-types.js';
 import type {
   PerfBlock,
   PerfDistributionBucket,
   PerfScenario,
   PerfStep,
+  PerfTypeBlock,
   PerformanceTool,
 } from '../src/shared/types.js';
 
@@ -51,6 +53,15 @@ export interface SimulationReport {
   dir: string;
   /** mtime of the dir, used for dedupe-by-newest. */
   mtimeMs: number;
+  /**
+   * PERF_PROFILE captured at run time (see `--<profile>` dir-name suffix
+   * written by orchestrate-full-run.sh), when present. Gatling's own
+   * simulation identity is fixed per source file (e.g. always
+   * "checkout-load"), so smoke/load/stress runs of the SAME simulation are
+   * indistinguishable from the HTML/simulation.log alone — this is the only
+   * reliable signal that tells them apart.
+   */
+  profileHint: PerfTestType | null;
   /** ROOT / "All Requests" aggregate row. */
   root: RowValues;
   /** Per-request-group rows. */
@@ -161,6 +172,20 @@ function deriveDistribution(total: number, p50: number, p95: number, p99: number
   }));
 }
 
+const PROFILE_HINT_RE = /--(smoke|load|stress|endurance|spike|scalability|volume)$/i;
+
+/**
+ * Extracts the PERF_PROFILE hint orchestrate-full-run.sh appends to a
+ * jssimulation-* directory's basename (`jssimulation-<ts>--<profile>`).
+ * Returns null for directories with no hint (foreign/manual runs, or runs
+ * predating this convention) — callers fall back to name-suffix
+ * classification in that case.
+ */
+export function parseProfileHint(dirBasename: string): PerfTestType | null {
+  const match = PROFILE_HINT_RE.exec(dirBasename);
+  return match ? (match[1].toLowerCase() as PerfTestType) : null;
+}
+
 async function findGatlingDirs(repoRoot: string): Promise<{ dir: string; mtimeMs: number }[]> {
   const gatlingRoot = path.join(repoRoot, 'target', 'gatling');
   let entries: string[];
@@ -198,12 +223,15 @@ async function loadReport(dir: string, mtimeMs: number): Promise<SimulationRepor
   const scenarios = rows.filter((r) => r !== root);
 
   const simName = (await readSimulationName(dir)) ?? path.basename(dir).replace(/^jssimulation-/, '');
-  return { simulation: simName, dir, mtimeMs, root, scenarios };
+  const profileHint = parseProfileHint(path.basename(dir));
+  return { simulation: simName, dir, mtimeMs, profileHint, root, scenarios };
 }
 
 /**
- * Discover all jssimulation-* dirs, parse each, then dedupe by simulation name
- * keeping the most recent of each.
+ * Discover all jssimulation-* dirs, parse each, then dedupe keeping the most
+ * recent per (simulation name, profile hint). Runs of the SAME simulation
+ * under DIFFERENT profiles (e.g. checkout-load smoke/load/stress) are
+ * distinct entries — only true re-runs of the identical profile collapse.
  */
 async function discoverReports(
   repoRoot: string,
@@ -221,17 +249,20 @@ async function discoverReports(
   }
 
   const dirs = await findGatlingDirs(repoRoot); // already newest-first
-  const byName = new Map<string, SimulationReport>();
+  const byKey = new Map<string, SimulationReport>();
   for (const { dir, mtimeMs } of dirs) {
     const report = await loadReport(dir, mtimeMs);
     if (!report) continue;
-    // dirs are newest-first; first occurrence of each name wins.
-    if (!byName.has(report.simulation)) {
-      byName.set(report.simulation, report);
+    const key = report.profileHint ? `${report.simulation}::${report.profileHint}` : report.simulation;
+    // dirs are newest-first; first occurrence of each key wins.
+    if (!byKey.has(key)) {
+      byKey.set(key, report);
     }
   }
-  // Stable, human-friendly order: by simulation name.
-  return [...byName.values()].sort((a, b) => a.simulation.localeCompare(b.simulation));
+  // Stable, human-friendly order: by simulation name, then profile.
+  return [...byKey.values()].sort(
+    (a, b) => a.simulation.localeCompare(b.simulation) || (a.profileHint ?? '').localeCompare(b.profileHint ?? ''),
+  );
 }
 
 export interface IngestGatlingOptions {
@@ -241,19 +272,29 @@ export interface IngestGatlingOptions {
   repoRoot: string;
 }
 
-export async function ingestGatling(opts: IngestGatlingOptions): Promise<PerformanceTool | null> {
-  const reports = await discoverReports(opts.repoRoot, opts.simulationDir);
-  if (reports.length === 0) return null;
+const PERF_TYPE_SUFFIX_RE = /-(load|stress|endurance|spike|scalability|volume)$/i;
 
-  // ---- Per-simulation roll-up accumulators -----------------------------
+/** Classifies a Gatling simulation name by its trailing `-<type>` suffix. */
+export function classifyPerfType(simulationName: string): PerfTestType | 'other' {
+  const match = PERF_TYPE_SUFFIX_RE.exec(simulationName);
+  return match ? (match[1].toLowerCase() as PerfTestType) : 'other';
+}
+
+/**
+ * Rolls up one or more simulation reports into a single PerfBlock —
+ * request-weighted percentile blend (see file header comment), summed
+ * counts/throughput. `reports` must be non-empty.
+ */
+export function rollUpReports(reports: SimulationReport[]): PerfBlock {
   let total = 0;
   let ok = 0;
   let ko = 0;
   let rpsSum = 0;
-  // Request-weighted latency accumulators.
   let p50w = 0;
+  let p75w = 0;
   let p95w = 0;
   let p99w = 0;
+  let maxw = 0;
   let meanw = 0;
 
   for (const report of reports) {
@@ -265,46 +306,80 @@ export async function ingestGatling(opts: IngestGatlingOptions): Promise<Perform
 
     const w = rTotal > 0 ? rTotal : 1;
     p50w  += (report.root.values['col-8']  ?? 0) * w;
+    p75w  += (report.root.values['col-9']  ?? 0) * w;
     p95w  += (report.root.values['col-10'] ?? 0) * w;
     p99w  += (report.root.values['col-11'] ?? 0) * w;
+    maxw  += (report.root.values['col-12'] ?? 0) * w;
     meanw += (report.root.values['col-13'] ?? 0) * w;
   }
 
-  const scenarios: PerfScenario[] = buildPerfScenarios(reports);
+  const scenarios = buildPerfScenarios(reports);
 
-  const weight = total > 0 ? total : reports.length; // matches the w=1 fallback
+  const weight = total > 0 ? total : reports.length;
   const meanMs = +(meanw / weight).toFixed(1);
-  const p50Ms = +(p50w / weight).toFixed(0);
-  const p95Ms = +(p95w / weight).toFixed(0);
-  const p99Ms = +(p99w / weight).toFixed(0);
+  const p50Ms  = +(p50w  / weight).toFixed(0);
+  const p75Ms  = +(p75w  / weight).toFixed(0);
+  const p95Ms  = +(p95w  / weight).toFixed(0);
+  const p99Ms  = +(p99w  / weight).toFixed(0);
+  const maxMs  = +(maxw  / weight).toFixed(0);
   const errorRate = total > 0 ? +((ko / total) * 100).toFixed(2) : 0;
   const rps = +rpsSum.toFixed(1);
 
   const distribution = deriveDistribution(total, p50Ms, p95Ms, p99Ms);
-  const maxRps = Math.max(rps, Math.round(rps * 1.4) || 1); // synthetic ceiling
+  const maxRps = Math.max(rps, Math.round(rps * 1.4) || 1);
 
-  const perf: PerfBlock = {
+  return {
     rps,
     avgMs: meanMs,
+    p75Ms,
     p95Ms,
     p99Ms,
+    maxMs,
     errorRate,
     requests: total,
     maxRps,
     distribution,
     scenarios,
   };
+}
+
+export async function ingestGatling(opts: IngestGatlingOptions): Promise<PerformanceTool | null> {
+  const reports = await discoverReports(opts.repoRoot, opts.simulationDir);
+  if (reports.length === 0) return null;
+
+  const perf = rollUpReports(reports);
+
+  const byTypeGroups = new Map<PerfTestType | 'other', SimulationReport[]>();
+  for (const report of reports) {
+    // Profile hint (from the dir-name suffix) wins when present — it reflects
+    // the actual PERF_PROFILE used, unlike the simulation's fixed name suffix.
+    const type = report.profileHint ?? classifyPerfType(report.simulation);
+    const list = byTypeGroups.get(type) ?? [];
+    list.push(report);
+    byTypeGroups.set(type, list);
+  }
+
+  const byType: PerfTypeBlock[] = PERF_TEST_TYPES.map((type) => {
+    const group = byTypeGroups.get(type);
+    return { type, perf: group && group.length > 0 ? rollUpReports(group) : null };
+  });
+
+  const otherGroup = byTypeGroups.get('other');
+  const unclassified = otherGroup && otherGroup.length > 0 ? rollUpReports(otherGroup) : undefined;
 
   // "passed/failed": one per step row across all simulations. A step is
   // "failed" when its error rate > 0.
   let passed = 0;
   let failed = 0;
-  for (const s of scenarios) {
+  for (const s of perf.scenarios) {
     for (const step of s.steps ?? []) {
       if (step.errors === 0) passed++; else failed++;
     }
   }
 
+  const total = reports.reduce((sum, r) => sum + (r.root.values['col-2'] ?? 0), 0);
+  const ok = reports.reduce((sum, r) => sum + (r.root.values['col-3'] ?? 0), 0);
+  const ko = reports.reduce((sum, r) => sum + (r.root.values['col-4'] ?? 0), 0);
   const simNames = reports.map((r) => r.simulation);
   const description =
     `Aggregated load test across ${reports.length} simulation${reports.length > 1 ? 's' : ''}` +
@@ -318,8 +393,10 @@ export async function ingestGatling(opts: IngestGatlingOptions): Promise<Perform
     passed,
     failed,
     skipped: 0,
-    duration: durationFromRps(total, rps),
+    duration: durationFromRps(perf.requests, perf.rps),
     perf,
+    byType,
+    ...(unclassified ? { unclassified } : {}),
   };
 }
 

@@ -104,6 +104,16 @@ const commandHandlers: Readonly<Record<BrowserCommandName, CommandHandler>> = {
             countryState: requireString(args, 'countryState'),
         };
         await page.evaluate((seed) => {
+            // The Zustand-persisted `omnipizza-auth` store (same shape
+            // SEED_PERSISTED_STORES writes for the catalog path) was missing
+            // here — the checkout page reads it to establish session, and
+            // without it the app redirected /checkout back to /catalog on
+            // every run regardless of the loose legacy keys below.
+            const auth = {
+                state: { token: seed.token, username: seed.username, behavior: null },
+                version: 0,
+            };
+            localStorage.setItem('omnipizza-auth', JSON.stringify(auth));
             localStorage.setItem('token', seed.token);
             localStorage.setItem('access_token', seed.token);
             localStorage.setItem('accessToken', seed.token);
@@ -167,6 +177,11 @@ const commandHandlers: Readonly<Record<BrowserCommandName, CommandHandler>> = {
     [BROWSER_COMMAND.READ_CART_COUNT]: (page) => page.evaluate(() => (
         document.querySelector("[data-testid='nav-cart-count']")?.textContent?.trim() ?? ''
     )),
+
+    [BROWSER_COMMAND.GET_LOCAL_STORAGE_ITEM]: async (page, request) => {
+        const key = requireString(requireArgs(request), 'key');
+        return page.evaluate((k) => localStorage.getItem(k) ?? '', key);
+    },
 };
 
 export const BrowserCommandAction: ActionHandler<PlaywrightActionContext> = {

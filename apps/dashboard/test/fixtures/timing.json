@@ -1,0 +1,12 @@
+[
+  { "tool": "playwright", "category": "web_ui", "subtype": "desktop", "startedAt": "2026-07-20T10:00:00.000Z", "endedAt": "2026-07-20T10:04:03.000Z", "durationMs": 243000 },
+  { "tool": "webdriverio", "category": "web_ui", "subtype": "web", "startedAt": "2026-07-20T10:00:00.000Z", "endedAt": "2026-07-20T10:05:47.000Z", "durationMs": 347000 },
+  { "tool": "mobilewright", "category": "mobile_ui", "subtype": "android", "startedAt": "2026-07-20T10:10:00.000Z", "endedAt": "2026-07-20T10:18:22.000Z", "durationMs": 502000 },
+  { "tool": "appium", "category": "mobile_ui", "subtype": "android", "startedAt": "2026-07-20T10:10:00.000Z", "endedAt": "2026-07-20T10:22:15.000Z", "durationMs": 735000 },
+  { "tool": "gatling", "category": "performance", "subtype": "smoke", "startedAt": "2026-07-20T10:25:00.000Z", "endedAt": "2026-07-20T10:26:30.000Z", "durationMs": 90000 },
+  { "tool": "api", "category": "api", "subtype": "standalone", "startedAt": "2026-07-20T10:30:00.000Z", "endedAt": "2026-07-20T10:30:47.000Z", "durationMs": 47000 },
+  { "tool": "pixelmatch", "category": "visual", "subtype": "desktop", "startedAt": "2026-07-20T10:32:00.000Z", "endedAt": "2026-07-20T10:34:10.000Z", "durationMs": 130000 },
+  { "tool": "axe", "category": "accessibility", "subtype": "a11y", "startedAt": "2026-07-20T10:36:00.000Z", "endedAt": "2026-07-20T10:36:52.000Z", "durationMs": 52000 },
+  { "tool": "zap", "category": "security", "subtype": "web", "startedAt": "2026-07-20T10:38:00.000Z", "endedAt": "2026-07-20T10:44:30.000Z", "durationMs": 390000 },
+  { "tool": "mobsf", "category": "security", "subtype": "android", "startedAt": "2026-07-20T10:38:00.000Z", "endedAt": "2026-07-20T10:41:12.000Z", "durationMs": 192000 }
+]

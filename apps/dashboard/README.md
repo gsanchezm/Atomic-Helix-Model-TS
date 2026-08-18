@@ -140,11 +140,13 @@ The canonical `Tool` union is a discriminated type by `kind`. See `src/shared/ty
 - `performance` → `{ ..., perf: { rps, p95Ms, distribution[], scenarios: PerfScenario[], ... } }`
 - `visual` → `{ ..., diffs: [{ baseline, diffPct, status, images: { baseline, actual, diff }, bucketing?, triggeredBy? }] }`
 
-**`TestCase` carries optional `steps?: TestStep[]` and `failedStepIndex?: number`** — when present, the UI expands each scenario into a Given/When/Then accordion and highlights the failed step inline with its `error_message`. Failed scenarios auto-expand on first render. Hooks (`@Before`/`@After`) appear only when they failed. Old report JSON without `steps` keeps rendering as before (the row collapses to the scenario-level error).
+**`TestCase` is a discriminated union: `TestCaseSingle | TestCaseGroup`.** A plain cucumber Scenario ingests as `TestCaseSingle` (unchanged shape). A Scenario Outline + Examples table ingests as ONE `TestCaseGroup` (`{ kind: 'group', name: <template with placeholders>, iterations: TestCaseIteration[] }`) — every Examples row becomes one `TestCaseIteration` (`{ name, example: Record<string,string>, status, steps?, ... }`) rather than its own top-level `TestCase`. This means a Scenario Outline counts as 1 toward every KPI/badge that counts `TestCase[]` length, not N. Use `isTestCaseGroup(t)` (exported from `src/shared/types.ts`) to narrow. Old report JSON ingested before this shipped has no `kind` field at all — it's treated as `TestCaseSingle` unchanged, no migration needed.
+
+**`TestCaseSingle`/`TestCaseIteration` carry optional `steps?: TestStep[]` and `failedStepIndex?: number`** — when present, the UI expands each scenario/iteration into a Given/When/Then accordion and highlights the failed step inline with its `error_message`. Failed scenarios/iterations auto-expand on first render. Hooks (`@Before`/`@After`) appear only when they failed. Old report JSON without `steps` keeps rendering as before (the row collapses to the scenario-level error).
 
 **`PerfScenario` is now simulation-level** (`{ name, rps, p95, errors, steps?: PerfStep[] }`). Each Gatling simulation produces one entry; per-request rows under it live in `steps[]`. The `PerformanceDetail` view renders these as accordion cards that expand to a per-request table sorted by error rate.
 
-**`VisualDiff.bucketing` and `triggeredBy`** are optional. `bucketing` (`{ feature?, snapshot?, platform?, viewport?, market?, language? }`) drives the chip row under each diff card. `triggeredBy` (`{ feature, scenario, runId? }`) renders a backlink to the originating BDD scenario in the Playwright tab — clicking it opens `/runs/<runId>/playwright?expand=<scenario>` which auto-expands that scenario's accordion via the `?expand=` query param.
+**`VisualDiff.bucketing` and `triggeredBy`** are optional. `bucketing` (`{ feature?, snapshot?, platform?, viewport?, market?, language? }`) drives the chip row under each diff card. `triggeredBy` (`{ feature, scenario, runId? }`) renders a backlink to the originating BDD scenario in the Playwright tab — clicking it opens `/runs/<runId>/playwright?expand=<scenario>` which auto-expands that scenario's accordion via the `?expand=` query param. `<scenario>` matches either a `TestCaseSingle.name` or, inside a `TestCaseGroup`, any of its iterations' `name` — a backlink into one Examples-row iteration auto-expands both the group row and that specific iteration.
 
 **v1 adapters are pass-through.** Each one casts the raw JSON to its expected shape and stamps the right `kind`. The pixelmatch adapter is the only one with real work — it resolves the `images.*` URLs.
 
@@ -207,7 +209,7 @@ Step-by-step for Path B (recommended):
 4. **Rewrite each adapter to parse its native format.** Open `src/server/normalize/<tool>.ts` and replace the pass-through body with real parsing. The Vitest tests in `test/adapters/*.test.ts` give you a fast feedback loop — write the new test first against a real CI output sample, then make the adapter pass.
 
    The shapes you'll likely write parsers for:
-   - cucumber JSON → `TestCase[]` + counts (one parser, used by playwright + api + appium).
+   - cucumber JSON → `TestCase[]` + counts (one parser, used by playwright + api + appium). Scenario Outline + Examples rows are grouped into one `TestCaseGroup` per outline, correlated to the `.feature` source by the row's source line (see `scripts/lib/outline-parser.ts`).
    - Gatling `stats.json` → `PerfBlock` (rps, latencies, distribution, scenarios — see [Gatling docs](https://docs.gatling.io/reference/extensions/junit/)).
    - PixelMatch `result.json` walk → `VisualDiff[]`. Copy the PNGs into `reports/<runId>/pixelmatch/<baseline>-{baseline,actual,diff}.png` so the existing URL convention works (or change `pixelmatchAdapter`'s URL builder to point wherever you stored them).
 

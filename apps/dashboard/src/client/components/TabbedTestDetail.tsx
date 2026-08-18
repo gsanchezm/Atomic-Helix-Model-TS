@@ -2,6 +2,7 @@ import { type ReactNode, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import type { Counts, TestCase, Tool } from '@shared/types';
+import { isTestCaseGroup } from '@shared/types';
 import { DetailHead } from './DetailHead';
 import { FilterBar, type TestFilter } from './FilterBar';
 import { PassFailDonut } from './PassFailDonut';
@@ -281,8 +282,11 @@ function GroupedTabbedDetail({
   // a test named `expand`. Lazy init so later user clicks aren't clobbered.
   const deepLink = useMemo(() => {
     if (!expandScenarioName) return null;
+    const matchesTest = (tc: TestCase): boolean =>
+      tc.name === expandScenarioName ||
+      (isTestCaseGroup(tc) && tc.iterations.some((iteration) => iteration.name === expandScenarioName));
     for (const g of groups) {
-      const tab = g.tabs.find((t) => t.block.tests.some((tc) => tc.name === expandScenarioName));
+      const tab = g.tabs.find((t) => t.block.tests.some(matchesTest));
       if (tab) return { groupId: g.id, tabId: tab.id };
     }
     return null;

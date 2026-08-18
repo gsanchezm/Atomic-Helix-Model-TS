@@ -1,0 +1,49 @@
+{
+  "pizzaBuilderScreen": {
+    "playwright": { "kind": "css", "value": "div[class*=\"max-h-[90vh]\"]" },
+    "mobilewright": { "kind": "testId", "value": "screen-pizza-builder" }
+  },
+  "builderTitleText": {
+    "mobilewright": { "kind": "testId", "value": "text-builder-title" }
+  },
+  "closeBuilderButton": {
+    "playwright": { "kind": "testId", "value": "customizer-close" },
+    "mobilewright": { "kind": "testId", "value": "btn-close-builder" }
+  },
+  "builderPizzaImage": {
+    "mobilewright": { "kind": "testId", "value": "img-builder-pizza" }
+  },
+  "sectionSizeText": {
+    "mobilewright": { "kind": "testId", "value": "text-section-size" }
+  },
+  "requiredBadgeText": {
+    "mobilewright": { "kind": "testId", "value": "text-badge-required" }
+  },
+  "sizeOptionsContainer": {
+    "mobilewright": { "kind": "testId", "value": "view-size-pills" }
+  },
+  "sizeOptionsList": {
+    "playwright": { "kind": "css", "value": "[data-testid^='size-']" }
+  },
+  "sectionToppingsText": {
+    "mobilewright": { "kind": "testId", "value": "text-section-toppings" }
+  },
+  "toppingsHintText": {
+    "mobilewright": { "kind": "testId", "value": "text-toppings-hint" }
+  },
+  "toppingsList": {
+    "playwright": { "kind": "css", "value": "[data-testid^='topping-']" }
+  },
+  "customizerPriceText": {
+    "playwright": { "kind": "testId", "value": "customizer-price" }
+  },
+  "estimatedTotalLabel": {
+    "mobilewright": { "kind": "testId", "value": "text-estimated-total-label" }
+  },
+  "estimatedTotalValue": {
+    "mobilewright": { "kind": "testId", "value": "text-estimated-total-value" }
+  },
+  "confirmAddToCartButton": {
+    "playwright": { "kind": "testId", "value": "confirm-add-to-cart" }
+  }
+}

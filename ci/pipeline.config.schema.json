@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AHM CI pipeline config",
+  "type": "object",
+  "required": ["jobs"],
+  "properties": {
+    "jobs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["profile", "requiredSecrets", "requiredVars", "artifacts", "matrix"],
+        "properties": {
+          "profile": { "type": "string" },
+          "requiredSecrets": { "type": "array", "items": { "type": "string" } },
+          "requiredVars": { "type": "array", "items": { "type": "string" } },
+          "artifacts": { "type": "array", "items": { "type": "string" } },
+          "matrix": { "type": "object", "additionalProperties": { "type": "array", "items": { "type": "string" } } }
+        }
+      }
+    }
+  }
+}

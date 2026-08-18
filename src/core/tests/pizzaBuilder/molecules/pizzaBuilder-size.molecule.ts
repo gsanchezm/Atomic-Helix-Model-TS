@@ -1,6 +1,7 @@
 import { sendIntent } from '@kernel/client';
 import { INTENT } from '@kernel/intents';
 import { logger } from '@utils/logger';
+import { mobileTestId } from '@core/tests/support/mobile-selector';
 
 const log = logger.child({ layer: 'molecule', domain: 'pizzaBuilder', action: 'size' });
 
@@ -16,7 +17,7 @@ function isMobileDriver(): boolean {
 function sizeButtonSelector(size: string): string {
     const slug = size.toLowerCase();
     return isMobileDriver()
-        ? `~btn-size-${slug}`
+        ? mobileTestId(`btn-size-${slug}`)
         : `[data-testid='size-${slug}']`;
 }
 

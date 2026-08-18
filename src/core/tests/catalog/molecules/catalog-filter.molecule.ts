@@ -1,6 +1,7 @@
 import { sendIntent } from '@kernel/client';
 import { INTENT } from '@kernel/intents';
 import { logger } from '@utils/logger';
+import { mobileTestId } from '@core/tests/support/mobile-selector';
 
 const log = logger.child({ layer: 'molecule', action: 'catalog-filter' });
 
@@ -42,7 +43,7 @@ export async function selectCategory(categoryId: string): Promise<void> {
         const scrollSel = `android=new UiScrollable(new UiSelector().resourceId("view-category-pills").scrollable(true))`
             + `.setAsHorizontalList().scrollIntoView(new UiSelector().resourceId("btn-category-${id}"))`;
         await sendIntent(INTENT.WAIT_FOR_ELEMENT, `${scrollSel}||8000`);
-        await sendIntent(INTENT.CLICK, `~btn-category-${id}`);
+        await sendIntent(INTENT.CLICK, mobileTestId(`btn-category-${id}`));
         return;
     }
     if (driver === 'appium' && platform === 'ios') {
@@ -61,7 +62,7 @@ export async function selectCategory(categoryId: string): Promise<void> {
         return;
     }
     const selector = isMobileDriver()
-        ? `~btn-category-${id}`
+        ? mobileTestId(`btn-category-${id}`)
         : `[data-testid='category-${id}']`;
     await sendIntent(INTENT.CLICK, selector);
 }

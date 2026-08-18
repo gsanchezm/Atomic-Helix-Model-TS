@@ -1,7 +1,8 @@
 // COMPARE_SNAPSHOT — capture, locate baseline, run pixelmatch, write
 // diff + result.json, emit telemetry, and throw on mismatch.
 //
-// Bootstrap mode (VISUAL_UPDATE_BASELINE=true OR target options.saveActualOnly):
+// Bootstrap mode (target options.updateBaseline, the VISUAL_UPDATE_BASELINE env
+// var, OR target options.saveActualOnly):
 //   - missing baseline becomes PASS with baselineCreated=true.
 //   - the run still emits telemetry so research datasets capture the
 //     "no baseline yet" event distinctly from a real comparison.
@@ -104,7 +105,7 @@ export const CompareSnapshotAction: ActionHandler<PixelmatchActionContext> = {
             const exists = baselineExists(key);
 
             if (!exists) {
-                if (isUpdateBaselineEnv()) {
+                if (opts.updateBaseline || isUpdateBaselineEnv()) {
                     writeBaselineFromBuffer(key, actualPng);
                     result.baselinePath = baselinePath;
                     result.baselineCreated = true;

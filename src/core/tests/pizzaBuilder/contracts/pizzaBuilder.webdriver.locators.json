@@ -1,0 +1,120 @@
+{
+  "pizzaBuilderScreen": {
+    "webdriverio": "div[class*=\"max-h-[90vh]\"]",
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"screen-pizza-builder\")",
+      "ios": "~screen-pizza-builder"
+    }
+  },
+  "builderTitleText": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-builder-title\")",
+      "ios": "~text-builder-title"
+    }
+  },
+  "closeBuilderButton": {
+    "webdriverio": "[data-testid='customizer-close']",
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"btn-close-builder\")",
+      "ios": "~btn-close-builder"
+    }
+  },
+  "builderPizzaImage": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"img-builder-pizza\")",
+      "ios": "~img-builder-pizza"
+    }
+  },
+  "sectionSizeText": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-section-size\")",
+      "ios": "~text-section-size"
+    }
+  },
+  "requiredBadgeText": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-badge-required\")",
+      "ios": "~text-badge-required"
+    }
+  },
+  "sizeOptionsContainer": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"view-size-pills\")",
+      "ios": "~view-size-pills"
+    }
+  },
+  "sizeOptionsList": {
+    "webdriverio": "[data-testid^='size-']",
+    "appium": {
+      "android": "android=new UiSelector().resourceIdMatches(\"btn-size-.*\")",
+      "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'btn-size-'`]"
+    }
+  },
+  "sizeOptionLabel": {
+    "appium": {
+      "android": "android=new UiSelector().resourceIdMatches(\"text-size-(?!price-).*\")",
+      "ios": "-ios class chain:**/XCUIElementTypeStaticText[`name BEGINSWITH 'text-size-' AND NOT (name BEGINSWITH 'text-size-price-')`]"
+    }
+  },
+  "sizeOptionPrice": {
+    "appium": {
+      "android": "android=new UiSelector().resourceIdMatches(\"text-size-price-.*\")",
+      "ios": "-ios class chain:**/XCUIElementTypeStaticText[`name BEGINSWITH 'text-size-price-'`]"
+    }
+  },
+  "sectionToppingsText": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-section-toppings\")",
+      "ios": "~text-section-toppings"
+    }
+  },
+  "toppingsHintText": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-toppings-hint\")",
+      "ios": "~text-toppings-hint"
+    }
+  },
+  "toppingGroupList": {
+    "appium": {
+      "android": "android=new UiSelector().resourceIdMatches(\"text-topping-group-.*\")",
+      "ios": "-ios class chain:**/XCUIElementTypeStaticText[`name BEGINSWITH 'text-topping-group-'`]"
+    }
+  },
+  "toppingGroupTitle": {
+    "appium": {
+      "android": "android=new UiSelector().resourceIdMatches(\"text-topping-group-.*\")",
+      "ios": "-ios class chain:**/XCUIElementTypeStaticText[`name BEGINSWITH 'text-topping-group-'`]"
+    }
+  },
+  "toppingsList": {
+    "webdriverio": "[data-testid^='topping-']",
+    "appium": {
+      "android": "android=new UiSelector().resourceIdMatches(\"btn-topping-.*\")",
+      "ios": "-ios class chain:**/XCUIElementTypeOther[`name BEGINSWITH 'btn-topping-'`]"
+    }
+  },
+  "toppingLabel": {
+    "appium": {
+      "android": "android=new UiSelector().resourceIdMatches(\"text-topping-(?!group-).*\")",
+      "ios": "-ios class chain:**/XCUIElementTypeStaticText[`name BEGINSWITH 'text-topping-' AND NOT (name BEGINSWITH 'text-topping-group-')`]"
+    }
+  },
+  "customizerPriceText": {
+    "webdriverio": "[data-testid='customizer-price']"
+  },
+  "estimatedTotalLabel": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-estimated-total-label\")",
+      "ios": "~text-estimated-total-label"
+    }
+  },
+  "estimatedTotalValue": {
+    "appium": {
+      "android": "android=new UiSelector().resourceId(\"text-estimated-total-value\")",
+      "ios": "~text-estimated-total-value"
+    }
+  },
+  "confirmAddToCartButton": {
+    "webdriverio": "[data-testid='confirm-add-to-cart']"
+  }
+}

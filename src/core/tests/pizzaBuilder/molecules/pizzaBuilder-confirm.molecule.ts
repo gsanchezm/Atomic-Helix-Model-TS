@@ -3,6 +3,7 @@ import { INTENT } from '@kernel/intents';
 import { logger } from '@utils/logger';
 import { BROWSER_COMMAND } from '@kernel/browser-command';
 import { sendBrowserCommand } from '@core/tests/support/browser-command';
+import { mobileTestId } from '@core/tests/support/mobile-selector';
 
 const log = logger.child({ layer: 'molecule', domain: 'pizzaBuilder', action: 'confirm' });
 
@@ -26,7 +27,7 @@ export async function clickConfirmAddToCart(): Promise<void> {
     // Web's confirm CTA is the `confirmAddToCartButton` locator key (web-only);
     // the mobile builder's CTA is `~btn-add-to-cart` (verified on-device
     // 2026-05-28). Branch per-driver like the size/topping molecules do.
-    const selector = isMobileDriver() ? '~btn-add-to-cart' : 'confirmAddToCartButton';
+    const selector = isMobileDriver() ? mobileTestId('btn-add-to-cart') : 'confirmAddToCartButton';
     await sendIntent(INTENT.CLICK, selector);
 }
 
@@ -140,9 +141,17 @@ export async function assertNavbarCartCount(expected: string): Promise<void> {
         // profile-view's assertInputValue, reusing the constants already defined
         // for this purpose. The terminal throw is retained, so a genuine
         // non-render (e.g. cart actually empty) still fails red.
+        // bottomNavBadgeText is an Appium UiSelector regex
+        // (resourceIdMatches("text-nav-badge-.*")) that mobilewright's
+        // exact-match-only locator engine can't express — probe the concrete
+        // testId directly instead (verified on-device 2026-07-22: the only
+        // badge the bottom nav renders is `text-nav-badge-checkout`).
+        const badgeTarget = driver === 'mobilewright'
+            ? mobileTestId('text-nav-badge-checkout')
+            : 'bottomNavBadgeText';
         let actual = '';
         for (let attempt = 0; attempt < CART_COUNT_POLL_ATTEMPTS; attempt++) {
-            const result = await sendIntent(INTENT.READ_TEXT, 'bottomNavBadgeText');
+            const result = await sendIntent(INTENT.READ_TEXT, badgeTarget);
             actual = (result.payload ?? '').trim();
             if (actual.includes(expected)) {
                 log.info({ expected, driver }, 'Cart badge matched (mobile)');
@@ -150,6 +159,6 @@ export async function assertNavbarCartCount(expected: string): Promise<void> {
             }
             await new Promise((r) => setTimeout(r, CART_COUNT_POLL_INTERVAL_MS));
         }
-        throw new Error(`[bottomNavBadgeText] expected "${expected}", got "${actual}"`);
+        throw new Error(`[${badgeTarget}] expected "${expected}", got "${actual}"`);
     }
 }

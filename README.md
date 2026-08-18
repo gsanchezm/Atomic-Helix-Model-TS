@@ -321,12 +321,25 @@ The `mobile` profile chains: `android-emulator (docker-android)` → `appium-ser
 
 | Workflow                    | Purpose                                                                  |
 |-----------------------------|--------------------------------------------------------------------------|
-| `ahm-execution-helix.yml`   | Unified test execution: api, web (desktop + responsive), android, ios, perf. Manual dispatch via `platform: all\|api\|web\|mobile\|android\|ios\|perf`. |
+| `ahm-execution-helix.yml`   | Unified test execution across every registered tool: API, web desktop/responsive (Playwright + visual), accessibility (axe), Android/iOS (Appium), security (ZAP + MobSF), Gatling perf — 8 gated categories in total (`gate-api`, `gate-web-desktop`, `gate-web-responsive`, `gate-android`, `gate-ios`, `gate-gatling`, `gate-security`, `gate-a11y`). Manual dispatch only, via the `platform` input (`all` plus 18 values spanning API/web/mobile/perf/security/a11y — see the platform table below for the full list) and `architecture_type: standard\|TOM` (TOM tags every artifact/record for the quantitative-architecture metrics pipeline and runs the extra `Consolidate` job). |
+| `update-visual-baselines.yml` | Regenerates Pixelmatch baselines per viewport, opens a refresh PR.     |
 | `deploy-pages.yml`          | Static site deploy when `web/**` changes (GitHub Pages).                 |
 
-The Helix workflow gates jobs by the `platform` input on manual dispatch. **On `push`/`pull_request` to `main`, every job runs** — including `e2e-android` (KVM + docker-android) and `e2e-ios` (`macos-latest`) — because each gate's `if` is `github.event_name != 'workflow_dispatch' || inputs.platform == …`, and the first operand is already `true` for push/PR. A published OmniPizza release is therefore a prerequisite for *all* event-triggered runs, not only mobile dispatches. (If you want mobile to be manual-only, the gate `if:` blocks must be tightened to `github.event_name == 'workflow_dispatch' && …`.)
+**Mobilewright, WebdriverIO and Cypress were removed from this workflow on 2026-07-30** — their jobs, gates, and `platform` dispatch values are gone (see `docs/superpowers/specs/2026-07-30-remove-mw-wdio-cypress-ci-design.md` for the rationale: all three categories failed across the board on their first-ever `platform=all` dispatch). Plugin code, `docker-compose.yml` profiles, and `package.json` scripts are untouched — the tools remain usable locally; only their GitHub Actions execution is gone.
 
-Each job is named after the **tool** that executes it (`Playwright`, `Appium`, `Gatling`, `Pixelmatch`) rather than the platform — consistent with the *plugin identity = the tool* principle, so a status check names exactly which engine ran. The job **keys** (`e2e-web`, `e2e-android`, …) are unchanged, so `needs:` wiring and the `update-visual-baselines.yml` references stay intact; only the display names shift. If branch protection requires checks by their old display name, update those required checks in repo settings.
+A Jenkins declarative-pipeline equivalent of `ahm-execution-helix.yml` is available at the repo root as `Jenkinsfile` — container image pins and matrix dimensions translated to Jenkins' `matrix`/`lock()` DSL. Its job inventory has **not** been kept in sync with the removal above: the Jenkinsfile, like the other dormant CI configs (`.gitlab-ci.yml`, `azure-pipelines.yml`, both AWS buildspecs), still carries WebdriverIO/Cypress/Mobilewright jobs that the GitHub Actions workflow no longer runs. None of these configs have ever executed, so this is recorded debt, not a live discrepancy.
+
+`experiment_batch_id` and `run_index` are additional dispatch inputs, honored only when `architecture_type=TOM` (they group repeated runs into an experiment batch and number each run within it); both are ignored when `architecture_type=standard`. `ahm-execution-helix.yml` used to coexist with a separate `tom-quantitative-execution.yml` workflow that duplicated most of its job/step shape — the two were consolidated behind the `architecture_type` input above, and `tom-quantitative-execution.yml` was deleted.
+
+`azure-pipelines.yml` at the repo root is an authored-but-unprovisioned Azure Pipelines equivalent of `ahm-execution-helix.yml`'s `standard` (non-TOM) job inventory — no Azure DevOps organization/project exists yet to run it against.
+
+The Helix workflow gates jobs by the `platform` input on manual dispatch — 8 gates in total: `gate-api`, `gate-web-desktop`, `gate-web-responsive`, `gate-android`, `gate-ios`, `gate-gatling`, `gate-security`, `gate-a11y`, each following the identical `if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == '<name>'` pattern. There is no separate `zap`/`mobsf` dispatch value — `security-zap` and `security-mobsf` both gate on the single coarse `security` platform value. The `github.event_name != 'workflow_dispatch'` operand in that pattern reads as if a `push`/`pull_request` trigger would make every job run unconditionally — but the workflow's `on:` block currently has both triggers **commented out**: manual dispatch is the only way to trigger a run today, so every job stays scoped by whichever `platform` value you pass. (Re-enabling `push`/`pull_request` would restore that every-job-runs behavior verbatim; at that point, if you want mobile to stay manual-only, the gate `if:` blocks would need tightening to `github.event_name == 'workflow_dispatch' && …`.)
+
+Each job is named after the **tool** that executes it (`Playwright`, `Appium`, `ZAP`, `MobSF`, `Gatling`, `Pixelmatch`) rather than the platform — consistent with the *plugin identity = the tool* principle, so a status check names exactly which engine ran. The job **keys** (`e2e-web`, `e2e-android`, …) are unchanged, so `needs:` wiring and the `update-visual-baselines.yml` references stay intact; only the display names shift. If branch protection requires checks by their old display name, update those required checks in repo settings.
+
+**`security-mobsf`** depends on `resolve-omnipizza-release` and downloads both the Android APK (`assets/apps/android/omnipizza-release.apk`) and the iOS `.app` bundle (`assets/apps/ios/OmniPizza.app`) fresh every run — no caching — so its MobSF static scan has a real binary to analyze on both platforms, matching `support.security.json`'s `mobile.mobsf[]` `filePath` entries exactly. The iOS download needs no booted simulator or macOS runner; MobSF only reads the static `.app` bundle from disk, so this job runs entirely on `ubuntu-latest`.
+
+**No `@mobsf` (or `@zap`) cucumber tag exists** in this codebase. `@security` (`src/core/tests/login/features/market-language-localization.feature`'s standalone security Scenario, not the localization Outline in the same file) is the hard-gating ZAP active-scan + schema-fuzz suite against the authenticated API surface. `@security-infra` (`src/core/tests/support/features/security-infra.feature`) is a single scenario that runs a ZAP baseline crawl, a TLS check, and a MobSF static scan in sequence — it is deliberately run from **both** `security-zap` and `security-mobsf`, split by which plugin is actually live in each job. `security-infra.route.ts`'s own per-plugin enabled checks (`PLUGIN_ZAP`/`PLUGIN_MOBSF`) make the unused half of the scenario a non-fatal `log.warn`, not a failure, so running the same tag from two jobs is safe by design — not a typo to "fix" back to a nonexistent `@mobsf` tag.
 
 ### Before you run `ahm-execution-helix.yml`
 
@@ -336,20 +349,22 @@ The workflow assumes a few things already exist in the repo. Set these up **once
 
 | Secret          | Needed by                                                        | Notes                                                            |
 |-----------------|------------------------------------------------------------------|------------------------------------------------------------------|
-| `API_BASE_URL`  | **every** job (api, web, responsive, visual, android, ios, perf) | Backend used for `$S_0$` state injection.                        |
-| `BASE_URL`      | web + visual jobs only (`e2e-web*`, `visual-web*`)               | Frontend under test. Not read by api/mobile/perf jobs.           |
+| `API_BASE_URL`  | **every** job (api, web, responsive, visual, android, ios, security, a11y, perf) | Backend used for `$S_0$` state injection.                        |
+| `BASE_URL`      | frontend-touching jobs (`e2e-web*`, `visual-web*`, `a11y-web`, and the ZAP-baseline half of `security-zap`'s `@security-infra` run) | Frontend under test. Not read by api/android/ios/perf jobs. |
 | `GITHUB_TOKEN`  | `resolve-omnipizza-release`                                      | **Automatic** — GitHub injects it. No setup needed.              |
+
+`MOBSF_API_KEY` is deliberately **not** a stored repository secret. MobSF is ephemeral in CI: `security-mobsf` starts a fresh, pinned `opensecurity/mobile-security-framework-mobsf:v3.9.7` container every run, health-polls it, scrapes its auto-generated API key straight out of `docker logs mobsf` (same pattern as `scripts/run-full-local.sh`'s local security phase), and exports it only for that run's mobsf plugin process. There is nothing to configure for this.
 
 **2. Repository variables** — _Settings → Secrets and variables → Actions → Variables_:
 
 | Variable          | Needed by                          | Notes                                                                        |
 |-------------------|------------------------------------|------------------------------------------------------------------------------|
-| `IOS_APP_PATH`    | `e2e-ios` (optional)               | Overrides the auto-discovered `.app` bundle path. Omit to auto-discover.     |
+| `IOS_APP_PATH`    | `e2e-ios` — optional | Overrides the auto-discovered `.app` bundle path. Omit to auto-discover.     |
 | `VISUAL_BASE_URL` | `update-visual-baselines.yml` only | The baseline-refresh workflow reads this as its `BASE_URL`. Required to seed baselines (step 4). |
 
-**3. OmniPizza release must be published** (`gsanchezm/OmniPizza`) — required because mobile runs on every push/PR (see note above):
+**3. OmniPizza release must be published** (`gsanchezm/OmniPizza`) — required whenever a dispatch selects `android`, `ios`, `mobile`, `appium`/`appium-android`/`appium-ios`, or `security` (the resolver job also runs for `security`, since `security-mobsf` needs both platform binaries for its static scan):
 
-- The repo's `releases/latest` must exist with assets named **exactly** `omnipizza-release.apk` (Android) and `OmniPizza-Simulator.zip` (iOS). The resolver job reads `tag_name` from `/releases/latest`; the mobile jobs download `<base_url>/<asset>`.
+- The repo's `releases/latest` must exist with assets named **exactly** `omnipizza-release.apk` (Android) and `OmniPizza-Simulator.zip` (iOS). The resolver job reads `tag_name` from `/releases/latest`; `e2e-android`, `e2e-ios` and `security-mobsf` download `<base_url>/<asset>`.
 - `gsanchezm/OmniPizza` must be **public** — the API query sends a `GITHUB_TOKEN` Bearer (scoped to *this* repo only), but the asset download uses an unauthenticated `curl -fL`. For a private OmniPizza you'd need to supply a PAT secret and add `-H "Authorization"` to the download.
 
 **4. Seed visual baselines (recommended, not mandatory):**
@@ -370,19 +385,25 @@ The workflow assumes a few things already exist in the repo. Set these up **once
 gh workflow run ahm-execution-helix.yml -f platform=web
 gh workflow run ahm-execution-helix.yml -f platform=perf -f perf_profile=load -f perf_users=30 -f perf_duration=60
 gh workflow run ahm-execution-helix.yml -f platform=mobile -f android_api_level=33
+gh workflow run ahm-execution-helix.yml -f platform=security
+gh workflow run ahm-execution-helix.yml -f platform=a11y
+gh workflow run ahm-execution-helix.yml -f platform=gatling -f perf_profiles='["smoke","load","stress"]'
+gh workflow run ahm-execution-helix.yml -f platform=api
 ```
 
-**What each `platform` choice needs** (push/PR ⇒ `all`):
+**What each `platform` choice needs** (manual dispatch only — see the push/PR note above):
 
-| `platform` | Requires                                                                 | Dispatch inputs honored                                  |
-|------------|--------------------------------------------------------------------------|----------------------------------------------------------|
-| `api`      | `API_BASE_URL`                                                           | —                                                        |
-| `web`      | `API_BASE_URL` + `BASE_URL` (+ baselines recommended for the visual sub-jobs) | —                                                   |
-| `android`  | `API_BASE_URL` + OmniPizza release (`omnipizza-release.apk`)             | `android_api_level`                                      |
-| `ios`      | `API_BASE_URL` + OmniPizza release (`OmniPizza-Simulator.zip`) + `IOS_APP_PATH` (optional) | —                                      |
-| `mobile`   | both android + ios prerequisites                                         | `android_api_level`                                      |
-| `perf`     | `API_BASE_URL`                                                           | `perf_profile`, `perf_users`, `perf_duration`            |
-| `all`      | all of the above                                                         | all of the above                                         |
+| `platform`     | Requires                                                                 | Dispatch inputs honored                                  |
+|----------------|--------------------------------------------------------------------------|----------------------------------------------------------|
+| `api`          | `API_BASE_URL`                                                           | —                                                        |
+| `web`          | `API_BASE_URL` + `BASE_URL` (+ baselines recommended for the visual sub-jobs) | —                                                   |
+| `android`      | `API_BASE_URL` + OmniPizza release (`omnipizza-release.apk`)             | `android_api_level`                                      |
+| `ios`          | `API_BASE_URL` + OmniPizza release (`OmniPizza-Simulator.zip`) + `IOS_APP_PATH` (optional) | —                                      |
+| `mobile`       | both android + ios prerequisites                                         | `android_api_level`                                      |
+| `security`     | `API_BASE_URL` (+ `BASE_URL` for the ZAP-baseline half of `security-zap`'s `@security-infra` run) + OmniPizza release (both assets, for `security-mobsf`'s static scan) | — |
+| `a11y`         | `API_BASE_URL` + `BASE_URL`                                              | —                                                        |
+| `perf`/`gatling` | `API_BASE_URL`                                                         | `perf_profile`, `perf_profiles`, `perf_users`, `perf_duration`            |
+| `all`          | all of the above                                                         | all of the above                                         |
 
 ## Stack
 

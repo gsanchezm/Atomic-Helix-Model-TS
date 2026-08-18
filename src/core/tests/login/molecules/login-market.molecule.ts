@@ -1,5 +1,7 @@
 import { sendIntent } from '@kernel/client';
 import { INTENT } from '@kernel/intents';
+import { isWebResponsive, openMobileMenu } from '@core/tests/navbar/molecules/navbar-shell.molecule';
+import { mobileTestId } from '@core/tests/support/mobile-selector';
 
 const SUPPORTED_MARKETS = ['US', 'MX', 'CH', 'JP', 'SA'] as const;
 
@@ -21,7 +23,7 @@ function isMobileDriver(): boolean {
 // don't have to maintain N near-identical locator keys.
 function marketButtonSelector(marketCode: string): string {
     return isMobileDriver()
-        ? `~btn-market-${marketCode}`
+        ? mobileTestId(`btn-market-${marketCode}`)
         : `[data-testid='market-${marketCode}']`;
 }
 
@@ -33,9 +35,12 @@ function switzerlandLanguageSelector(language: string): string {
             .join(', ');
         throw new Error(`Unsupported CH language "${language}". Supported: ${supported}`);
     }
-    return isMobileDriver()
-        ? `~btn-lang-${code}`
-        : `[data-testid='lang-${code}']`;
+    if (isMobileDriver()) return mobileTestId(`btn-lang-${code}`);
+    // Web-responsive: the same toggle is duplicated inside the hamburger
+    // drawer under a `mobile-` prefixed testid — the desktop copy sits in a
+    // `hidden md:flex` container and is never visible below 768px.
+    const testId = isWebResponsive() ? `mobile-lang-${code}` : `lang-${code}`;
+    return `[data-testid='${testId}']`;
 }
 
 export async function selectMarket(marketCode: string): Promise<void> {
@@ -47,6 +52,9 @@ export async function selectMarket(marketCode: string): Promise<void> {
 }
 
 export async function selectLanguage(language: string): Promise<void> {
+    if (isWebResponsive()) {
+        await openMobileMenu();
+    }
     await sendIntent(INTENT.CLICK, switzerlandLanguageSelector(language));
 }
 

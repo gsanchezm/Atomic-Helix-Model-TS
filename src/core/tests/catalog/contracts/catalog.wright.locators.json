@@ -1,0 +1,84 @@
+{
+  "catalogScreen": {
+    "playwright": { "kind": "testId", "value": "screen-catalog" },
+    "mobilewright": { "kind": "testId", "value": "screen-catalog" }
+  },
+  "catalogLoading": {
+    "playwright": { "kind": "testId", "value": "catalog-loading" }
+  },
+  "catalogError": {
+    "playwright": { "kind": "testId", "value": "catalog-error" },
+    "mobilewright": { "kind": "testId", "value": "text-catalog-error" }
+  },
+  "emptyResultsText": {
+    "mobilewright": { "kind": "testId", "value": "text-empty-results" }
+  },
+  "sectionHeader": {
+    "mobilewright": { "kind": "testId", "value": "view-section-header" }
+  },
+  "sectionTitleText": {
+    "mobilewright": { "kind": "testId", "value": "text-section-title" }
+  },
+  "searchInput": {
+    "playwright": {
+      "responsive": { "kind": "testId", "value": "search-pizza-responsive" },
+      "desktop": { "kind": "testId", "value": "search-pizza-desktop" }
+    },
+    "mobilewright": { "kind": "testId", "value": "input-search-pizza" }
+  },
+  "clearFiltersButton": {
+    "playwright": {
+      "responsive": { "kind": "testId", "value": "clear-filters-responsive" },
+      "desktop": { "kind": "testId", "value": "clear-filters-desktop" }
+    }
+  },
+  "categoryList": {
+    "playwright": { "kind": "css", "value": "[data-testid^='category-']" }
+  },
+  "categoryById": {
+    "playwright": { "kind": "testId", "value": "category-{id}" },
+    "mobilewright": { "kind": "testId", "value": "btn-category-{id}" }
+  },
+  "categoryLabel": {
+    "mobilewright": { "kind": "testId", "value": "text-category-{id}" }
+  },
+  "pizzaCardList": {
+    "playwright": { "kind": "css", "value": "[data-testid^='pizza-card-']" }
+  },
+  "pizzaCard": {
+    "playwright": {
+      "responsive": { "kind": "testId", "value": "pizza-card-{id}-responsive" },
+      "desktop": { "kind": "testId", "value": "pizza-card-{id}-desktop" }
+    },
+    "mobilewright": { "kind": "testId", "value": "card-pizza-{id}" }
+  },
+  "pizzaImage": {
+    "playwright": { "kind": "testId", "value": "pizza-image-{id}" },
+    "mobilewright": { "kind": "testId", "value": "img-pizza-{id}" }
+  },
+  "pizzaName": {
+    "playwright": {
+      "responsive": { "kind": "testId", "value": "pizza-name-{id}-responsive" },
+      "desktop": { "kind": "testId", "value": "pizza-name-{id}-desktop" }
+    },
+    "mobilewright": { "kind": "testId", "value": "text-pizza-name-{id}" }
+  },
+  "pizzaDescription": {
+    "playwright": { "kind": "testId", "value": "pizza-description-{id}" },
+    "mobilewright": { "kind": "testId", "value": "text-pizza-desc-{id}" }
+  },
+  "pizzaPrice": {
+    "playwright": { "kind": "testId", "value": "pizza-price-{id}" },
+    "mobilewright": { "kind": "testId", "value": "text-pizza-price-{id}" }
+  },
+  "addToCartButton": {
+    "playwright": {
+      "responsive": { "kind": "testId", "value": "add-to-cart-{id}-responsive" },
+      "desktop": { "kind": "testId", "value": "add-to-cart-{id}-desktop" }
+    },
+    "mobilewright": { "kind": "testId", "value": "btn-add-pizza-{id}" }
+  },
+  "addToCartLabel": {
+    "mobilewright": { "kind": "testId", "value": "text-add-pizza-{id}" }
+  }
+}

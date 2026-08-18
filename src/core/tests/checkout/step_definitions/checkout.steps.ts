@@ -120,6 +120,10 @@ Then('the order-cancel request is rejected with status {int}', async function (s
     route(this).verifyOrderCancelRequestStatus(status);
 });
 
+Then('the checkout page passes the automated accessibility gate', async function () {
+    await route(this).verifyAccessibilityGate();
+});
+
 After(async function () {
     try {
         await route(this).resetClientState();

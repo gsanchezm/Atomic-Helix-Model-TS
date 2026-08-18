@@ -150,6 +150,13 @@ async function runBrowser(viewport, browser, extraArgs) {
 
 async function runViewport(viewport, extraArgs) {
     console.log(`\n[cross-browser] Starting ${viewport} suite...`);
+    // The proxy — not just the playwright plugin — resolves viewport-keyed
+    // locators (resolveLocator's getViewport() reads process.env.VIEWPORT),
+    // so it must be restarted per viewport too, or it keeps serving the
+    // desktop branch of every {desktop,responsive}-axis locator for the
+    // rest of the run. Mirrors ci/steps/start-stack.sh, which brings up a
+    // fresh proxy per phase.
+    const proxy = await startService('proxy', { VIEWPORT: viewport });
     const playwright = await startService('playwright', {
         VIEWPORT: viewport,
         PLUGIN_PIXELMATCH: 'false',
@@ -163,12 +170,13 @@ async function runViewport(viewport, extraArgs) {
         if (failed) throw new Error(`${viewport} suite failed in at least one browser`);
     } finally {
         await stopProcess(playwright);
+        await stopProcess(proxy);
     }
 }
 
 async function main() {
     const extraArgs = process.argv.slice(2).filter((arg, index) => !(index === 0 && arg === '--'));
-    await Promise.all([startService('proxy'), startService('api')]);
+    await startService('api');
 
     for (const viewport of VIEWPORTS) {
         await runViewport(viewport, extraArgs);

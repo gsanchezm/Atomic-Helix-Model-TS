@@ -8,6 +8,7 @@ import { SecurityContractLoader } from '@core/contracts/security-contract-loader
 import {
     writeWebSecuritySection,
     writeMobsfReport,
+    isScannerUnavailable,
     type MobsfFinding,
     type MobsfPlatformReport,
 } from '@core/tests/support/security-report-writer';
@@ -81,8 +82,16 @@ export class SecurityInfraRoute {
             writeWebSecuritySection({ tls: { pass: true, reportPath } });
             log.info({ reportPath }, 'TLS check passed');
         } catch (err) {
-            writeWebSecuritySection({ tls: { pass: false, reportPath: 'reports/security/testssl/testssl.json' } });
-            log.warn({ err: (err as Error).message }, 'TLS check reported issues (recorded, non-fatal)');
+            const unavailable = isScannerUnavailable(err);
+            writeWebSecuritySection({
+                tls: { pass: false, reportPath: 'reports/security/testssl/testssl.json', ...(unavailable ? { unavailable } : {}) },
+            });
+            log.warn(
+                { err: (err as Error).message },
+                unavailable
+                    ? 'TLS check SKIPPED — testssl.sh not executable on this host (recorded as unavailable, not as a finding)'
+                    : 'TLS check reported issues (recorded, non-fatal)',
+            );
         }
     }
 
@@ -128,9 +137,9 @@ export class SecurityInfraRoute {
                 platform: spec.platform,
                 appFile: basename(artifact),
                 securityScore: summary.securityScore,
-                high: Number(summary.high ?? 0),
-                warning: Number(summary.warning ?? 0),
-                info: extractInfoCount(summary.report),
+                high: extractSeverityCount(summary.report, 'high'),
+                warning: extractSeverityCount(summary.report, 'warning'),
+                info: extractSeverityCount(summary.report, 'info'),
                 findings: extractFindings(summary.report),
                 raw: undefined,
             };
@@ -180,7 +189,11 @@ function extractFindings(report: Record<string, unknown>): MobsfFinding[] {
     const appsec = report.appsec as Record<string, unknown> | undefined;
     if (!appsec) return [];
     const out: MobsfFinding[] = [];
-    const buckets: Array<MobsfFinding['severity']> = ['high', 'warning', 'info', 'secure'];
+    // `hotspot` is MobSF's bucket for risky permissions and config (e.g.
+    // SYSTEM_ALERT_WINDOW, which allows full-screen takeover). Omitting it
+    // dropped those findings from the dashboard entirely — the same
+    // under-reporting this file's severity counting was fixed to stop.
+    const buckets: Array<MobsfFinding['severity']> = ['high', 'hotspot', 'warning', 'info', 'secure'];
     for (const severity of buckets) {
         const list = appsec[severity];
         if (!Array.isArray(list)) continue;
@@ -200,9 +213,24 @@ function extractFindings(report: Record<string, unknown>): MobsfFinding[] {
     return out;
 }
 
-function extractInfoCount(report: Record<string, unknown>): number {
+/**
+ * Count findings of one severity, preferring the `appsec.<severity>` array that
+ * `extractFindings` above reads — the same source, so the counters can never
+ * disagree with the list they summarize.
+ *
+ * Only `info` used to be counted this way; `high` and `warning` read MobSF's
+ * top-level `report.high` / `report.warning` scalars instead, which v3.9.7 does
+ * not emit. They therefore defaulted to 0 while `findings` correctly listed the
+ * high-severity entries, and the dashboard (whose `failed` count is the sum of
+ * `high`) rendered a scan carrying real high-severity findings as clean — a
+ * security report failing in the under-reporting direction.
+ */
+function extractSeverityCount(
+    report: Record<string, unknown>,
+    severity: MobsfFinding['severity'],
+): number {
     const appsec = report.appsec as Record<string, unknown> | undefined;
-    const list = appsec?.info;
+    const list = appsec?.[severity];
     if (Array.isArray(list)) return list.length;
-    return Number((report.info as number | undefined) ?? 0);
+    return Number((report[severity] as number | undefined) ?? 0);
 }

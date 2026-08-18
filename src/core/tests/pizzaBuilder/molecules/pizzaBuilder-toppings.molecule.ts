@@ -1,6 +1,7 @@
 import { sendIntent } from '@kernel/client';
 import { INTENT } from '@kernel/intents';
 import { logger } from '@utils/logger';
+import { mobileTestId } from '@core/tests/support/mobile-selector';
 
 const log = logger.child({ layer: 'molecule', domain: 'pizzaBuilder', action: 'toppings' });
 
@@ -28,7 +29,7 @@ function slugify(value: string): string {
 function toppingButtonSelector(topping: string): string {
     const slug = slugify(topping);
     return isMobileDriver()
-        ? `~btn-topping-${slug}`
+        ? mobileTestId(`btn-topping-${slug}`)
         : `[data-testid='topping-${slug}']`;
 }
 

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 
 import { playwrightAdapter } from '../../src/server/normalize/playwright';
 import type { WebUiTool } from '../../src/shared/types';
+import { isTestCaseGroup } from '../../src/shared/types';
 import { ctx } from './_helpers';
 
 describe('playwrightAdapter', () => {
@@ -33,10 +34,12 @@ describe('playwrightAdapter', () => {
     expect(out.id).toBe('playwright');
     expect(out.passed).toBe(5);
     expect(out.tests).toHaveLength(2);
-    expect(out.tests[1].error).toBe('boom');
-    expect(out.tests[1].steps).toHaveLength(2);
-    expect(out.tests[1].failedStepIndex).toBe(1);
-    expect(out.tests[1].steps?.[1].error).toBe('boom');
+    const second = out.tests[1];
+    if (isTestCaseGroup(second)) throw new Error('expected a single test case');
+    expect(second.error).toBe('boom');
+    expect(second.steps).toHaveLength(2);
+    expect(second.failedStepIndex).toBe(1);
+    expect(second.steps?.[1].error).toBe('boom');
   });
 
   it('rejects non-object inputs', () => {

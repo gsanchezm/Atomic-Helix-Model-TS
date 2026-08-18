@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# Git worktrees
+.worktrees/
+
 # Build and runtime output
 dist/
 build/
@@ -46,6 +49,8 @@ docs/*
 !docs/research/
 !docs/architecture/
 !docs/superpowers/
+!docs/markdowns/
+!docs/paper/
 target/
 src/core/tests/checkout/simulations/checkout-rows.generated.ts
 results/
@@ -95,6 +100,10 @@ metrics/figures/**
 
 reports/
 
+# Cypress's own output (screenshots/videos from plugin:cypress runs)
+src/plugins/cypress/screenshots/
+src/plugins/cypress/videos/
+
 # Locally generated gRPC certificate material. Only the directory marker is tracked.
 certs/grpc/*
 !certs/grpc/.gitkeep
@@ -104,4 +113,6 @@ cucumber.focused.js
 OMNIPIZZA-PLATFORM-BUGS.md
 OMNIPIZZA-FOLLOWUP-*.md
 bugs/
-design_handoff_ahm_landing/
+design_handoff_*/
+# Per-run orchestration scratch (scripts/orchestrate-full-run.sh recreates it).
+.ahm-orch-logs/

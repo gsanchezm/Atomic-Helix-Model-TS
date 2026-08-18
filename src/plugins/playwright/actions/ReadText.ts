@@ -1,18 +1,16 @@
 import { ActionHandler } from '@plugins/shared/ActionHandler';
 import { PlaywrightActionContext } from '@plugins/playwright/actions/PlaywrightActionContext';
+import { locate, parseLocator } from '@plugins/playwright/actions/PlaywrightLocator';
 
 export const ReadTextAction: ActionHandler<PlaywrightActionContext> = {
     name: 'READ_TEXT',
     // Reads the "user-visible text" of the matched element(s). For inputs /
     // textareas / selects the user-visible text is the `value` property, not
-    // `textContent` (which is empty on void/form elements). The original
-    // implementation returned `allTextContents()` for everything, which made
-    // every input read return "" and broke the profile form assertions
-    // (OmniPizza confirmed 2026-05-24 that the FE populates inputs correctly).
-    // The branch is keyed off the DOM node's tagName so non-form elements
-    // continue to behave exactly as before.
+    // `textContent` (which is empty on void/form elements). The branch is
+    // keyed off the DOM node's tagName so non-form elements continue to
+    // behave exactly as before.
     async execute({ page, target }) {
-        const locator = page.locator(target);
+        const locator = locate(page, parseLocator(target));
         const count = await locator.count();
         if (count === 0) return '';
         const parts: string[] = [];
