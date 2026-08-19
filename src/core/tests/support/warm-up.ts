@@ -30,6 +30,24 @@ async function pingUntilAwake(url: string): Promise<void> {
         try {
             const res = await fetch(url, { method: 'GET', signal: controller.signal });
             if (res.status < 500) {
+                // A 403 Cloudflare challenge also lands here and is currently
+                // reported as "Service awake". Deliberately NOT changing that
+                // verdict — doing so would make BeforeAll newly fail mid-
+                // validation — but surface enough to recognise it after the fact.
+                const cfRay = res.headers.get('cf-ray');
+                if (res.status >= 400 || cfRay) {
+                    log.warn(
+                        {
+                            url,
+                            status: res.status,
+                            contentType: res.headers.get('content-type'),
+                            cfRay,
+                            cfMitigated: res.headers.get('cf-mitigated'),
+                            server: res.headers.get('server'),
+                        },
+                        '[AHM-ABSORBED-HTTP] warm-up ping answered non-2xx or via an edge; treating as awake',
+                    );
+                }
                 log.info({ url, status: res.status }, 'Service awake');
                 return;
             }

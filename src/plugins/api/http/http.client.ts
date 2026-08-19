@@ -1,4 +1,4 @@
-import { HttpError } from '@plugins/api/http/http.error';
+import { DIAGNOSTIC_RESPONSE_HEADERS, HttpError } from '@plugins/api/http/http.error';
 import { HttpMethod } from '@plugins/api/http/http-method.enum';
 import {
     HttpClientOptions,
@@ -78,14 +78,22 @@ export class HttpClient {
             });
 
             const rawBody = await response.text();
-            const responseBody = this.parseBody(rawBody, response.headers.get('content-type'));
+            const contentType = response.headers.get('content-type');
+            const responseBody = this.parseBody(rawBody, contentType);
 
             if (!response.ok) {
+                const diagnosticHeaders: Record<string, string> = {};
+                for (const name of DIAGNOSTIC_RESPONSE_HEADERS) {
+                    const value = response.headers.get(name);
+                    if (value) diagnosticHeaders[name] = value;
+                }
                 throw new HttpError(this.buildErrorMessage(method, url, response.status, responseBody), {
                     status: response.status,
                     method,
                     url,
                     responseBody,
+                    contentType,
+                    diagnosticHeaders,
                 });
             }
 
@@ -184,8 +192,16 @@ export class HttpClient {
             }
         }
 
+        // A non-JSON body always keeps the request line in front of it, and is
+        // truncated. Before this, a Cloudflare interstitial returned ~4KB of HTML
+        // as the entire error message, with the status code nowhere in it — the
+        // failure read like a broken login rather than an edge challenge, and CI
+        // run 32235723842 needed four job-log downloads to classify what should
+        // have been one line.
         if (typeof responseBody === 'string' && responseBody.trim().length > 0) {
-            return responseBody;
+            const flat = responseBody.trim().replace(/\s+/g, ' ');
+            const snippet = flat.length > 200 ? `${flat.slice(0, 200)}…` : flat;
+            return `${method} ${url} -> ${status}: ${snippet}`;
         }
 
         return `${method} ${url} failed with status ${status}`;

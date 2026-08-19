@@ -409,9 +409,21 @@ export class CatalogRoute {
             // CORS quirks in a local dev env). Log + continue so the UI
             // path still has a chance; the api driver will surface the
             // problem at the first assertion.
+            // Keep swallowing, but stop swallowing the DIAGNOSIS with it. This
+            // absorbs the same failure class that surfaced as hard errors on the
+            // login step in CI run 32235723842 (Cloudflare interstitials), so the
+            // observed failure count there was a floor, not the real rate. The
+            // greppable token makes the absorbed ones countable.
+            const httpErr = err as { status?: number; diagnosticHeaders?: Record<string, string> };
             log.warn(
-                { err: (err as Error).message, market, language },
-                'CatalogDao.getPizzas failed during cache refresh',
+                {
+                    err: (err as Error).message,
+                    market,
+                    language,
+                    status: httpErr.status,
+                    diagnosticHeaders: httpErr.diagnosticHeaders,
+                },
+                '[AHM-ABSORBED-HTTP] CatalogDao.getPizzas failed during cache refresh',
             );
             this.world.catalogCache = undefined;
         }
