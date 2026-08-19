@@ -224,24 +224,25 @@ export async function blurActiveTextInput(driver: Browser): Promise<void> {
     } catch { /* best effort */ }
 }
 
+// DELIBERATELY a no-op off iOS. An Android branch calling `mobile: hideKeyboard`
+// was tried as the validation experiment for the "IME parks the trigger against
+// the window edge" theory behind the Android btn-option-09 failures (CI run
+// 32183695855). It REFUTED itself: run 32264080427 took Android writes from 3
+// failures to 15, with a failure class that had never appeared before — ten
+// `Can't call click on element` on input-address / input-zipcode / input-fullname
+// / input-card-holder / btn-place-order, i.e. the whole checkout form going
+// missing rather than any scroll misbehaving.
+//
+// The likely mechanism: UiAutomator2 commonly implements hideKeyboard as a BACK
+// press, which with no keyboard actually up (or once it has already closed)
+// navigates away from the screen instead. Every subsequent field lookup then
+// fails because the form is gone — exactly the observed shape.
+//
+// So the IME theory is unproven, NOT disproven: this experiment says
+// `mobile: hideKeyboard` is the wrong instrument, not that the keyboard is
+// innocent. A safer probe would dismiss via an explicit tap outside the input
+// (as the iOS path does) and verify the app is still foregrounded afterwards.
 export async function dismissKeyboard(driver: Browser): Promise<void> {
-    // Android was a no-op here (and in `blurActiveTextInput`) all along, so with
-    // the IME up the window shrinks, `isDisplayed()` starts answering against the
-    // SHRUNK window, and a coarse scroll can park a trigger flush against the
-    // keyboard's top edge — the tap then lands on the IME instead of the control.
-    // In CI run 32183695855 that is the signature of the Android `btn-option-09`
-    // failures: the dropdown sheet is entirely absent from the page source (the
-    // tap never reached the trigger), and failure correlates 1:1 with whether the
-    // preceding SCROLL_TO actually swiped. `isKeyboardShown` above hard-returns
-    // false off iOS, so use the driver's own native check here.
-    if (PLATFORM === 'android') {
-        try {
-            if (await (driver as any).isKeyboardShown?.()) {
-                await driver.executeScript('mobile: hideKeyboard', []);
-            }
-        } catch { /* best effort — never fail an action over the keyboard */ }
-        return;
-    }
     if (PLATFORM !== 'ios') return;
     if (!(await isKeyboardShown(driver))) return;
 
