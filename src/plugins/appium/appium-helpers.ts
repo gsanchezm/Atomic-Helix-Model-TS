@@ -94,6 +94,43 @@ async function findScrollableAncestor(driver: Browser): Promise<string | null> {
     return null;
 }
 
+// The scrollable ancestor as an ELEMENT (not just its id), so callers can measure
+// its rect and drive a container-anchored drag. Picks the innermost displayed
+// ScrollView that actually contains `target`'s center when one is supplied —
+// `findScrollableAncestor`'s "first displayed" rule is fine for a bulk swipe but
+// wrong when a modal sheet's list and the page behind it are both on screen.
+export async function scrollContainerFor(driver: Browser, target?: any): Promise<any | null> {
+    if (PLATFORM !== 'ios') return null;
+    try {
+        const scrollViews = await driver.$$('XCUIElementTypeScrollView').getElements();
+        const displayed: any[] = [];
+        for (const sv of scrollViews) {
+            if (await (sv.isDisplayed() as Promise<boolean>).catch(() => false)) displayed.push(sv);
+        }
+        if (!displayed.length) return null;
+        if (!target) return displayed[0];
+
+        const rect = await rectOf(target);
+        if (!rect) return displayed[0];
+        const cx = rect.x + rect.width / 2;
+
+        // Prefer a container whose x-range brackets the target, and among those
+        // the smallest — i.e. the innermost list rather than the page scroller.
+        let best: any = null;
+        let bestArea = Infinity;
+        for (const sv of displayed) {
+            const r = await rectOf(sv);
+            if (!r) continue;
+            if (cx < r.x || cx > r.x + r.width) continue;
+            const area = r.width * r.height;
+            if (area < bestArea) { bestArea = area; best = sv; }
+        }
+        return best ?? displayed[0];
+    } catch {
+        return null;
+    }
+}
+
 async function swipeUpBulk(driver: Browser): Promise<void> {
     const scrollEl = await findScrollableAncestor(driver);
     const args: Record<string, unknown> = { direction: 'up' };
@@ -635,6 +672,7 @@ export const appiumHelpers = {
     dismissNumericKeyboardRobust,
     dismissAndroidSystemDialog,
     scrollIntoViewSafe,
+    scrollContainerFor,
     isFrameInTapZone,
     tapElementCenter,
     typeTextIntoTarget,

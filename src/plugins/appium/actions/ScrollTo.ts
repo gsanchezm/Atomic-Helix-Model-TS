@@ -4,7 +4,7 @@ import { logger } from '@utils/logger';
 
 export const ScrollToAction: ActionHandler<AppiumActionContext> = {
     name: 'SCROLL_TO',
-    async execute({ driver, target, platform }) {
+    async execute({ driver, target, platform, helpers }) {
         try {
             await driver.$(target).scrollIntoView();
             // On iOS `scrollIntoView()` assumes a vertical container and
@@ -35,6 +35,28 @@ export const ScrollToAction: ActionHandler<AppiumActionContext> = {
         // the screen edge — missed and the category filter never engaged.)
         if (platform === 'ios') {
             const name = target.startsWith('~') ? target.slice(1) : target;
+
+            // Container-anchored drag FIRST. WDIO's scrollIntoView() anchors its
+            // swipe to XCUIElementTypeApplication — on a 402x874 window that drags
+            // from y=852, which on the profile screen is BELOW `scroll-profile`
+            // (it ends at y=780), so the gesture never touches the ScrollView at
+            // all. In CI run 32183695855 that produced `SCROLL_TO ok (120713ms)`:
+            // ten 1.5s swipes accomplishing nothing, reported as success, and the
+            // `~input-birthday-day` failure 8s later. Measuring against the
+            // element's real container fixes the anchor and the direction at once.
+            try {
+                const el = driver.$(target);
+                if (await el.isExisting()) {
+                    const container = await helpers.scrollContainerFor(driver, el);
+                    if (container) {
+                        await helpers.scrollIntoViewSafe(driver, el, target, 6, container);
+                        if (await el.isDisplayed().catch(() => false)) {
+                            return `Scrolled to (ios container drag): ${target}`;
+                        }
+                    }
+                }
+            } catch { /* fall through to the native idiom below */ }
+
             try {
                 await driver.execute('mobile: scroll', { predicateString: `name == "${name}"` });
                 return `Scrolled to (ios mobile:scroll): ${target}`;
