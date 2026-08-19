@@ -18,6 +18,28 @@ export const SelectOptionAction: ActionHandler<AppiumActionContext> = {
         await helpers.scrollIntoViewSafe(driver, trigger, selector, 5);
         await (trigger.click() as Promise<void>);
 
+        // Dropdown.tsx names its option ScrollView `scroll-<triggerTestId>`, so we
+        // can address the sheet's own list rather than guessing at the container.
+        const triggerKey = selector.startsWith('~')
+            ? selector.slice(1)
+            : selector.match(/resourceId\("([^"]+)"\)/)?.[1] ?? '';
+        const list = triggerKey
+            ? driver.$(androidizeAccessibilitySelector(`~scroll-${triggerKey}`))
+            : null;
+
+        // Readiness gate. Without it, "the sheet never opened" and "the option is
+        // off-screen" both surface as the same 10s "still not displayed" on the
+        // OPTION, which is precisely what made CI run 32183695855 ambiguous. Fail
+        // fast and say which one it was.
+        if (list) {
+            await list.waitForExist({
+                timeout: 5_000,
+                timeoutMsg:
+                    `SELECT_OPTION: the dropdown for ${selector} never opened `
+                    + `(no scroll-${triggerKey} in the hierarchy) — the trigger tap did not land`,
+            });
+        }
+
         // OmniPizza's RN Dropdown exposes every option as btn-option-{value},
         // with its own accessibilityLabel (the option's display text) distinct
         // from the testID — same content-desc/resource-id split as any other
@@ -31,13 +53,17 @@ export const SelectOptionAction: ActionHandler<AppiumActionContext> = {
             // sits off-screen until scrolled into view, confirmed on-device
             // 2026-08-13 (all 5 credit-card scenarios timed out identically on
             // btn-option-12 even after the selector itself was fixed).
-            await helpers.scrollIntoViewSafe(driver, option, optionSelector, 5);
+            // Passing `list` as the clipping container is what lets the scroll
+            // measure against the sheet instead of the window — a 31-item day
+            // list and a 66-item year list both put their target inside a dead
+            // band the window-relative predicate called "already visible".
+            await helpers.scrollIntoViewSafe(driver, option, optionSelector, 6, list ?? undefined);
             await option.waitForDisplayed({ timeout: 10_000 });
         } catch (err) {
             try {
                 const src = await driver.getPageSource();
                 process.stderr.write(
-                    `[Appium-DBG] SELECT_OPTION ${optionSelector} timeout — pageSource head:\n${src.slice(0, 60000)}\n[Appium-DBG] end pageSource\n`,
+                    `[Appium-DBG] SELECT_OPTION ${optionSelector} timeout — pageSource head:\n${src.slice(0, 200000)}\n[Appium-DBG] end pageSource\n`,
                 );
             } catch (dumpErr) {
                 process.stderr.write(

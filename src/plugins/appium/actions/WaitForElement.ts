@@ -13,7 +13,7 @@ export const WaitForElementAction: ActionHandler<AppiumActionContext> = {
             try {
                 const src = await driver.getPageSource();
                 process.stderr.write(
-                    `[Appium-DBG] WAIT_FOR_ELEMENT ${selector} timeout — pageSource head:\n${src.slice(0, 60000)}\n[Appium-DBG] end pageSource\n`,
+                    `[Appium-DBG] WAIT_FOR_ELEMENT ${selector} timeout — pageSource head:\n${src.slice(0, 200000)}\n[Appium-DBG] end pageSource\n`,
                 );
             } catch (dumpErr) {
                 process.stderr.write(

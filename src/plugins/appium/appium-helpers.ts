@@ -188,6 +188,23 @@ export async function blurActiveTextInput(driver: Browser): Promise<void> {
 }
 
 export async function dismissKeyboard(driver: Browser): Promise<void> {
+    // Android was a no-op here (and in `blurActiveTextInput`) all along, so with
+    // the IME up the window shrinks, `isDisplayed()` starts answering against the
+    // SHRUNK window, and a coarse scroll can park a trigger flush against the
+    // keyboard's top edge — the tap then lands on the IME instead of the control.
+    // In CI run 32183695855 that is the signature of the Android `btn-option-09`
+    // failures: the dropdown sheet is entirely absent from the page source (the
+    // tap never reached the trigger), and failure correlates 1:1 with whether the
+    // preceding SCROLL_TO actually swiped. `isKeyboardShown` above hard-returns
+    // false off iOS, so use the driver's own native check here.
+    if (PLATFORM === 'android') {
+        try {
+            if (await (driver as any).isKeyboardShown?.()) {
+                await driver.executeScript('mobile: hideKeyboard', []);
+            }
+        } catch { /* best effort — never fail an action over the keyboard */ }
+        return;
+    }
     if (PLATFORM !== 'ios') return;
     if (!(await isKeyboardShown(driver))) return;
 
@@ -308,6 +325,87 @@ export async function isFrameInTapZone(driver: Browser, target: any): Promise<bo
     }
 }
 
+interface ClipRect { x: number; y: number; width: number; height: number }
+
+export async function rectOf(el: any): Promise<ClipRect | null> {
+    try {
+        const loc = await (el.getLocation() as Promise<{ x: number; y: number }>);
+        const size = await (el.getSize() as Promise<{ width: number; height: number }>);
+        if (!size.width || !size.height) return null;
+        return { x: loc.x, y: loc.y, width: size.width, height: size.height };
+    } catch {
+        return null;
+    }
+}
+
+// Reachability for SCROLLING, which is a stricter question than `isFrameInTapZone`'s.
+//
+// `isFrameInTapZone` exists to answer "would a tap at this element's center land
+// on it, or on the keyboard?" — so it measures against the WINDOW. A dropdown
+// option clipped by its own ScrollView is still inside the window, so that
+// predicate calls it reachable and `scrollIntoViewSafe` skips the scroll
+// entirely. On a 402x874 iOS window the sheet's list clips at y=718 while
+// `safeBottom` is 858, leaving a ~3-row dead band (718 < centerY < 858) where a
+// `visible="false"` option reads as "already in view". Confirmed in CI run
+// 32183695855: `btn-option-15` sat at centerY 843.5 and got ZERO swipes on both
+// attempts — a deterministic failure, not a timing race.
+//
+// Geometry may only NARROW the answer, never widen it: we still require
+// `isFrameInTapZone` first, so keyboard-occluded controls stay excluded.
+async function isReachableForScroll(
+    driver: Browser,
+    target: any,
+    clip?: ClipRect | null,
+): Promise<boolean> {
+    if (!(await isFrameInTapZone(driver, target))) return false;
+    if (PLATFORM !== 'ios' || !clip) return true;
+
+    const rect = await rectOf(target);
+    if (!rect) return true;
+    const centerY = rect.y + rect.height / 2;
+    const centerX = rect.x + rect.width / 2;
+
+    // Inside the clip rect → authoritative. Deliberately does NOT consult
+    // `isDisplayed()`: RN renders these options as XCUIElementTypeOther, the
+    // element type known to under-report `visible` even when drawn.
+    if (centerY >= clip.y && centerY <= clip.y + clip.height) return true;
+
+    // Center outside the container vertically. Only treat that as unreachable
+    // when the element really is this container's content (horizontally inside
+    // it too) — a fixed footer or nav bar that merely overlaps the container's
+    // x-range must still pass, so fall back to the driver's own answer.
+    const insideX = centerX >= clip.x && centerX <= clip.x + clip.width;
+    if (!insideX) return true;
+    return await (target.isDisplayed() as Promise<boolean>).catch(() => false);
+}
+
+// A momentum-free drag confined to `clip`, so the gesture lands on the intended
+// scroll container instead of whatever the window-anchored swipe helpers hit.
+// The trailing pause before lift-off is what kills the flick momentum: without
+// it the list keeps coasting and the resulting delta is unpredictable, which is
+// what made the previous fixed-swipe loop overshoot past its target.
+async function dragWithinRect(driver: Browser, clip: ClipRect, dy: number): Promise<void> {
+    const x = Math.round(clip.x + clip.width / 2);
+    const top = clip.y + 8;
+    const bottom = clip.y + clip.height - 8;
+    const startY = dy > 0 ? bottom : top;
+    const endY = Math.max(top, Math.min(bottom, Math.round(startY - dy)));
+    await driver.performActions([{
+        type: 'pointer',
+        id: 'finger1',
+        parameters: { pointerType: 'touch' },
+        actions: [
+            { type: 'pointerMove', duration: 0, x, y: startY },
+            { type: 'pointerDown', button: 0 },
+            { type: 'pause', duration: 60 },
+            { type: 'pointerMove', duration: 400, x, y: endY },
+            { type: 'pause', duration: 150 },
+            { type: 'pointerUp', button: 0 },
+        ],
+    }]);
+    await driver.releaseActions();
+}
+
 export async function tapElementCenter(driver: Browser, target: any): Promise<void> {
     const loc = await (target.getLocation() as Promise<{ x: number; y: number }>);
     const size = await (target.getSize() as Promise<{ width: number; height: number }>);
@@ -319,8 +417,20 @@ export async function tapElementCenter(driver: Browser, target: any): Promise<vo
 
 // --- Android UiScrollable ---
 
-async function scrollIntoViewAndroid(driver: Browser, selector: string): Promise<boolean> {
+async function scrollIntoViewAndroid(
+    driver: Browser,
+    selector: string,
+    scoped = false,
+): Promise<boolean> {
     if (PLATFORM !== 'android') return false;
+
+    // `scrollable(true).instance(0)` picks the FIRST scrollable in the tree. With
+    // a dropdown sheet open that is very likely the form BEHIND the sheet, so a
+    // missed option lookup silently drags the background page to its end — which
+    // is exactly the state CI run 32183695855's Android dumps show (form at max
+    // scroll, sheet gone). When the caller knows the real container, skip this
+    // path entirely and let the measured drag in `scrollIntoViewSafe` handle it.
+    if (scoped) return false;
 
     // Accessibility-id targets (`~key`) must scroll by resource-id, not
     // content-desc: RN mirrors testID into both attributes by default, but a
@@ -347,26 +457,46 @@ async function scrollIntoViewAndroid(driver: Browser, selector: string): Promise
     }
 }
 
+// `container`, when supplied, is the element that actually CLIPS `target` (e.g. a
+// dropdown sheet's own `~scroll-<testId>` list). Passing it switches this helper
+// from window-relative guessing to container-relative measurement — see
+// `isReachableForScroll`. Callers that don't know the container keep the old
+// behaviour verbatim.
 export async function scrollIntoViewSafe(
     driver: Browser,
     target: any,
     selector: string,
     maxAttempts = 3,
+    container?: any,
 ): Promise<void> {
-    if (await isFrameInTapZone(driver, target)) return;
+    const clip = container ? await rectOf(container) : null;
+
+    if (await isReachableForScroll(driver, target, clip)) return;
 
     if (
         PLATFORM === 'android' &&
-        await scrollIntoViewAndroid(driver, selector) &&
-        await isFrameInTapZone(driver, target)
+        await scrollIntoViewAndroid(driver, selector, Boolean(container)) &&
+        await isReachableForScroll(driver, target, clip)
     ) {
         return;
     }
 
-    let displayed = await isTrulyDisplayed(driver, target);
     let attempts = 0;
-    while (!displayed && attempts < maxAttempts) {
-        if (PLATFORM === 'android') {
+    while (attempts < maxAttempts) {
+        if (clip) {
+            // Measured drag: aim the element's center at the container's center.
+            // Clamped to just under one viewport per step so a long list converges
+            // monotonically instead of overshooting — the old blind swipe moved
+            // 651-673pt through a 561pt viewport, which could jump a target clean
+            // past the top and then keep scrolling away from it forever.
+            const rect = await rectOf(target);
+            if (!rect) break;
+            const dy = (rect.y + rect.height / 2) - (clip.y + clip.height / 2);
+            const limit = clip.height - 16;
+            const step = Math.max(-limit, Math.min(limit, dy));
+            if (Math.abs(step) < 1) break;
+            await dragWithinRect(driver, clip, step);
+        } else if (PLATFORM === 'android') {
             // On UiAutomator2 `mobile: swipe` is unsupported and `mobile: scroll`
             // with a bare direction silently no-ops — so swipeUpBulk never threw
             // and the W3C fallback was dead code, leaving Android scrolls
@@ -381,8 +511,9 @@ export async function scrollIntoViewSafe(
                 await swipeUpW3C(driver, 0.66);
             }
         }
-        displayed = await isFrameInTapZone(driver, target) || await isTrulyDisplayed(driver, target);
         attempts++;
+        if (await isReachableForScroll(driver, target, clip)) return;
+        if (!clip && await isTrulyDisplayed(driver, target)) return;
     }
 }
 

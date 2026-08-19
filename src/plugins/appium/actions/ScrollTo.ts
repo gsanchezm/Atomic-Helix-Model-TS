@@ -1,5 +1,6 @@
 import { ActionHandler } from '@plugins/shared/ActionHandler';
 import { AppiumActionContext } from '@plugins/appium/actions/AppiumActionContext';
+import { logger } from '@utils/logger';
 
 export const ScrollToAction: ActionHandler<AppiumActionContext> = {
     name: 'SCROLL_TO',
@@ -78,13 +79,36 @@ export const ScrollToAction: ActionHandler<AppiumActionContext> = {
             width: Math.round(width * 0.8),
             height: Math.round(height * 0.5),
         };
-        for (let i = 0; i < 4; i++) {
-            if (await driver.$(target).isDisplayed().catch(() => false)) break;
-            await driver.execute('mobile: scrollGesture', {
-                ...region,
-                direction: 'down',
-                percent: 0.85,
-            });
+        // Try BOTH directions. `direction: 'down'` alone can only ever scroll
+        // away from a target the view is already scrolled past — the state a
+        // long form is in right after the birthday dropdowns drive it to max
+        // offset, which is how `input-profile-fullname` went missing in CI run
+        // 32183695855 (it failed here, silently, and surfaced 10s later as an
+        // unrelated-looking WAIT_FOR_ELEMENT timeout).
+        for (const direction of ['down', 'up'] as const) {
+            for (let i = 0; i < 4; i++) {
+                if (await driver.$(target).isDisplayed().catch(() => false)) {
+                    return `Scrolled to (gesture fallback, ${direction}): ${target}`;
+                }
+                await driver.execute('mobile: scrollGesture', {
+                    ...region,
+                    direction,
+                    percent: 0.85,
+                });
+            }
+        }
+
+        // Deliberately NOT throwing yet. Several SCROLL_TO calls across the
+        // currently-green reads suites are suspected to be no-opping while the
+        // assertion that follows passes anyway; throwing here would turn those
+        // into new failures in the same change that fixes the scroll itself,
+        // making the two indistinguishable. Warn for one full CI run, read the
+        // warnings, then promote to a throw.
+        if (!(await driver.$(target).isDisplayed().catch(() => false))) {
+            logger.warn(
+                { target },
+                '[Appium] SCROLL_TO exhausted both gesture directions without revealing the target',
+            );
         }
         return `Scrolled to (gesture fallback): ${target}`;
     },

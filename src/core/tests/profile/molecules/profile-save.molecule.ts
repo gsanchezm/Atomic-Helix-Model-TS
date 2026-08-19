@@ -54,8 +54,16 @@ export async function saveProfile(): Promise<void> {
     // own, so restoring the offset here is what unblocks it too. Web renders the
     // whole form at once and needs no scroll.
     if (isMobileDriver()) {
-        await sendIntent(INTENT.SCROLL_TO, 'profileFullNameInput').catch(() => {
-            /* best effort — the WAIT below is still the real assertion */
+        // Still best-effort (the WAIT below remains the real assertion), but no
+        // longer SILENT: swallowing this bare meant the Android JP failure in run
+        // 32183695855 surfaced 10s downstream as a WAIT_FOR_ELEMENT timeout on
+        // `input-profile-fullname`, hiding the fact that the scroll itself was
+        // what failed — and had been scrolling the wrong way entirely.
+        await sendIntent(INTENT.SCROLL_TO, 'profileFullNameInput').catch((err: unknown) => {
+            log.warn(
+                { err: (err as Error)?.message },
+                'saveProfile re-anchor SCROLL_TO failed; the WAIT below is now the only guard',
+            );
         });
     }
     await sendIntent(INTENT.WAIT_FOR_ELEMENT, `profileFullNameInput||${SAVE_SETTLE_WAIT_MS}`);
