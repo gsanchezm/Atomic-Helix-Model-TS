@@ -499,6 +499,18 @@ async function scrollIntoViewAndroid(
 // from window-relative guessing to container-relative measurement — see
 // `isReachableForScroll`. Callers that don't know the container keep the old
 // behaviour verbatim.
+//
+// iOS ONLY. The dead band `isReachableForScroll` corrects is an XCUI artifact —
+// that helper already early-returns `true` for every other platform, so on
+// Android the container buys no predicate accuracy while the measured drag costs
+// something real: it needs `rectOf(target)` to resolve, and an off-screen option
+// that is not yet in the UiAutomator hierarchy has no coordinates, so `rectOf`
+// returns null and the loop breaks having scrolled NOTHING. UiScrollable, which
+// this used before, searches by SELECTOR and scrolls fine without the node being
+// present. Honouring `container` on Android therefore disabled the one mechanism
+// that worked: CI run 32235723842 took Android writes from 3 failures to 11, with
+// 10 of them on `btn-option-12` — the checkout expiry-month path that had been
+// green. Scoping the container to iOS restores Android verbatim.
 export async function scrollIntoViewSafe(
     driver: Browser,
     target: any,
@@ -506,13 +518,13 @@ export async function scrollIntoViewSafe(
     maxAttempts = 3,
     container?: any,
 ): Promise<void> {
-    const clip = container ? await rectOf(container) : null;
+    const clip = (PLATFORM === 'ios' && container) ? await rectOf(container) : null;
 
     if (await isReachableForScroll(driver, target, clip)) return;
 
     if (
         PLATFORM === 'android' &&
-        await scrollIntoViewAndroid(driver, selector, Boolean(container)) &&
+        await scrollIntoViewAndroid(driver, selector, Boolean(clip)) &&
         await isReachableForScroll(driver, target, clip)
     ) {
         return;

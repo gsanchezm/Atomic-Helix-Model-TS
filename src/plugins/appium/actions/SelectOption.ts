@@ -2,6 +2,7 @@ import { ActionHandler } from '@plugins/shared/ActionHandler';
 import { parseSelectorValue } from '@plugins/shared/parseCompositeTarget';
 import { AppiumActionContext } from '@plugins/appium/actions/AppiumActionContext';
 import { androidizeAccessibilitySelector } from '@plugins/appium/appium-helpers';
+import { logger } from '@utils/logger';
 
 export const SelectOptionAction: ActionHandler<AppiumActionContext> = {
     name: 'SELECT_OPTION',
@@ -27,17 +28,26 @@ export const SelectOptionAction: ActionHandler<AppiumActionContext> = {
             ? driver.$(androidizeAccessibilitySelector(`~scroll-${triggerKey}`))
             : null;
 
-        // Readiness gate. Without it, "the sheet never opened" and "the option is
+        // Readiness probe. Without it, "the sheet never opened" and "the option is
         // off-screen" both surface as the same 10s "still not displayed" on the
-        // OPTION, which is precisely what made CI run 32183695855 ambiguous. Fail
-        // fast and say which one it was.
+        // OPTION, which is precisely what made CI run 32183695855 ambiguous.
+        //
+        // DIAGNOSTIC ONLY — it must not decide the outcome. Making it throw was a
+        // mistake: it turns a probe into a second, independent way for the action
+        // to fail, and if `scroll-<key>` is ever absent for a benign reason (a
+        // platform that doesn't mirror that testID, a renamed container) it would
+        // fail a path that otherwise works. The option probe below stays the sole
+        // assertion; this just labels WHICH failure it is when one happens.
+        let sheetOpen = false;
         if (list) {
-            await list.waitForExist({
-                timeout: 5_000,
-                timeoutMsg:
-                    `SELECT_OPTION: the dropdown for ${selector} never opened `
-                    + `(no scroll-${triggerKey} in the hierarchy) — the trigger tap did not land`,
-            });
+            sheetOpen = await list.waitForExist({ timeout: 5_000 }).then(() => true).catch(() => false);
+            if (!sheetOpen) {
+                logger.warn(
+                    { trigger: selector, expected: `scroll-${triggerKey}` },
+                    '[Appium] SELECT_OPTION: dropdown sheet not in the hierarchy after the trigger tap '
+                    + '— the tap likely did not land; any option timeout below is a symptom, not the cause',
+                );
+            }
         }
 
         // OmniPizza's RN Dropdown exposes every option as btn-option-{value},
