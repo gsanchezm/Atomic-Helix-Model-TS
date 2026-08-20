@@ -376,7 +376,22 @@ async function isTrulyDisplayed(driver: Browser, target: any): Promise<boolean> 
 
 export async function isFrameInTapZone(driver: Browser, target: any): Promise<boolean> {
     if (PLATFORM !== 'ios') {
-        return (target.isDisplayed() as Promise<boolean>).catch(() => false);
+        const displayed = await (target.isDisplayed() as Promise<boolean>).catch(() => false);
+        if (!displayed || PLATFORM !== 'android') return displayed;
+        // Android's own `displayed` accessibility flag can be true even when the
+        // reported bounds are clipped/inverted — confirmed via CI run 32368723226's
+        // page-source dumps: `displayed="true"` on a node whose bounds were
+        // `[109,1786][348,1684]` (top past its ScrollView's real viewport edge,
+        // bottom pinned to the clip line, net negative height). Trusting
+        // `isDisplayed()` alone made this "already reachable", so
+        // `scrollIntoViewSafe` skipped scrolling entirely and the bad rect never
+        // got the chance to be fixed by the very UiScrollable call meant to fix it.
+        try {
+            const size = await (target.getSize() as Promise<{ width: number; height: number }>);
+            return size.height > 0 && size.width > 0;
+        } catch {
+            return false;
+        }
     }
     try {
         const loc = await (target.getLocation() as Promise<{ x: number; y: number }>);
