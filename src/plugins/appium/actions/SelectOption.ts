@@ -101,6 +101,45 @@ async function captureClickDiagnostics(
     return info;
 }
 
+// Diagnostic-confirmed (CI run 32363838578's page-source dumps): the trigger's
+// own accessibility-tree bounds come back INVERTED (bottom < top) on 6 of 9
+// captures — always when it sits just past its ScrollView's clipped viewport
+// edge. E.g. ScrollView content bounds [0,210][1080,1684] vs a trigger bounds
+// of [109,1786][348,1684]: Android clips the reported bottom to the viewport
+// edge but keeps the true (off-screen) top, producing a negative height. The
+// keyboard theories from three prior rounds (cab78be, 2de8e69, and this
+// round's mIsInputViewShown check) are refuted by this same data —
+// mIsInputViewShown is false throughout (no visual keyboard ever renders on
+// this emulator), so no dismissal of any kind could have changed the
+// outcome, which is exactly why they didn't. WebdriverIO/UiAutomator2 computes
+// a tap center from whatever rect it's given; from a garbage rect that center
+// lands on real content elsewhere — every failing capture's page-source shows
+// it landing squarely inside the app's own bottom-nav "Katalog" tab
+// ([0,1703][270,1841] in that same run), which is what backgrounds the app.
+// Refuse to click on an invalid rect; a short settle-and-recheck loop first,
+// in case this is the ScrollView's smooth-scroll animation still in flight
+// when scrollIntoViewSafe returned (3 of 9 captures were already valid with
+// no extra wait, so the animation does resolve on its own some of the time).
+async function settleValidBounds(
+    trigger: any,
+    maxAttempts = 5,
+    delayMs = 200,
+): Promise<{ x: number; y: number; w: number; h: number } | null> {
+    let last: { x: number; y: number; w: number; h: number } | null = null;
+    for (let i = 0; i < maxAttempts; i++) {
+        try {
+            const loc = await trigger.getLocation();
+            const size = await trigger.getSize();
+            last = { x: loc.x, y: loc.y, w: size.width, h: size.height };
+            if (last.h > 0) return last;
+        } catch {
+            // Element handle stale mid-scroll; next attempt re-resolves it.
+        }
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+    return last && last.h > 0 ? last : null;
+}
+
 export const SelectOptionAction: ActionHandler<AppiumActionContext> = {
     name: 'SELECT_OPTION',
     async execute({ driver, target, helpers, platform }) {
@@ -115,18 +154,9 @@ export const SelectOptionAction: ActionHandler<AppiumActionContext> = {
         await helpers.dismissKeyboard(driver);
         await helpers.blurActiveTextInput(driver);
         await helpers.scrollIntoViewSafe(driver, trigger, selector, 5);
-        // Android: CI run 32354018915's deep diagnostic (exact tap geometry +
-        // screenshot, captured immediately before the click) caught the real
-        // mechanism directly: keyboardShown=true and a garbage NEGATIVE element
-        // height (-102, reproducible byte-for-byte across all 10 occurrences) at
-        // the moment of the tap, even though dismissKeyboard() already ran above
-        // — the keyboard is back by the time scrollIntoViewSafe finishes. Same
-        // class of issue Click.ts already documents and guards against on iOS
-        // ("The scroll loop uses touch-based mobile: swipe which can graze a
-        // TextInput and reopen the keyboard. Dismiss again before the tap.").
-        // Dismiss once more, then re-settle position: closing the keyboard
-        // changes the usable viewport height, so the trigger's on-screen
-        // position can shift after this second dismiss.
+        // Android: kept as a harmless defensive pass (a still-open keyboard from
+        // a preceding TYPE can still shift layout even though it wasn't the
+        // driver of the CI failures — see settleValidBounds() below for that).
         if (platform === 'android') {
             await helpers.dismissKeyboard(driver);
             await helpers.scrollIntoViewSafe(driver, trigger, selector, 5);
@@ -135,6 +165,16 @@ export const SelectOptionAction: ActionHandler<AppiumActionContext> = {
         const clickDiag = await captureClickDiagnostics(driver, trigger, selector, platform);
         if (platform === 'android') {
             logger.info({ trigger: selector, pkgAfterScroll, ...clickDiag }, '[Appium] SELECT_OPTION: pre-tap state');
+        }
+        if (platform === 'android') {
+            const settled = await settleValidBounds(trigger);
+            if (!settled) {
+                throw new Error(
+                    `[Appium] SELECT_OPTION: refusing to tap ${selector} — its bounds never stabilized to a ` +
+                    'valid (positive-height) rect after scrolling, which would tap outside the element ' +
+                    '(see the pre-tap state log line above for the last-known geometry).',
+                );
+            }
         }
         await (trigger.click() as Promise<void>);
         const pkgAfterClick = await currentPackageOrNA(driver, platform);
