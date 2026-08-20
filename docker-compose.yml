@@ -84,7 +84,15 @@ services:
   # ─── Mobile Plugin ──────────────────────────────────────────────────────────
 
   android-emulator:
-    image: halimqarroum/docker-android:api-34
+    # Was hard-coded to api-34, a tag that does not exist on Docker Hub — any
+    # local `docker compose --profile mobile up` failed with "not found"
+    # regardless of ANDROID_API_LEVEL, since only the container's internal
+    # API_LEVEL env var below was ever parameterized, not the pulled image
+    # itself. CI's own equivalent step already interpolates the tag
+    # (ahm-execution-helix.yml's android-emulator job uses
+    # `halimqarroum/docker-android:api-${{ inputs.android_api_level || '33' }}`)
+    # — mirror that here, and default to 33 (confirmed to exist; 34 does not).
+    image: halimqarroum/docker-android:api-${ANDROID_API_LEVEL:-33}
     privileged: true            # required for KVM on Linux
     devices:
       - /dev/kvm                # hardware acceleration — Linux only; remove on macOS CI
@@ -92,7 +100,7 @@ services:
       - "5554:5554"             # ADB console
       - "5555:5555"             # ADB connection
     environment:
-      - API_LEVEL=${ANDROID_API_LEVEL:-34}
+      - API_LEVEL=${ANDROID_API_LEVEL:-33}
       - IMG_TYPE=${ANDROID_IMG_TYPE:-google_apis}
       - ARCHITECTURE=x86_64
       - DEVICE_ID=${ANDROID_DEVICE_ID:-pixel}
