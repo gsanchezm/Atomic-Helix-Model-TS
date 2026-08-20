@@ -84,6 +84,22 @@ export const SelectOptionAction: ActionHandler<AppiumActionContext> = {
         await helpers.dismissKeyboard(driver);
         await helpers.blurActiveTextInput(driver);
         await helpers.scrollIntoViewSafe(driver, trigger, selector, 5);
+        // Android: CI run 32354018915's deep diagnostic (exact tap geometry +
+        // screenshot, captured immediately before the click) caught the real
+        // mechanism directly: keyboardShown=true and a garbage NEGATIVE element
+        // height (-102, reproducible byte-for-byte across all 10 occurrences) at
+        // the moment of the tap, even though dismissKeyboard() already ran above
+        // — the keyboard is back by the time scrollIntoViewSafe finishes. Same
+        // class of issue Click.ts already documents and guards against on iOS
+        // ("The scroll loop uses touch-based mobile: swipe which can graze a
+        // TextInput and reopen the keyboard. Dismiss again before the tap.").
+        // Dismiss once more, then re-settle position: closing the keyboard
+        // changes the usable viewport height, so the trigger's on-screen
+        // position can shift after this second dismiss.
+        if (platform === 'android') {
+            await helpers.dismissKeyboard(driver);
+            await helpers.scrollIntoViewSafe(driver, trigger, selector, 5);
+        }
         const pkgAfterScroll = await currentPackageOrNA(driver, platform);
         const clickDiag = await captureClickDiagnostics(driver, trigger, selector, platform);
         if (platform === 'android') {
