@@ -166,6 +166,17 @@ async function swipeUpW3C(driver: Browser, percent = 0.55): Promise<void> {
 // --- Keyboard handling ---
 
 export async function isKeyboardShown(driver: Browser): Promise<boolean> {
+    if (PLATFORM === 'android') {
+        // Native Android session command (appium-android-driver's
+        // isKeyboardShown, backed by `dumpsys input_method`'s mInputShown) — not
+        // an accessibility-tree check like the iOS branch below, since Android's
+        // soft keyboard isn't exposed as an element in the app's own hierarchy.
+        try {
+            return await (driver as any).isKeyboardShown?.() ?? false;
+        } catch {
+            return false;
+        }
+    }
     if (PLATFORM !== 'ios') return false;
     try {
         const kb = driver.$('XCUIElementTypeKeyboard');
@@ -224,25 +235,43 @@ export async function blurActiveTextInput(driver: Browser): Promise<void> {
     } catch { /* best effort */ }
 }
 
-// DELIBERATELY a no-op off iOS. An Android branch calling `mobile: hideKeyboard`
-// was tried as the validation experiment for the "IME parks the trigger against
-// the window edge" theory behind the Android btn-option-09 failures (CI run
-// 32183695855). It REFUTED itself: run 32264080427 took Android writes from 3
-// failures to 15, with a failure class that had never appeared before — ten
-// `Can't call click on element` on input-address / input-zipcode / input-fullname
-// / input-card-holder / btn-place-order, i.e. the whole checkout form going
-// missing rather than any scroll misbehaving.
+// A first Android branch here (calling `mobile: hideKeyboard` with no
+// strategy) was tried as the validation experiment for the "IME parks the
+// trigger against the window edge" theory behind the Android btn-option-09
+// failures (CI run 32183695855). It REFUTED itself: run 32264080427 took
+// Android writes from 3 failures to 15, with a failure class that had never
+// appeared before — ten `Can't call click on element` on input-address /
+// input-zipcode / input-fullname / input-card-holder / btn-place-order, i.e.
+// the whole checkout form going missing rather than any scroll misbehaving.
+// Reading appium-android-driver's own hideKeyboard (node_modules/appium-adb's
+// keyboard-commands.js) afterward showed why it's the wrong instrument even
+// though it DOES correctly no-op when no keyboard is shown: when a keyboard
+// IS shown, it tries `KEYCODE_ESC` then falls back to the literal system
+// `KEYCODE_BACK` — exactly the kind of navigation event that would explain a
+// form vanishing.
 //
-// The likely mechanism: UiAutomator2 commonly implements hideKeyboard as a BACK
-// press, which with no keyboard actually up (or once it has already closed)
-// navigates away from the screen instead. Every subsequent field lookup then
-// fails because the form is gone — exactly the observed shape.
-//
-// So the IME theory is unproven, NOT disproven: this experiment says
-// `mobile: hideKeyboard` is the wrong instrument, not that the keyboard is
-// innocent. A safer probe would dismiss via an explicit tap outside the input
-// (as the iOS path does) and verify the app is still foregrounded afterwards.
+// Separately (CI runs 32339966832/32344190004), a getCurrentPackage()
+// diagnostic pinpointed a DIFFERENT, confirmed mechanism: with dismissKeyboard
+// a no-op here, `pkgAfterScroll` still reads the app but `pkgAfterClick` reads
+// the launcher, 9/9 times — the plain trigger tap in SelectOption.ts is itself
+// what backgrounds the app, immediately after a TYPE into a text field
+// (notes) left the keyboard plausibly still up. This branch dismisses via a
+// plain coordinate tap at a safe, neutral point near the TOP of the screen —
+// the same primitive every other Android action already uses successfully,
+// nowhere near the bottom gesture-navigation zone, and NOT a hideKeyboard/
+// back-press command of any kind. It only acts when isKeyboardShown() (the
+// native Android check above, not an accessibility-tree query) confirms a
+// keyboard is actually up.
 export async function dismissKeyboard(driver: Browser): Promise<void> {
+    if (PLATFORM === 'android') {
+        if (!(await isKeyboardShown(driver))) return;
+        try {
+            const size = await driver.getWindowSize();
+            await driver.executeScript('mobile: tap', [{ x: Math.floor(size.width / 2), y: 120 }]);
+            await new Promise((r) => setTimeout(r, 200));
+        } catch { /* best effort — never fail an action over the keyboard */ }
+        return;
+    }
     if (PLATFORM !== 'ios') return;
     if (!(await isKeyboardShown(driver))) return;
 
