@@ -56,6 +56,26 @@ async function captureClickDiagnostics(
     } catch (err) {
         info.keyboardShownError = (err as Error).message;
     }
+    // The webdriver-level isKeyboardShown() above is backed by appium-adb's
+    // isSoftKeyboardPresent(), which greps `dumpsys input_method` for exactly
+    // ONE of its two flags: mInputShown (an input CONNECTION is active —
+    // stays true after any EditText has ever had focus, independent of
+    // whether an IME view is actually drawn) vs mIsInputViewShown (the
+    // visual on-screen keyboard is genuinely rendered). Two straight fix
+    // rounds targeting "the keyboard" (cab78be, 2de8e69) changed the outcome
+    // not at all — same numbers, byte for byte, both times — which is the
+    // signature of chasing a flag that was never the true obstruction.
+    // `mobile: shell` (needs --relaxed-security, already set in CI) reads
+    // both directly, settling whether there's a real visual keyboard here
+    // or just a stale input connection.
+    try {
+        const raw = await driver.executeScript('mobile: shell', [{ command: 'dumpsys', args: ['input_method'] }]);
+        const text = typeof raw === 'string' ? raw : JSON.stringify(raw);
+        info.mInputShown = /mInputShown=(\w+)/.exec(text)?.[1] ?? 'unknown';
+        info.mIsInputViewShown = /mIsInputViewShown=(\w+)/.exec(text)?.[1] ?? 'unknown';
+    } catch (err) {
+        info.dumpsysError = (err as Error).message;
+    }
     try {
         const dir = join(process.cwd(), 'logs', 'android', 'diag-shots');
         if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
@@ -66,6 +86,17 @@ async function captureClickDiagnostics(
         info.screenshot = file;
     } catch (err) {
         info.screenshotError = (err as Error).message;
+    }
+    try {
+        const dir = join(process.cwd(), 'logs', 'android', 'diag-shots');
+        if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+        const safeName = selector.replace(/[^a-z0-9]+/gi, '-').slice(0, 80);
+        const src = await driver.getPageSource();
+        const file = join(dir, `pretap-${Date.now()}-${safeName}.xml`);
+        writeFileSync(file, src);
+        info.pageSource = file;
+    } catch (err) {
+        info.pageSourceError = (err as Error).message;
     }
     return info;
 }
