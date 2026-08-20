@@ -142,6 +142,39 @@ async function swipeUpBulk(driver: Browser): Promise<void> {
     }
 }
 
+// Android-only. `mobile: scrollGesture` constrains its gesture to the given
+// rect — UiAutomator2's native gesture generator (GestureController.scroll(),
+// confirmed by reading appium-uiautomator2-server's source) can never place a
+// touch point outside it. Confirmed via CI run 32379928951's package-tracing
+// diagnostics (this file, scrollIntoViewSafe below): swipeUpW3C's raw W3C
+// pointer actions — even at coordinates that look safely mid-screen by hand
+// calculation (~78%/12% of window height) — backgrounded the app to the
+// launcher on their very first call for the profile birthday-day trigger.
+// Exactly why a raw touch sequence at those coordinates does that on this
+// emulator is still unconfirmed; a rect-bounded native gesture sidesteps the
+// question rather than chasing a sixth coordinate theory, since it
+// structurally cannot reach whatever it was hitting. Inset comfortably clear
+// of the observed danger zone (scroll-profile's own clip edge sat at 87.7%
+// of window height in the run that surfaced this).
+// `direction: 'down'` reveals content further down the page: GestureController
+// .scroll() reverses the given direction to compute the physical swipe, so
+// 'down' means the finger swipes up — the same visual effect as swipeUpW3C.
+async function scrollGestureAndroidSafe(driver: Browser, percent = 0.66): Promise<void> {
+    const size = await driver.getWindowSize();
+    const top = Math.round(size.height * 0.15);
+    const bottom = Math.round(size.height * 0.8);
+    await driver.executeScript('mobile: scrollGesture', [{
+        left: 0,
+        top,
+        width: size.width,
+        height: bottom - top,
+        direction: 'down',
+        percent,
+    }]);
+}
+
+// iOS fallback only (see the `else` branch in scrollIntoViewSafe below) — kept
+// verbatim; Android now uses scrollGestureAndroidSafe above instead.
 async function swipeUpW3C(driver: Browser, percent = 0.55): Promise<void> {
     const size = await driver.getWindowSize();
     const centerX = Math.round(size.width / 2);
@@ -637,15 +670,16 @@ export async function scrollIntoViewSafe(
         } else if (PLATFORM === 'android') {
             // On UiAutomator2 `mobile: swipe` is unsupported and `mobile: scroll`
             // with a bare direction silently no-ops — so swipeUpBulk never threw
-            // and the W3C fallback was dead code, leaving Android scrolls
-            // ineffective (off-screen elements were never reached). Drive the
-            // W3C touch swipe directly on Android — verified on-device
-            // 2026-05-28 that it actually scrolls RN ScrollViews.
+            // and a raw touch swipe was needed to actually scroll RN ScrollViews
+            // (verified on-device 2026-05-28). `mobile: scrollGesture` (see
+            // scrollGestureAndroidSafe above) replaced the raw W3C version once
+            // that was found to background the app — same requirement, safer
+            // mechanism.
             const pkgBefore = await androidPkgOrNA(driver);
-            await swipeUpW3C(driver, 0.66);
+            await scrollGestureAndroidSafe(driver, 0.66);
             const pkgAfter = await androidPkgOrNA(driver);
             if (pkgAfter !== pkgBefore) {
-                logger.warn({ selector, attempt: attempts, pkgBefore, pkgAfter }, '[Appium] scrollIntoViewSafe: foreground package changed across a swipeUpW3C call');
+                logger.warn({ selector, attempt: attempts, pkgBefore, pkgAfter }, '[Appium] scrollIntoViewSafe: foreground package changed across a scrollGesture call');
             }
         } else {
             try {
