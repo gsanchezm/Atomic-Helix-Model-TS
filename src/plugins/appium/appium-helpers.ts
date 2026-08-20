@@ -162,7 +162,18 @@ async function swipeUpBulk(driver: Browser): Promise<void> {
 async function scrollGestureAndroidSafe(driver: Browser, percent = 0.66): Promise<void> {
     const size = await driver.getWindowSize();
     const top = Math.round(size.height * 0.15);
-    const bottom = Math.round(size.height * 0.8);
+    // CI run 32399737088: even with this rect-bounded gesture, the birthday-day
+    // trigger's invalid bounds stayed byte-for-byte frozen across every retry —
+    // and so did a KNOWN in-flow sibling (`input-profile-notes`, a multi-line
+    // TextInput sitting at [_,1474][_,1684] in that frozen state). Both freezing
+    // together, not just the trigger, means scrolling wasn't merely insufficient
+    // — it was producing zero net progress. At 0.8 this rect's bottom (1536)
+    // overlapped notes' top (1474) by ~62px: a touch-down landing inside a
+    // TextInput is plausibly captured by its own gesture responder (selection/
+    // cursor drag) instead of bubbling to the parent ScrollView, which would
+    // explain a swipe that repeatedly does nothing past this exact point.
+    // 0.75 clears that overlap with margin while keeping most of the rect.
+    const bottom = Math.round(size.height * 0.75);
     await driver.executeScript('mobile: scrollGesture', [{
         left: 0,
         top,
@@ -419,12 +430,27 @@ export async function isFrameInTapZone(driver: Browser, target: any): Promise<bo
         // `isDisplayed()` alone made this "already reachable", so
         // `scrollIntoViewSafe` skipped scrolling entirely and the bad rect never
         // got the chance to be fixed by the very UiScrollable call meant to fix it.
-        try {
-            const size = await (target.getSize() as Promise<{ width: number; height: number }>);
-            return size.height > 0 && size.width > 0;
-        } catch {
-            return false;
+        // Regression (CI run 32399737088, catalog `btn-topping-*` in the reads
+        // suite): a single failed size check here forces scrollIntoViewSafe to
+        // scroll before every click, even for elements whose FIRST layout pass
+        // hasn't landed yet — RN commonly reports 0x0 for a beat right after
+        // mount, a transient state `isDisplayed()` alone tolerated fine. That
+        // regression's own log shows the cost: 13.5s spent scrolling a
+        // virtualized catalog list, which then unmounts the target entirely
+        // ("element wasn't found"). A brief settle window absorbs the transient
+        // case without softening the birthday-picker fix above — that element's
+        // invalid rect is persistent (confirmed unchanged across every scroll
+        // attempt in every run), so it still correctly fails after this settles.
+        for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+                const size = await (target.getSize() as Promise<{ width: number; height: number }>);
+                if (size.height > 0 && size.width > 0) return true;
+            } catch {
+                return false;
+            }
+            if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 100));
         }
+        return false;
     }
     try {
         const loc = await (target.getLocation() as Promise<{ x: number; y: number }>);
