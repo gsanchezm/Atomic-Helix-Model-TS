@@ -184,8 +184,10 @@ async function scrollGestureAndroidSafe(driver: Browser, percent = 0.66): Promis
     }]);
 }
 
-// iOS fallback only (see the `else` branch in scrollIntoViewSafe below) — kept
-// verbatim; Android now uses scrollGestureAndroidSafe above instead.
+// The default Android AND iOS fallback swipe (see scrollIntoViewSafe below) —
+// scrollGestureAndroidSafe only replaces this on Android when the caller opts
+// in via strictAndroidBounds (currently just SelectOption.ts's birthday-picker
+// trigger, the one path proven to need it).
 async function swipeUpW3C(driver: Browser, percent = 0.55): Promise<void> {
     const size = await driver.getWindowSize();
     const centerX = Math.round(size.width / 2);
@@ -708,15 +710,35 @@ export async function scrollIntoViewSafe(
             // On UiAutomator2 `mobile: swipe` is unsupported and `mobile: scroll`
             // with a bare direction silently no-ops — so swipeUpBulk never threw
             // and a raw touch swipe was needed to actually scroll RN ScrollViews
-            // (verified on-device 2026-05-28). `mobile: scrollGesture` (see
-            // scrollGestureAndroidSafe above) replaced the raw W3C version once
-            // that was found to background the app — same requirement, safer
-            // mechanism.
+            // (verified on-device 2026-05-28).
+            //
+            // Regression (CI runs 32399737088/32409399175/32418886330): scoping
+            // isFrameInTapZone's strict check (previous commit) did NOT restore
+            // `reads` to green — the catalog's `btn-topping-*` CLICK still spent
+            // ~13-18s scrolling before "element wasn't found", proving the cause
+            // was never isFrameInTapZone. Commit timeline settles it: `reads` was
+            // still green on 88f75d5 (isFrameInTapZone's blanket change already
+            // live) and only broke on 5fc6173, the commit that made
+            // scrollGestureAndroidSafe (mobile: scrollGesture) the DEFAULT Android
+            // fallback for every scrollIntoViewSafe caller, not just the
+            // birthday-picker. Its package-tracer logged 0 backgrounding
+            // occurrences on the catalog grid — scrollGestureAndroidSafe isn't
+            // backgrounding the app there, it's just less effective than the old
+            // swipeUpW3C at scrolling that widget (its rect-bounded throw is
+            // shorter, and/or the catalog uses a different scrollable than
+            // scroll-profile). scrollGestureAndroidSafe exists to solve ONE proven
+            // problem — swipeUpW3C backgrounding the birthday-picker trigger — so
+            // scope it there via the same strictAndroidBounds flag rather than
+            // making every Android scroll pay for a fix only one path needed.
             const pkgBefore = await androidPkgOrNA(driver);
-            await scrollGestureAndroidSafe(driver, 0.66);
+            if (strictAndroidBounds) {
+                await scrollGestureAndroidSafe(driver, 0.66);
+            } else {
+                await swipeUpW3C(driver, 0.66);
+            }
             const pkgAfter = await androidPkgOrNA(driver);
             if (pkgAfter !== pkgBefore) {
-                logger.warn({ selector, attempt: attempts, pkgBefore, pkgAfter }, '[Appium] scrollIntoViewSafe: foreground package changed across a scrollGesture call');
+                logger.warn({ selector, attempt: attempts, pkgBefore, pkgAfter }, '[Appium] scrollIntoViewSafe: foreground package changed across an Android scroll');
             }
         } else {
             try {
