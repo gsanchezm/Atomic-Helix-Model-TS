@@ -499,6 +499,20 @@ export async function tapElementCenter(driver: Browser, target: any): Promise<vo
 
 // --- Android UiScrollable ---
 
+// Diagnostic only — CI run 32373405257: once isFrameInTapZone's positive-size
+// fix (this file, earlier) stopped short-circuiting the scroll for an invalid
+// rect, scrollIntoViewSafe started ACTUALLY scrolling for the first time in
+// this whole investigation — and the app ended up backgrounded to the
+// launcher by the time SELECT_OPTION captured its diagnostics, with no
+// webdriver-level log entry in the 88s gap to say which of the two scroll
+// mechanisms (this UiScrollable call, or the swipeUpW3C loop below) did it.
+// Neither call's own computed coordinates land near the gesture-nav zone by
+// hand calculation, so this traces it directly instead of guessing again.
+async function androidPkgOrNA(driver: Browser): Promise<string> {
+    if (PLATFORM !== 'android') return 'n/a';
+    return ((await (driver as any).getCurrentPackage?.().catch(() => 'error')) ?? 'error') as string;
+}
+
 async function scrollIntoViewAndroid(
     driver: Browser,
     selector: string,
@@ -543,10 +557,19 @@ async function scrollIntoViewAndroid(
     }
 
     const uiScrollable = `new UiScrollable(${scrollableSelector}).scrollIntoView(${innerSelector})`;
+    const pkgBefore = await androidPkgOrNA(driver);
     try {
         await driver.$(`android=${uiScrollable}`);
+        const pkgAfter = await androidPkgOrNA(driver);
+        if (pkgAfter !== pkgBefore) {
+            logger.warn({ selector, scrollableSelector, pkgBefore, pkgAfter }, '[Appium] scrollIntoViewAndroid: foreground package changed across the UiScrollable call');
+        }
         return true;
-    } catch {
+    } catch (err) {
+        const pkgAfter = await androidPkgOrNA(driver);
+        if (pkgAfter !== pkgBefore) {
+            logger.warn({ selector, scrollableSelector, pkgBefore, pkgAfter, error: (err as Error).message }, '[Appium] scrollIntoViewAndroid: foreground package changed across a failing UiScrollable call');
+        }
         return false;
     }
 }
@@ -618,7 +641,12 @@ export async function scrollIntoViewSafe(
             // ineffective (off-screen elements were never reached). Drive the
             // W3C touch swipe directly on Android — verified on-device
             // 2026-05-28 that it actually scrolls RN ScrollViews.
+            const pkgBefore = await androidPkgOrNA(driver);
             await swipeUpW3C(driver, 0.66);
+            const pkgAfter = await androidPkgOrNA(driver);
+            if (pkgAfter !== pkgBefore) {
+                logger.warn({ selector, attempt: attempts, pkgBefore, pkgAfter }, '[Appium] scrollIntoViewSafe: foreground package changed across a swipeUpW3C call');
+            }
         } else {
             try {
                 await swipeUpBulk(driver);
