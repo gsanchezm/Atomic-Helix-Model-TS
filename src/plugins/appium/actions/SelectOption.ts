@@ -24,9 +24,10 @@ export const SelectOptionAction: ActionHandler<AppiumActionContext> = {
         const triggerKey = selector.startsWith('~')
             ? selector.slice(1)
             : selector.match(/resourceId\("([^"]+)"\)/)?.[1] ?? '';
-        const list = triggerKey
-            ? driver.$(androidizeAccessibilitySelector(`~scroll-${triggerKey}`))
-            : null;
+        const listSelector = triggerKey
+            ? androidizeAccessibilitySelector(`~scroll-${triggerKey}`)
+            : undefined;
+        const list = listSelector ? driver.$(listSelector) : null;
 
         // Readiness probe. Without it, "the sheet never opened" and "the option is
         // off-screen" both surface as the same 10s "still not displayed" on the
@@ -63,11 +64,17 @@ export const SelectOptionAction: ActionHandler<AppiumActionContext> = {
             // sits off-screen until scrolled into view, confirmed on-device
             // 2026-08-13 (all 5 credit-card scenarios timed out identically on
             // btn-option-12 even after the selector itself was fixed).
-            // Passing `list` as the clipping container is what lets the scroll
-            // measure against the sheet instead of the window — a 31-item day
-            // list and a 66-item year list both put their target inside a dead
-            // band the window-relative predicate called "already visible".
-            await helpers.scrollIntoViewSafe(driver, option, optionSelector, 6, list ?? undefined);
+            // On iOS, passing `list` as the clipping container is what lets the
+            // scroll measure against the sheet instead of the window — a 31-item
+            // day list and a 66-item year list both put their target inside a
+            // dead band the window-relative predicate called "already visible".
+            // On Android, `listSelector` scopes UiScrollable to the sheet's own
+            // list by resource-id instead of `instance(0)`'s "first scrollable
+            // in the tree" guess, which — with the sheet open — is very likely
+            // the form behind it. Confirmed via CI (run 32278988523): the sheet-
+            // readiness probe above never fires (the sheet IS in the hierarchy),
+            // yet late options in the day list still time out.
+            await helpers.scrollIntoViewSafe(driver, option, optionSelector, 6, list ?? undefined, listSelector);
             await option.waitForDisplayed({ timeout: 10_000 });
         } catch (err) {
             try {

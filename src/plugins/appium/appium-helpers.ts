@@ -458,17 +458,9 @@ export async function tapElementCenter(driver: Browser, target: any): Promise<vo
 async function scrollIntoViewAndroid(
     driver: Browser,
     selector: string,
-    scoped = false,
+    containerSelector?: string,
 ): Promise<boolean> {
     if (PLATFORM !== 'android') return false;
-
-    // `scrollable(true).instance(0)` picks the FIRST scrollable in the tree. With
-    // a dropdown sheet open that is very likely the form BEHIND the sheet, so a
-    // missed option lookup silently drags the background page to its end — which
-    // is exactly the state CI run 32183695855's Android dumps show (form at max
-    // scroll, sheet gone). When the caller knows the real container, skip this
-    // path entirely and let the measured drag in `scrollIntoViewSafe` handle it.
-    if (scoped) return false;
 
     // Accessibility-id targets (`~key`) must scroll by resource-id, not
     // content-desc: RN mirrors testID into both attributes by default, but a
@@ -486,7 +478,27 @@ async function scrollIntoViewAndroid(
     }
     if (!innerSelector) return false;
 
-    const uiScrollable = `new UiScrollable(new UiSelector().scrollable(true).instance(0)).scrollIntoView(${innerSelector})`;
+    // `scrollable(true).instance(0)` picks the FIRST scrollable in the tree.
+    // With a dropdown sheet open that is very likely the form BEHIND the
+    // sheet, not the sheet's own option list — CI evidence (run 32278988523,
+    // headSha 6de4063, the current clean Android baseline): the sheet-
+    // readiness probe in SelectOption.ts never fires (the sheet IS open,
+    // confirmed present in the hierarchy), yet btn-option-09/-21/-04 still
+    // time out. Not the keyboard (that theory, from an OLDER run predating
+    // this probe, never reproduced once the probe could actually rule it in
+    // or out) — instance(0) most likely resolves to the form behind the
+    // sheet, not the sheet's own list, so it scrolls the wrong container.
+    // When the caller knows the real scrollable (Dropdown.tsx names its
+    // option list `scroll-<triggerTestId>`), scope to it by resource-id.
+    let scrollableSelector = 'new UiSelector().scrollable(true).instance(0)';
+    const containerId = containerSelector?.startsWith('~')
+        ? containerSelector.slice(1)
+        : containerSelector?.match(/resourceId\("([^"]+)"\)/)?.[1];
+    if (containerId) {
+        scrollableSelector = `new UiSelector().resourceId("${containerId}")`;
+    }
+
+    const uiScrollable = `new UiScrollable(${scrollableSelector}).scrollIntoView(${innerSelector})`;
     try {
         await driver.$(`android=${uiScrollable}`);
         return true;
@@ -512,12 +524,21 @@ async function scrollIntoViewAndroid(
 // that worked: CI run 32235723842 took Android writes from 3 failures to 11, with
 // 10 of them on `btn-option-12` — the checkout expiry-month path that had been
 // green. Scoping the container to iOS restores Android verbatim.
+// `container` is an ELEMENT, used only on iOS to measure a clipping rect (see
+// `isReachableForScroll`/`dragWithinRect` above) — unrelated to Android.
+// `androidContainerSelector` is a separate, Android-only STRING (a `~key` or
+// already-androidized `android=...` selector for the actual scrollable, e.g.
+// a dropdown sheet's own `scroll-<testId>` list) that scopes
+// `scrollIntoViewAndroid`'s UiScrollable query instead of its `instance(0)`
+// guess. The two are independent: passing one does not imply or require the
+// other, and each is a no-op on the platform it doesn't apply to.
 export async function scrollIntoViewSafe(
     driver: Browser,
     target: any,
     selector: string,
     maxAttempts = 3,
     container?: any,
+    androidContainerSelector?: string,
 ): Promise<void> {
     const clip = (PLATFORM === 'ios' && container) ? await rectOf(container) : null;
 
@@ -525,7 +546,7 @@ export async function scrollIntoViewSafe(
 
     if (
         PLATFORM === 'android' &&
-        await scrollIntoViewAndroid(driver, selector, Boolean(clip)) &&
+        await scrollIntoViewAndroid(driver, selector, androidContainerSelector) &&
         await isReachableForScroll(driver, target, clip)
     ) {
         return;
