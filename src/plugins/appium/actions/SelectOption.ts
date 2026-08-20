@@ -4,11 +4,25 @@ import { AppiumActionContext } from '@plugins/appium/actions/AppiumActionContext
 import { androidizeAccessibilitySelector } from '@plugins/appium/appium-helpers';
 import { logger } from '@utils/logger';
 
+// Diagnostic only — Android's foreground package, or 'n/a' off-Android / on
+// failure. Motivated by CI run 32339966832: page-source dumps taken at the
+// SELECT_OPTION option timeout showed `package="com.google.android.apps.
+// nexuslauncher"` — the app under test was not in the foreground at all, on
+// every one of that run's 5 failures (and 7 times in run 32278988523's
+// "clean" 3/17 baseline too). Not a scroll/locator bug: no in-app fix can
+// find an element in a hierarchy that isn't the app's. Cheap (one gRPC-free
+// device call) and safe to leave in — it only ever logs.
+async function currentPackageOrNA(driver: any, platform: string): Promise<string> {
+    if (platform !== 'android') return 'n/a';
+    return (await driver.getCurrentPackage?.().catch(() => 'error')) ?? 'error';
+}
+
 export const SelectOptionAction: ActionHandler<AppiumActionContext> = {
     name: 'SELECT_OPTION',
-    async execute({ driver, target, helpers }) {
+    async execute({ driver, target, helpers, platform }) {
         const { selector, value } = parseSelectorValue(target, 'SELECT_OPTION action');
         const trigger = driver.$(selector);
+        const pkgBeforeClick = await currentPackageOrNA(driver, platform);
         // iOS: a still-open keyboard from a preceding TYPE (e.g. card number)
         // can occlude/absorb the scroll gesture before it reaches this
         // trigger — same class of issue Click.ts already guards against.
@@ -17,7 +31,15 @@ export const SelectOptionAction: ActionHandler<AppiumActionContext> = {
         await helpers.dismissKeyboard(driver);
         await helpers.blurActiveTextInput(driver);
         await helpers.scrollIntoViewSafe(driver, trigger, selector, 5);
+        const pkgAfterScroll = await currentPackageOrNA(driver, platform);
         await (trigger.click() as Promise<void>);
+        const pkgAfterClick = await currentPackageOrNA(driver, platform);
+        if (platform === 'android' && (pkgAfterScroll !== 'com.omnipizza.app' || pkgAfterClick !== 'com.omnipizza.app')) {
+            logger.warn(
+                { trigger: selector, pkgBeforeClick, pkgAfterScroll, pkgAfterClick },
+                '[Appium] SELECT_OPTION: app was not foregrounded around the trigger tap',
+            );
+        }
 
         // Dropdown.tsx names its option ScrollView `scroll-<triggerTestId>`, so we
         // can address the sheet's own list rather than guessing at the container.
@@ -44,7 +66,14 @@ export const SelectOptionAction: ActionHandler<AppiumActionContext> = {
             sheetOpen = await list.waitForExist({ timeout: 5_000 }).then(() => true).catch(() => false);
             if (!sheetOpen) {
                 logger.warn(
-                    { trigger: selector, expected: `scroll-${triggerKey}` },
+                    {
+                        trigger: selector,
+                        expected: `scroll-${triggerKey}`,
+                        pkgBeforeClick,
+                        pkgAfterScroll,
+                        pkgAfterClick,
+                        pkgAfterSheetWait: await currentPackageOrNA(driver, platform),
+                    },
                     '[Appium] SELECT_OPTION: dropdown sheet not in the hierarchy after the trigger tap '
                     + '— the tap likely did not land; any option timeout below is a symptom, not the cause',
                 );
@@ -70,10 +99,13 @@ export const SelectOptionAction: ActionHandler<AppiumActionContext> = {
             // dead band the window-relative predicate called "already visible".
             // On Android, `listSelector` scopes UiScrollable to the sheet's own
             // list by resource-id instead of `instance(0)`'s "first scrollable
-            // in the tree" guess, which — with the sheet open — is very likely
-            // the form behind it. Confirmed via CI (run 32278988523): the sheet-
-            // readiness probe above never fires (the sheet IS in the hierarchy),
-            // yet late options in the day list still time out.
+            // in the tree" guess, in case the sheet is open but instance(0)
+            // finds a different scrollable. Left in as a real, if unconfirmed,
+            // improvement — but it is NOT the fix for the CI failures this was
+            // originally built to address: the plugin-process log (not the
+            // cucumber job log, which never sees it) shows the sheet-readiness
+            // probe above DOES fire on those failures, and the app package
+            // diagnostic above shows why — the app isn't foregrounded at all.
             await helpers.scrollIntoViewSafe(driver, option, optionSelector, 6, list ?? undefined, listSelector);
             await option.waitForDisplayed({ timeout: 10_000 });
         } catch (err) {
