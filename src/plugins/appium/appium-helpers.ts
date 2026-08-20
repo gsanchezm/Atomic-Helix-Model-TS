@@ -418,10 +418,14 @@ async function isTrulyDisplayed(driver: Browser, target: any): Promise<boolean> 
     }
 }
 
-export async function isFrameInTapZone(driver: Browser, target: any): Promise<boolean> {
+export async function isFrameInTapZone(
+    driver: Browser,
+    target: any,
+    strictAndroidBounds = false,
+): Promise<boolean> {
     if (PLATFORM !== 'ios') {
         const displayed = await (target.isDisplayed() as Promise<boolean>).catch(() => false);
-        if (!displayed || PLATFORM !== 'android') return displayed;
+        if (!displayed || PLATFORM !== 'android' || !strictAndroidBounds) return displayed;
         // Android's own `displayed` accessibility flag can be true even when the
         // reported bounds are clipped/inverted — confirmed via CI run 32368723226's
         // page-source dumps: `displayed="true"` on a node whose bounds were
@@ -430,27 +434,29 @@ export async function isFrameInTapZone(driver: Browser, target: any): Promise<bo
         // `isDisplayed()` alone made this "already reachable", so
         // `scrollIntoViewSafe` skipped scrolling entirely and the bad rect never
         // got the chance to be fixed by the very UiScrollable call meant to fix it.
+        //
         // Regression (CI run 32399737088, catalog `btn-topping-*` in the reads
-        // suite): a single failed size check here forces scrollIntoViewSafe to
-        // scroll before every click, even for elements whose FIRST layout pass
-        // hasn't landed yet — RN commonly reports 0x0 for a beat right after
-        // mount, a transient state `isDisplayed()` alone tolerated fine. That
-        // regression's own log shows the cost: 13.5s spent scrolling a
-        // virtualized catalog list, which then unmounts the target entirely
-        // ("element wasn't found"). A brief settle window absorbs the transient
-        // case without softening the birthday-picker fix above — that element's
-        // invalid rect is persistent (confirmed unchanged across every scroll
-        // attempt in every run), so it still correctly fails after this settles.
-        for (let attempt = 0; attempt < 3; attempt++) {
-            try {
-                const size = await (target.getSize() as Promise<{ width: number; height: number }>);
-                if (size.height > 0 && size.width > 0) return true;
-            } catch {
-                return false;
-            }
-            if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 100));
+        // suite, which had been green in every prior run this session): a global
+        // positive-size check here forces scrollIntoViewSafe to scroll before
+        // EVERY Android tap action (Click.ts's Android preamble is unconditional,
+        // unlike its iOS `alreadyTappable` fast path), and on a virtualized
+        // catalog list that scroll can unmount the target entirely — "element
+        // wasn't found" ~15s later. A settle-retry window (tried first) didn't
+        // help: CI run 32409399175 still failed at the same ~15s cost, proving
+        // this isn't a transient pre-layout case for these elements. The real
+        // fix is scope, not more tolerance: `strictAndroidBounds` defaults to
+        // false so every other caller (Click.ts, Type.ts, ClearText.ts,
+        // ScrollTo.ts, and SelectOption.ts's own option-list scroll) keeps the
+        // exact pre-session `isDisplayed()`-only behavior. Only SelectOption.ts's
+        // birthday-picker TRIGGER scroll opts in, since that element's invalid
+        // rect is the one proven persistent (byte-for-byte unchanged across
+        // every scroll attempt in every run) rather than transient.
+        try {
+            const size = await (target.getSize() as Promise<{ width: number; height: number }>);
+            return size.height > 0 && size.width > 0;
+        } catch {
+            return false;
         }
-        return false;
     }
     try {
         const loc = await (target.getLocation() as Promise<{ x: number; y: number }>);
@@ -497,8 +503,9 @@ async function isReachableForScroll(
     driver: Browser,
     target: any,
     clip?: ClipRect | null,
+    strictAndroidBounds = false,
 ): Promise<boolean> {
-    if (!(await isFrameInTapZone(driver, target))) return false;
+    if (!(await isFrameInTapZone(driver, target, strictAndroidBounds))) return false;
     if (PLATFORM !== 'ios' || !clip) return true;
 
     const rect = await rectOf(target);
@@ -665,15 +672,19 @@ export async function scrollIntoViewSafe(
     maxAttempts = 3,
     container?: any,
     androidContainerSelector?: string,
+    // Opt-in only — see isFrameInTapZone's Android branch for why this must
+    // default to false. Only SelectOption.ts's birthday-picker trigger scroll
+    // passes true.
+    strictAndroidBounds = false,
 ): Promise<void> {
     const clip = (PLATFORM === 'ios' && container) ? await rectOf(container) : null;
 
-    if (await isReachableForScroll(driver, target, clip)) return;
+    if (await isReachableForScroll(driver, target, clip, strictAndroidBounds)) return;
 
     if (
         PLATFORM === 'android' &&
         await scrollIntoViewAndroid(driver, selector, androidContainerSelector) &&
-        await isReachableForScroll(driver, target, clip)
+        await isReachableForScroll(driver, target, clip, strictAndroidBounds)
     ) {
         return;
     }
@@ -715,7 +726,7 @@ export async function scrollIntoViewSafe(
             }
         }
         attempts++;
-        if (await isReachableForScroll(driver, target, clip)) return;
+        if (await isReachableForScroll(driver, target, clip, strictAndroidBounds)) return;
         if (!clip && await isTrulyDisplayed(driver, target)) return;
     }
 }

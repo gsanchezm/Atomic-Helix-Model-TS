@@ -153,13 +153,18 @@ export const SelectOptionAction: ActionHandler<AppiumActionContext> = {
         // have succeeded by the time this action runs.
         await helpers.dismissKeyboard(driver);
         await helpers.blurActiveTextInput(driver);
-        await helpers.scrollIntoViewSafe(driver, trigger, selector, 5);
+        // strictAndroidBounds=true: this trigger's invalid rect is the one proven
+        // persistent (byte-for-byte unchanged across every scroll attempt in every
+        // run) rather than a transient pre-layout state — see isFrameInTapZone's
+        // Android branch for why every other caller leaves this false. No-op on
+        // iOS regardless.
+        await helpers.scrollIntoViewSafe(driver, trigger, selector, 5, undefined, undefined, true);
         // Android: kept as a harmless defensive pass (a still-open keyboard from
         // a preceding TYPE can still shift layout even though it wasn't the
         // driver of the CI failures — see settleValidBounds() below for that).
         if (platform === 'android') {
             await helpers.dismissKeyboard(driver);
-            await helpers.scrollIntoViewSafe(driver, trigger, selector, 5);
+            await helpers.scrollIntoViewSafe(driver, trigger, selector, 5, undefined, undefined, true);
         }
         const pkgAfterScroll = await currentPackageOrNA(driver, platform);
         const clickDiag = await captureClickDiagnostics(driver, trigger, selector, platform);
