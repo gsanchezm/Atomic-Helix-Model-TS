@@ -1,3 +1,5 @@
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { join } from 'path';
 import { ActionHandler } from '@plugins/shared/ActionHandler';
 import { parseSelectorValue } from '@plugins/shared/parseCompositeTarget';
 import { AppiumActionContext } from '@plugins/appium/actions/AppiumActionContext';
@@ -17,6 +19,57 @@ async function currentPackageOrNA(driver: any, platform: string): Promise<string
     return (await driver.getCurrentPackage?.().catch(() => 'error')) ?? 'error';
 }
 
+// Diagnostic only — round 3. Rounds 1 (df4521f, UiScrollable containment) and
+// 2 (cab78be, a safe keyboard dismiss) both left the pkgAfterScroll=app ->
+// pkgAfterClick=launcher transition byte-for-byte unchanged across every
+// occurrence in their respective CI runs, which rules out both the "wrong
+// scrollable" and "keyboard still open" theories — dismissing the keyboard
+// before the click had literally zero effect on the outcome. This captures
+// what those rounds could not: the trigger's exact on-screen bounds, the
+// window size, an explicit isKeyboardShown() read (not just acted on), and a
+// screenshot — all taken immediately BEFORE the click, so nothing here can
+// itself perturb the very click it is trying to explain. Written to
+// logs/android/diag-shots/, which ci/steps/collect-artifacts.sh already
+// copies wholesale into the ahm-artifacts-e2e-android-writes-* artifact
+// alongside appium-plugin.log — no workflow change needed to retrieve it.
+async function captureClickDiagnostics(
+    driver: any,
+    trigger: any,
+    selector: string,
+    platform: string,
+): Promise<Record<string, unknown>> {
+    if (platform !== 'android') return {};
+    const info: Record<string, unknown> = {};
+    try {
+        const loc = await trigger.getLocation();
+        const size = await trigger.getSize();
+        const win = await driver.getWindowSize();
+        info.triggerBounds = { x: loc.x, y: loc.y, w: size.width, h: size.height };
+        info.tapPoint = { x: loc.x + size.width / 2, y: loc.y + size.height / 2 };
+        info.windowSize = win;
+        info.distanceFromBottom = win.height - (loc.y + size.height / 2);
+    } catch (err) {
+        info.boundsError = (err as Error).message;
+    }
+    try {
+        info.keyboardShown = await driver.isKeyboardShown?.();
+    } catch (err) {
+        info.keyboardShownError = (err as Error).message;
+    }
+    try {
+        const dir = join(process.cwd(), 'logs', 'android', 'diag-shots');
+        if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+        const safeName = selector.replace(/[^a-z0-9]+/gi, '-').slice(0, 80);
+        const file = join(dir, `pretap-${Date.now()}-${safeName}.png`);
+        const png = await driver.takeScreenshot();
+        writeFileSync(file, Buffer.from(png, 'base64'));
+        info.screenshot = file;
+    } catch (err) {
+        info.screenshotError = (err as Error).message;
+    }
+    return info;
+}
+
 export const SelectOptionAction: ActionHandler<AppiumActionContext> = {
     name: 'SELECT_OPTION',
     async execute({ driver, target, helpers, platform }) {
@@ -32,11 +85,15 @@ export const SelectOptionAction: ActionHandler<AppiumActionContext> = {
         await helpers.blurActiveTextInput(driver);
         await helpers.scrollIntoViewSafe(driver, trigger, selector, 5);
         const pkgAfterScroll = await currentPackageOrNA(driver, platform);
+        const clickDiag = await captureClickDiagnostics(driver, trigger, selector, platform);
+        if (platform === 'android') {
+            logger.info({ trigger: selector, pkgAfterScroll, ...clickDiag }, '[Appium] SELECT_OPTION: pre-tap state');
+        }
         await (trigger.click() as Promise<void>);
         const pkgAfterClick = await currentPackageOrNA(driver, platform);
         if (platform === 'android' && (pkgAfterScroll !== 'com.omnipizza.app' || pkgAfterClick !== 'com.omnipizza.app')) {
             logger.warn(
-                { trigger: selector, pkgBeforeClick, pkgAfterScroll, pkgAfterClick },
+                { trigger: selector, pkgBeforeClick, pkgAfterScroll, pkgAfterClick, ...clickDiag },
                 '[Appium] SELECT_OPTION: app was not foregrounded around the trigger tap',
             );
         }
