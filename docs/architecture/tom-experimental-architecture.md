@@ -23,11 +23,20 @@ unchanged across web and mobile tools.
 | API plugin | API contract execution / state injection | `50055` (`src/plugins/api/server.ts`) |
 | Pixelmatch oracle | Visual comparison; **co-located in the Playwright process** | `50056` (in-process; not separately spawned) |
 | Mobilewright plugin | Mobile UI intents via Playwright (tool-swap target for Appium) | `50057` (`src/plugins/mobilewright/server.ts`) |
+| ZAP plugin | Security oracle — OWASP ZAP baseline crawl, active/API scan, TLS check | `50058` (`src/plugins/zap/server.ts`) |
+| MobSF plugin | Security oracle — MobSF static APK/IPA scan | `50059` (`src/plugins/mobsf/server.ts`) |
+| WebdriverIO plugin | Web UI intents via the native WebDriver protocol (Selenium grid/driver) | `50060` (`src/plugins/webdriverio/server.ts`) |
+| Axe oracle | Accessibility audit; **co-located in the Playwright process** | in-process (registered into the Playwright action registry; no port of its own) |
 
-There are six tools but only **five separately launched plugin processes**: the Pixelmatch visual oracle runs
-inside the Playwright plugin process so it can read the active Playwright session in memory. Its port `50056`
-stays free unless the oracle is enabled. Plugins are launched by `src/kernel/start-plugins.ts`, which reads the
-registry in `plugins.config.ts` and starts each plugin whose `PLUGIN_<TOOL>` flag is enabled.
+There are ten tools but only **eight separately launched plugin processes**: the Pixelmatch visual oracle and
+the Axe accessibility oracle both run inside the Playwright plugin process instead of their own — Pixelmatch so
+it can read the active Playwright session in memory, Axe because its handlers are registered directly into the
+Playwright action registry (`registerPlaywrightActions.ts`) rather than exposing their own `ExecuteIntent`
+server. Pixelmatch's port `50056` stays free unless the oracle is split out into its own process; Axe has no
+port at all. Plugins are launched by `src/kernel/start-plugins.ts`, which reads the registry in
+`plugins.config.ts` and starts each plugin whose `PLUGIN_<TOOL>` flag is enabled — `PLUGIN_PIXELMATCH` and
+`PLUGIN_AXE` instead gate whether those actions activate inside the already-running Playwright process, not a
+separate launch.
 
 ## 2. Kernel / proxy
 
@@ -39,25 +48,37 @@ Its responsibilities:
 - **Intent routing.** Each request carries an `actionId` (a canonical intent ID from `src/kernel/intents.ts`,
   e.g. `CLICK`, `TYPE`, `NAVIGATE`), a target selector, and a platform string. The proxy extracts the tool
   name from the platform string and routes the call to that plugin's address (lazily dialing the plugin on
-  first use). Plugin addresses are environment-configurable and default to `localhost:50052`–`50057`.
+  first use). Plugin addresses are environment-configurable and default to `127.0.0.1:50052`–`50060`.
 - **Locator resolution.** For UI intents the proxy resolves the logical locator key to a concrete,
   platform-specific selector before forwarding it, so features and routes never embed raw selectors.
   Pass-through intents (navigation, teardown, visual, API contract, performance) and mobile-via-Playwright
   intents bypass this resolution and forward their targets unchanged.
 - **Transient-error handling.** Recognized transient errors (stale element, not-interactable, timeout, etc.)
   are retried with exponential backoff up to a fixed limit; deterministic errors fail fast.
+- **Write-lock arbitration.** `ACQUIRE_WRITE_LOCK` / `RELEASE_WRITE_LOCK` are handled as control intents,
+  short-circuited before plugin routing: the proxy holds a single in-process `WriteLock`
+  (`src/kernel/write-lock.ts`) that `@writes-shared-state` scenarios acquire as a FIFO mutex, so parallel
+  workers serialize around a shared-state write instead of racing.
+- **Transport security.** gRPC channels default to insecure loopback; setting the `TOM_TLS_*` env vars
+  (`src/kernel/grpc-security.ts`) switches both the proxy's server credentials and its plugin-dialing client
+  credentials to mTLS. `assertActionAllowed` also rejects the removed `EVALUATE` action in favor of the closed
+  `BROWSER_COMMAND` registry.
 - **Overhead telemetry.** For every intent the proxy emits a JSON record to **stdout** containing, among other
   fields, the total duration, the time spent inside the plugin, the inter-process latency
-  (`grpc_or_ipc_latency_ms`), and the proxy's own indirection cost (`proxy_overhead_ms` — total duration minus
+  (`piCalculusLatencyMs`), and the proxy's own indirection cost (`proxyOverheadMs` — total duration minus
   plugin execution time). These per-intent records are the source for the architecture-specific overhead
   metrics; in CI the proxy stdout is captured to `logs/<tool>/proxy.log`. The proxy source itself is not
   modified by the metrics pipeline — the overhead is computed downstream from the captured log.
 
-A locator cache is loaded once at proxy startup, so locator edits require restarting the proxy.
+A locator cache is loaded at proxy startup and then kept warm by a recursive `fs.watch` on the tests tree
+(`src/kernel/locator-resolver.ts`): editing a `*.locators.json` file invalidates the cache automatically. Set
+`TOM_LOCATOR_WATCH=false` to disable the watcher and fall back to restart-to-reload.
 
 ## 3. Plugins, action handlers, and registries
 
-Each plugin is a small gRPC server (one per tool) that implements `ExecuteIntent`. A plugin owns:
+Each plugin is a small gRPC server (one per tool) that implements `ExecuteIntent` — except the two co-located
+oracles (Pixelmatch, Axe), which reach the shared registry through the already-running Playwright process
+instead of exposing a server of their own (see Section 1). A plugin owns:
 
 - **A set of action handlers** under `src/plugins/<tool>/actions/`, each handler implementing one intent for
   that tool (for example, a `Click` handler for Playwright).
@@ -90,7 +111,9 @@ Contracts are the declarative inputs that decouple tests from tool- and platform
 three kinds:
 
 - **Locator contracts** (`*.locators.json`) — map logical locator keys to concrete selectors. The proxy
-  resolves logical keys against these at routing time. They are loaded and cached at proxy startup.
+  resolves logical keys against these at routing time. They are loaded at proxy startup and hot-reloaded on
+  change via a recursive file watcher (set `TOM_LOCATOR_WATCH=false` to disable and require a proxy restart
+  to pick up edits instead).
 - **API contracts** — declarative endpoint definitions (request shape, expected response, assertions,
   extractions) executed by the API plugin.
 - **Visual contracts** — declarative snapshot/region/threshold definitions consumed by the visual oracle.
