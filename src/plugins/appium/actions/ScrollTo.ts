@@ -6,26 +6,45 @@ export const ScrollToAction: ActionHandler<AppiumActionContext> = {
     name: 'SCROLL_TO',
     async execute({ driver, target, platform, helpers }) {
         try {
-            await driver.$(target).scrollIntoView();
-            // Diagnostic only — see docs/bugs/android-birthday-picker-scroll-2026-08-20.md's
-            // 2026-08-21 updates. This branch returns unconditionally on
-            // Android with zero bounds verification, so there was no way to
-            // tell whether it actually scrolled or no-op'd over an
-            // already-valid state. Logging (not gating) height/displayed here
-            // settles that without changing behavior.
+            // Android: WDIO's `scrollIntoView()` with no `scrollableElement`
+            // resolves the container itself via `//android.widget.ScrollView`
+            // in DOCUMENT ORDER, taking match [0] (webdriverio's own
+            // getScrollableElement, src/commands/mobile/swipe.ts). Confirmed
+            // via page-source dumps (docs/bugs/android-birthday-picker-scroll-
+            // 2026-08-20.md's 2026-08-21 updates): OmniPizza's screens wrap
+            // content in an OUTER `android.widget.ScrollView` with
+            // `scrollable="false"` that appears BEFORE the real scrollable one
+            // in the tree — so WDIO was swiping a container that structurally
+            // cannot move, every time, across every Android SCROLL_TO call in
+            // the suite. Passing the real scrollable explicitly (same
+            // `scrollable(true).instance(0)` pattern already used by
+            // appium-helpers.ts's scrollIntoViewAndroid) fixes the target.
+            const scrollableElement = platform === 'android'
+                ? driver.$('android=new UiSelector().scrollable(true).instance(0)')
+                : undefined;
+            await driver.$(target).scrollIntoView(scrollableElement ? { scrollableElement } : undefined);
             if (platform === 'android') {
+                // Verify with real geometry, not isDisplayed() alone — Android
+                // can report displayed=true on a node with inverted/clipped
+                // bounds (isFrameInTapZone's Android branch, appium-helpers.ts).
+                // The previous unconditional `return` here trusted isDisplayed()
+                // blindly and was itself part of the bug: it never let a bad
+                // scroll fall through to the branches below.
                 const size = await driver.$(target).getSize().catch(() => null);
-                const displayed = await driver.$(target).isDisplayed().catch(() => 'error');
+                const validBounds = typeof size?.height === 'number' && size.height > 0;
                 logger.info(
-                    { target, branch: 'scrollIntoView', height: size?.height ?? 'error', displayed },
-                    '[Appium] SCROLL_TO: first branch returning (Android, unverified by design)',
+                    { target, branch: 'scrollIntoView', height: size?.height ?? 'error', validBounds },
+                    '[Appium] SCROLL_TO: first branch returning',
                 );
-            }
-            // On iOS `scrollIntoView()` assumes a vertical container and
-            // silently no-ops on HORIZONTAL lists, so confirm the target is
-            // actually on-screen; if not, fall through to the native
-            // scroll-to-element idiom below. On Android a clean call is enough.
-            if (platform !== 'ios' || (await driver.$(target).isDisplayed().catch(() => false))) {
+                if (validBounds) {
+                    return `Scrolled to: ${target}`;
+                }
+                // Fall through to the branches below instead.
+            } else if (await driver.$(target).isDisplayed().catch(() => false)) {
+                // On iOS `scrollIntoView()` assumes a vertical container and
+                // silently no-ops on HORIZONTAL lists, so confirm the target is
+                // actually on-screen; if not, fall through to the native
+                // scroll-to-element idiom below.
                 return `Scrolled to: ${target}`;
             }
         } catch (err) {
