@@ -312,8 +312,18 @@ export async function dismissKeyboard(driver: Browser): Promise<void> {
     if (PLATFORM === 'android') {
         if (!(await isKeyboardShown(driver))) return;
         try {
+            // `mobile: tap` is not a real UiAutomator2 execute method — confirmed via
+            // its own WebDriverError ("Unsupported execute method 'mobile: tap'...
+            // did you mean 'mobile: type'?"), which fires on EVERY call and was
+            // always silently swallowed by this try/catch. This call has been a
+            // complete no-op for the whole Android branch's history: `isKeyboardShown`
+            // (mInputShown) can stay true long after a field loses its visual
+            // keyboard, so an EditText retaining focus was never actually blurred
+            // here. `mobile: clickGesture` is the real, confirmed-supported
+            // equivalent (same {x, y} shape) — see appium-uiautomator2-driver's
+            // execute-method-map.ts.
             const size = await driver.getWindowSize();
-            await driver.executeScript('mobile: tap', [{ x: Math.floor(size.width / 2), y: 120 }]);
+            await driver.executeScript('mobile: clickGesture', [{ x: Math.floor(size.width / 2), y: 120 }]);
             await new Promise((r) => setTimeout(r, 200));
         } catch { /* best effort — never fail an action over the keyboard */ }
         return;
