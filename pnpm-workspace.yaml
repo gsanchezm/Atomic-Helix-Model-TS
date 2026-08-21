@@ -4,7 +4,6 @@ packages:
 allowBuilds:
   appium: true
   appium-ios-tuntap: true
-  cypress: true
   edgedriver: true
   esbuild: true
   geckodriver: true
@@ -13,7 +12,6 @@ allowBuilds:
 onlyBuiltDependencies:
   - appium
   - appium-ios-tuntap
-  - cypress
   - edgedriver
   - esbuild
   - geckodriver
