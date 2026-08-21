@@ -30,9 +30,9 @@
 # structurally validated (see the task report for how).
 #
 # Docs note: docs/plans/2026-07-17-cicd-pipelines-update.md is referenced by
-# ci/steps/start-stack.sh and run-suite.sh's `cypress` arms but does not
-# exist anywhere in this repo's git history or in any sibling worktree
-# branch as of this writing. This file was implemented directly from the
+# ci/steps/start-stack.sh and run-suite.sh but does not exist anywhere in
+# this repo's git history or in any sibling worktree branch as of this
+# writing. This file was implemented directly from the
 # ground truth listed above (ci/pipeline.config.json, the GH workflow,
 # ci/steps/*.sh, README.md's CI/CD section), per this task's own
 # instructions that those sources outrank plan prose.
@@ -50,7 +50,7 @@
 #                  for $S_0$ state injection.
 #   BASE_URL       (required, Protected+Masked) — frontend-touching jobs
 #                  only (e2e-web*, visual-web*, a11y-web, e2e-webdriverio*,
-#                  e2e-cypress, and the ZAP-baseline half of security-zap's
+#                  and the ZAP-baseline half of security-zap's
 #                  @security-infra run). Not read by api/android/ios/
 #                  mobilewright/perf jobs.
 #   GITHUB_TOKEN   (optional, Masked) — used by resolve-omnipizza-release.
@@ -130,7 +130,6 @@ variables:
       - 'mobilewright'
       - 'security'
       - 'a11y'
-      - 'cypress'
       - 'webdriverio'
   ARCHITECTURE_TYPE:
     description: 'Pipeline identity — selects the reporting/metrics tail'
@@ -223,8 +222,6 @@ variables:
     - if: '$TARGET_PLATFORM == "all" || $TARGET_PLATFORM == "security"'
   a11y: &rules-a11y
     - if: '$TARGET_PLATFORM == "all" || $TARGET_PLATFORM == "a11y"'
-  cypress: &rules-cypress
-    - if: '$TARGET_PLATFORM == "all" || $TARGET_PLATFORM == "cypress"'
   webdriverio: &rules-webdriverio
     - if: '$TARGET_PLATFORM == "all" || $TARGET_PLATFORM == "webdriverio"'
   # resolve-omnipizza-release: same coarse+granular mobile values as GH,
@@ -1237,29 +1234,6 @@ e2e-webdriverio-writes:
   resource_group: standard_user_writes
   variables:
     SUITE: writes
-
-# =============================================================================
-# Job: Cypress E2E  (profile: cypress)
-# Not a gRPC plugin peer — no start-stack.sh/run-suite.sh/collect-
-# artifacts.sh call at all (collect-artifacts.sh's non-TOM branch exits 1 on
-# an empty results/, which Cypress never populates). Runs entirely outside
-# the chaos-proxy; uploads its own screenshots/videos folders directly.
-# =============================================================================
-e2e-cypress:
-  extends: .node-base
-  rules: *rules-cypress
-  variables:
-    TOOL_NAME: cypress
-    PLATFORM: web
-  script:
-    - bash ci/steps/setup-environment.sh
-    - pnpm run test:cypress:desktop
-  artifacts:
-    when: always
-    expire_in: 30 days
-    paths:
-      - src/plugins/cypress/screenshots/
-      - src/plugins/cypress/videos/
 
 # =============================================================================
 # Job: Consolidate — Experiment metrics (TOM only)
