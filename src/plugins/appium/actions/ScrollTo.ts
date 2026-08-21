@@ -7,6 +7,20 @@ export const ScrollToAction: ActionHandler<AppiumActionContext> = {
     async execute({ driver, target, platform, helpers }) {
         try {
             await driver.$(target).scrollIntoView();
+            // Diagnostic only — see docs/bugs/android-birthday-picker-scroll-2026-08-20.md's
+            // 2026-08-21 updates. This branch returns unconditionally on
+            // Android with zero bounds verification, so there was no way to
+            // tell whether it actually scrolled or no-op'd over an
+            // already-valid state. Logging (not gating) height/displayed here
+            // settles that without changing behavior.
+            if (platform === 'android') {
+                const size = await driver.$(target).getSize().catch(() => null);
+                const displayed = await driver.$(target).isDisplayed().catch(() => 'error');
+                logger.info(
+                    { target, branch: 'scrollIntoView', height: size?.height ?? 'error', displayed },
+                    '[Appium] SCROLL_TO: first branch returning (Android, unverified by design)',
+                );
+            }
             // On iOS `scrollIntoView()` assumes a vertical container and
             // silently no-ops on HORIZONTAL lists, so confirm the target is
             // actually on-screen; if not, fall through to the native
@@ -16,6 +30,7 @@ export const ScrollToAction: ActionHandler<AppiumActionContext> = {
             }
         } catch (err) {
             const msg = (err as Error)?.message ?? '';
+            logger.info({ target, branch: 'scrollIntoView', error: msg }, '[Appium] SCROLL_TO: first branch threw');
             // WDIO's scrollIntoView assumes a default `//android.widget.ScrollView`.
             // Some React Native screens (e.g. the profile form) don't expose that
             // container, so it throws "Default scrollable element ... was not
@@ -85,10 +100,22 @@ export const ScrollToAction: ActionHandler<AppiumActionContext> = {
                 await driver.$(
                     `android=new UiScrollable(new UiSelector().scrollable(true).instance(0)).scrollIntoView(${inner})`,
                 );
-                if (await driver.$(target).isDisplayed().catch(() => false)) {
+                // Diagnostic only — height alongside the existing isDisplayed()
+                // gate, unchanged, so a bimodal pass/fail like the birthday-day
+                // one (isDisplayed=true, height still invalid) is visible.
+                const size = await driver.$(target).getSize().catch(() => null);
+                const displayed = await driver.$(target).isDisplayed().catch(() => false);
+                logger.info(
+                    { target, branch: 'UiScrollable', height: size?.height ?? 'error', displayed },
+                    '[Appium] SCROLL_TO: UiScrollable branch resolved',
+                );
+                if (displayed) {
                     return `Scrolled to (UiScrollable): ${target}`;
                 }
-            } catch { /* fall through to the gesture fallback */ }
+            } catch (err) {
+                logger.info({ target, branch: 'UiScrollable', error: (err as Error)?.message ?? '' }, '[Appium] SCROLL_TO: UiScrollable branch threw');
+                /* fall through to the gesture fallback */
+            }
         }
 
         // Android (UiAutomator2) gesture fallback — a screen-level scroll that
@@ -109,7 +136,20 @@ export const ScrollToAction: ActionHandler<AppiumActionContext> = {
         // unrelated-looking WAIT_FOR_ELEMENT timeout).
         for (const direction of ['down', 'up'] as const) {
             for (let i = 0; i < 4; i++) {
-                if (await driver.$(target).isDisplayed().catch(() => false)) {
+                // Diagnostic only — height alongside the existing isDisplayed()
+                // gate, unchanged. Settles whether this loop's down-then-up
+                // structure is cancelling its own progress (docs/bugs/
+                // android-birthday-picker-scroll-2026-08-20.md's 2026-08-21
+                // update): a tight, consistent SCROLL_TO duration across
+                // failures (8581-8716ms in CI run 32497645866) means this loop
+                // ran to completion every time with no early exit.
+                const displayed = await driver.$(target).isDisplayed().catch(() => false);
+                const size = await driver.$(target).getSize().catch(() => null);
+                logger.info(
+                    { target, direction, i, displayed, height: size?.height ?? 'error' },
+                    '[Appium] SCROLL_TO: gesture-fallback pre-check',
+                );
+                if (displayed) {
                     return `Scrolled to (gesture fallback, ${direction}): ${target}`;
                 }
                 await driver.execute('mobile: scrollGesture', {
