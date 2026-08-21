@@ -767,7 +767,18 @@ export async function scrollIntoViewSafe(
         }
         attempts++;
         if (await isReachableForScroll(driver, target, clip, strictAndroidBounds)) return;
-        if (!clip && await isTrulyDisplayed(driver, target)) return;
+        // Gated on !strictAndroidBounds: `isTrulyDisplayed` falls through to a bare
+        // `target.isDisplayed()` on Android, exactly the untrusted flag
+        // `isFrameInTapZone`'s strict branch (above) exists to NOT rely on — Android
+        // reports `displayed="true"` even on a node with inverted/clipped bounds
+        // (confirmed CI run 32464189264's page-source dumps: `bounds="[109,1786]
+        // [348,1684]"`, negative height, `displayed="true"`). Left ungated, this
+        // line silently overrode the strict check `isReachableForScroll` just ran
+        // and returned anyway — capping every strictAndroidBounds caller (today,
+        // only SelectOption.ts's birthday-picker trigger) to exactly ONE scroll
+        // attempt regardless of `maxAttempts`, which is why every prior CI run's
+        // logs show `attempt: 0` and never higher.
+        if (!clip && !strictAndroidBounds && await isTrulyDisplayed(driver, target)) return;
     }
 }
 
