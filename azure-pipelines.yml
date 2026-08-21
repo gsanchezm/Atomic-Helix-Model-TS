@@ -74,7 +74,7 @@ parameters:
   - name: platform
     type: string
     default: all
-    values: [all, api, web, playwright, playwright-desktop, playwright-responsive, pixelmatch, pixelmatch-desktop, pixelmatch-responsive, mobile, android, ios, appium, appium-android, appium-ios, perf, gatling, mobilewright, security, a11y, cypress, webdriverio]
+    values: [all, api, web, playwright, playwright-desktop, playwright-responsive, pixelmatch, pixelmatch-desktop, pixelmatch-responsive, mobile, android, ios, appium, appium-android, appium-ios, perf, gatling, mobilewright, security, a11y, webdriverio]
   - name: perfProfile
     type: string
     default: smoke
@@ -1917,43 +1917,3 @@ stages:
             displayName: 'Teardown'
             condition: always()
 
-      # -----------------------------------------------------------------
-      # Job: Cypress (profile `cypress`, independent). NOT a gRPC plugin
-      # peer — calls NONE of the 5 shared scripts except
-      # setup-environment.sh (needs pnpm/node_modules present). Runs
-      # `pnpm run test:cypress:desktop` directly and uploads Cypress's
-      # own screenshots/videos folders instead of calling
-      # collect-artifacts.sh (whose non-TOM branch exits 1 on an empty
-      # results/, which Cypress never populates) — ground truth §3.
-      # -----------------------------------------------------------------
-      - job: e2e_cypress
-        displayName: 'E2E — Cypress Desktop'
-        condition: "or(eq('${{ parameters.platform }}', 'all'), eq('${{ parameters.platform }}', 'cypress'))"
-        pool: { vmImage: 'ubuntu-latest' }
-        steps:
-          - checkout: self
-          - task: NodeTool@0
-            displayName: 'Set up Node'
-            inputs: { versionSpec: '$(NODE_VERSION)' }
-          - script: corepack enable && corepack prepare pnpm@latest --activate
-            displayName: 'Enable pnpm (corepack)'
-          - script: bash ci/steps/setup-environment.sh
-            displayName: 'Install dependencies (setup-environment.sh)'
-          - script: pnpm run test:cypress:desktop
-            displayName: 'Run Cypress suite'
-            env:
-              BASE_URL: $(BASE_URL)
-          - task: PublishPipelineArtifact@1
-            displayName: 'Upload Cypress screenshots'
-            condition: always()
-            continueOnError: true
-            inputs:
-              targetPath: src/plugins/cypress/screenshots
-              artifact: ahm-artifacts-e2e-cypress-screenshots
-          - task: PublishPipelineArtifact@1
-            displayName: 'Upload Cypress videos'
-            condition: always()
-            continueOnError: true
-            inputs:
-              targetPath: src/plugins/cypress/videos
-              artifact: ahm-artifacts-e2e-cypress-videos
