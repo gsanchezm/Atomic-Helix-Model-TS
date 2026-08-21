@@ -44,14 +44,6 @@
       "notes": "Axe rides the existing 'web' start-stack.sh arm via PLUGIN_AXE=true forwarded into the Playwright plugin process's own startup env — there is no dedicated a11y start-stack.sh case arm, port, or PLUGIN_ADDRESSES entry."
     },
     {
-      "profile": "cypress",
-      "requiredSecrets": ["API_BASE_URL", "BASE_URL"],
-      "requiredVars": [],
-      "artifacts": ["artifacts/cypress/**"],
-      "matrix": {},
-      "notes": "Cypress is not a gRPC plugin peer (Option A) — no port, no start-stack.sh/run-suite.sh case arm. e2e-cypress runs `pnpm run test:cypress:desktop` directly and never calls start-stack.sh, collect-artifacts.sh, or teardown.sh (collect-artifacts.sh's non-TOM branch exit-1's on an empty results/, which Cypress never populates). This entry exists for descriptive secret/artifact metadata only."
-    },
-    {
       "profile": "webdriverio",
       "requiredSecrets": ["API_BASE_URL", "BASE_URL"],
       "requiredVars": [],

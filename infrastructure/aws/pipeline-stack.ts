@@ -241,15 +241,6 @@ const TEST_PROFILES: readonly TestProfileSpec[] = [
     needsMacFleet: false,
   },
   {
-    profile: 'cypress',
-    buildspecFile: 'infrastructure/aws/buildspec/cypress.buildspec.yml',
-    runOrder: 1,
-    batch: false,
-    privileged: false,
-    usesReleaseUrl: false,
-    needsMacFleet: false,
-  },
-  {
     profile: 'gatling',
     buildspecFile: 'infrastructure/aws/buildspec/gatling.buildspec.yml',
     runOrder: 1,
@@ -501,9 +492,9 @@ export class AhmPipelineStack extends cdk.Stack {
       actionEnvironmentVariables.OMNIPIZZA_RELEASE_BASE_URL = { value: ctx.omnipizzaReleaseBaseUrl };
     }
 
-    // Output artifact: every one of the 14 buildspecs declares its own `artifacts.files`
-    // block (reports/**, artifacts/<profile>/**, or — for cypress — its screenshots/
-    // videos folders directly), matching GHA's per-job `upload-artifact` step. Without
+    // Output artifact: every one of the 13 buildspecs declares its own `artifacts.files`
+    // block (reports/** or artifacts/<profile>/**), matching GHA's per-job
+    // `upload-artifact` step. Without
     // an `outputs` entry here, CodeBuild has nothing to package those matched files
     // into and CodePipeline has nothing to persist into `ArtifactBucket` — the run's
     // test reports/screenshots would simply be discarded when the build container

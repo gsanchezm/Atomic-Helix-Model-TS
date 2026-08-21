@@ -182,9 +182,6 @@ case "$PROFILE" in
     wait_port "${WEBDRIVERIO_PLUGIN_PORT:-51000}" || fail "webdriverio plugin did not open :${WEBDRIVERIO_PLUGIN_PORT:-51000}"
     wait_port "${API_PLUGIN_PORT:-50055}" || fail "api plugin did not open :${API_PLUGIN_PORT:-50055}"
     ;;
-  cypress)
-    fail "profile '$PROFILE' is reserved (see docs/plans/2026-07-17-cicd-pipelines-update.md), and may never need an arm at all — its Option A default (docs/plans/2026-07-17-cypress-webdriverio-plugins.md §4) runs entirely outside this script; only Option B would require filling this arm in"
-    ;;
   # 'axe' is deliberately absent from this case statement — it is not a
   # standalone profile. It rides the 'web' arm above via PLUGIN_AXE=true
   # (see §2.3/§3.2), so start-stack.sh web is what a11y jobs actually call.
