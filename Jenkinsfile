@@ -103,7 +103,7 @@ pipeline {
     parameters {
         choice(
             name: 'PLATFORM',
-            choices: ['all', 'api', 'web', 'playwright', 'playwright-desktop', 'playwright-responsive', 'pixelmatch', 'pixelmatch-desktop', 'pixelmatch-responsive', 'mobile', 'android', 'ios', 'appium', 'appium-android', 'appium-ios', 'perf', 'gatling', 'mobilewright', 'security', 'a11y', 'cypress', 'webdriverio'],
+            choices: ['all', 'api', 'web', 'playwright', 'playwright-desktop', 'playwright-responsive', 'pixelmatch', 'pixelmatch-desktop', 'pixelmatch-responsive', 'mobile', 'android', 'ios', 'appium', 'appium-android', 'appium-ios', 'perf', 'gatling', 'mobilewright', 'security', 'a11y', 'webdriverio'],
             description: 'Platform to test'
         )
         choice(
@@ -1101,41 +1101,6 @@ pipeline {
                                 archiveArtifacts artifacts: 'artifacts/webdriverio/**', allowEmptyArchive: true
                                 sh 'bash ci/steps/teardown.sh'
                             }
-                        }
-                    }
-                }
-
-                stage('Cypress') {
-                    when {
-                        anyOf {
-                            expression { params.PLATFORM == 'all' }
-                            expression { params.PLATFORM == 'cypress' }
-                        }
-                    }
-                    agent any
-                    environment {
-                        // BASE_URL is what the job body actually reads.
-                        // API_BASE_URL is listed in this profile's
-                        // requiredSecrets in ci/pipeline.config.json but
-                        // unused by the job body -- bound anyway so this
-                        // stage's credential surface matches the config file
-                        // exactly.
-                        API_BASE_URL = credentials('API_BASE_URL')
-                        BASE_URL = credentials('BASE_URL')
-                    }
-                    // Cypress is not a gRPC plugin peer: no start-stack.sh
-                    // call, no run-suite.sh call (that profile is
-                    // reserved/rejected there), no collect-artifacts.sh call
-                    // (it would exit 1 -- Cypress never populates results/),
-                    // and no teardown.sh call (nothing was started).
-                    steps {
-                        sh 'bash ci/steps/setup-environment.sh'
-                        sh 'pnpm run test:cypress:desktop'
-                    }
-                    post {
-                        always {
-                            archiveArtifacts artifacts: 'src/plugins/cypress/screenshots/**', allowEmptyArchive: true
-                            archiveArtifacts artifacts: 'src/plugins/cypress/videos/**', allowEmptyArchive: true
                         }
                     }
                 }
