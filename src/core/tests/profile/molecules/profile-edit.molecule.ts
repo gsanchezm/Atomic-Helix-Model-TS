@@ -36,6 +36,22 @@ export async function fillProfileForm(values: ProfileUpdateInputs): Promise<void
         log.info({ field: 'addressInput' }, 'Skipping address — locator is web-only and DRIVER is mobile');
     }
     await typeField('notesInput', values.notes);
+    // Appium/Android only — see docs/bugs/android-birthday-picker-scroll-2026-08-20.md's
+    // 2026-08-21 update. TYPE leaves notesInput's input connection bound
+    // (mInputShown=true) even though no visual keyboard ever renders on CI's
+    // emulator (mIsInputViewShown stays false); nothing downstream clears it,
+    // and ProfileScreen's ScrollView never sets keyboardDismissMode, so
+    // scrolling doesn't blur it either — confirmed in CI run 32464189264,
+    // 10/10 birthday-day SELECT_OPTION failures logged mInputShown="true".
+    // Left bound, that residual connection caps the ScrollView's effective
+    // scroll range short of the birthday-day/month/year row. Clicking a
+    // static, non-interactive label (never itself a scroll/tap target
+    // anywhere else) shifts Android focus away without a blind coordinate
+    // tap — the mechanism that caused this investigation's prior regressions
+    // (see feedback_android_shared_helper_regression_pattern in memory).
+    if (isAppiumAndroid()) {
+        await sendIntent(INTENT.CLICK, 'notesLabel');
+    }
     await fillBirthday(values.birthday);
 }
 
@@ -80,4 +96,10 @@ function isApiDriver(): boolean {
 function isMobileDriver(): boolean {
     const driver = (process.env.DRIVER ?? 'playwright').toLowerCase();
     return driver === 'appium' || driver === 'mobilewright';
+}
+
+function isAppiumAndroid(): boolean {
+    const driver = (process.env.DRIVER ?? 'playwright').toLowerCase();
+    const platform = (process.env.PLATFORM ?? '').toLowerCase();
+    return driver === 'appium' && platform === 'android';
 }
