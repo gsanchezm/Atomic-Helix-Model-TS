@@ -159,7 +159,14 @@ async function swipeUpBulk(driver: Browser): Promise<void> {
 // `direction: 'down'` reveals content further down the page: GestureController
 // .scroll() reverses the given direction to compute the physical swipe, so
 // 'down' means the finger swipes up — the same visual effect as swipeUpW3C.
-async function scrollGestureAndroidSafe(driver: Browser, percent = 0.66): Promise<void> {
+// Returns `mobile: scrollGesture`'s own boolean (per appium-uiautomator2-driver's
+// mobileScrollGesture, lib/commands/gestures.ts): true if the container can
+// still scroll further in that direction after this gesture, false if it's
+// already at max scroll. Diagnostic only — added to distinguish "already
+// maxed out" from "the gesture isn't moving anything", the one signal the
+// 2026-08-20 investigation (docs/bugs/android-birthday-picker-scroll-2026-08-20.md)
+// never collected despite it being available at zero cost.
+async function scrollGestureAndroidSafe(driver: Browser, percent = 0.66): Promise<boolean> {
     const size = await driver.getWindowSize();
     const top = Math.round(size.height * 0.15);
     // CI run 32399737088: even with this rect-bounded gesture, the birthday-day
@@ -174,14 +181,14 @@ async function scrollGestureAndroidSafe(driver: Browser, percent = 0.66): Promis
     // explain a swipe that repeatedly does nothing past this exact point.
     // 0.75 clears that overlap with margin while keeping most of the rect.
     const bottom = Math.round(size.height * 0.75);
-    await driver.executeScript('mobile: scrollGesture', [{
+    return (await driver.executeScript('mobile: scrollGesture', [{
         left: 0,
         top,
         width: size.width,
         height: bottom - top,
         direction: 'down',
         percent,
-    }]);
+    }])) as boolean;
 }
 
 // The default Android AND iOS fallback swipe (see scrollIntoViewSafe below) —
@@ -742,7 +749,8 @@ export async function scrollIntoViewSafe(
             // making every Android scroll pay for a fix only one path needed.
             const pkgBefore = await androidPkgOrNA(driver);
             if (strictAndroidBounds) {
-                await scrollGestureAndroidSafe(driver, 0.66);
+                const canScrollFurther = await scrollGestureAndroidSafe(driver, 0.66);
+                logger.info({ selector, attempt: attempts, canScrollFurther }, '[Appium] scrollIntoViewSafe: mobile: scrollGesture canScrollFurther');
             } else {
                 await swipeUpW3C(driver, 0.66);
             }
