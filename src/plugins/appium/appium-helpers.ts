@@ -310,22 +310,22 @@ export async function blurActiveTextInput(driver: Browser): Promise<void> {
 // keyboard is actually up.
 export async function dismissKeyboard(driver: Browser): Promise<void> {
     if (PLATFORM === 'android') {
-        if (!(await isKeyboardShown(driver))) return;
-        try {
-            // `mobile: tap` is not a real UiAutomator2 execute method — confirmed via
-            // its own WebDriverError ("Unsupported execute method 'mobile: tap'...
-            // did you mean 'mobile: type'?"), which fires on EVERY call and was
-            // always silently swallowed by this try/catch. This call has been a
-            // complete no-op for the whole Android branch's history: `isKeyboardShown`
-            // (mInputShown) can stay true long after a field loses its visual
-            // keyboard, so an EditText retaining focus was never actually blurred
-            // here. `mobile: clickGesture` is the real, confirmed-supported
-            // equivalent (same {x, y} shape) — see appium-uiautomator2-driver's
-            // execute-method-map.ts.
-            const size = await driver.getWindowSize();
-            await driver.executeScript('mobile: clickGesture', [{ x: Math.floor(size.width / 2), y: 120 }]);
-            await new Promise((r) => setTimeout(r, 200));
-        } catch { /* best effort — never fail an action over the keyboard */ }
+        // Intentional no-op. The original implementation here called
+        // `mobile: tap`, which is not a real UiAutomator2 execute method — it
+        // always failed silently, so this branch never did anything for its
+        // entire history. Swapping in the real equivalent, `mobile: clickGesture`
+        // (CI run 32433379560), proved the tap point (width/2, 120) is NOT
+        // actually safe everywhere this runs from: dismissKeyboard fires
+        // unconditionally in Click.ts's/Type.ts's/ClearText.ts's Android
+        // preambles, not just SelectOption.ts, and on the checkout screen that
+        // tap introduced 44 new `text-section-address still not displayed`
+        // failures that had never occurred before — with zero benefit to the one
+        // thing it was meant to help (birthday-day's bounds still never
+        // stabilized, just took longer). Reverted rather than chase a
+        // screen-specific safe coordinate: every attempt at "properly"
+        // dismissing the Android keyboard from this shared helper (`mobile:
+        // hideKeyboard`'s KEYCODE_BACK fallback, reverted 3e877f9; this
+        // clickGesture swap) has cost more than the no-op it replaced.
         return;
     }
     if (PLATFORM !== 'ios') return;
