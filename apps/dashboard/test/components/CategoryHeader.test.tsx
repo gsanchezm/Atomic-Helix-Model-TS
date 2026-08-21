@@ -21,7 +21,7 @@ describe('CategoryHeader', () => {
   });
 
   it('pluralizes the tool count for multiple tools', () => {
-    render(<CategoryHeader kind="web_ui" tools={[tool('playwright', 10, 0, 0), tool('cypress', 5, 0, 0)]} />);
+    render(<CategoryHeader kind="web_ui" tools={[tool('playwright', 10, 0, 0), tool('webdriverio', 5, 0, 0)]} />);
     expect(screen.getByText('2 tools')).toBeInTheDocument();
   });
 

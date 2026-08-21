@@ -37,7 +37,7 @@ describe('catStats', () => {
   });
 
   it('sums counts across multiple tools', () => {
-    const s = catStats([tool('web_ui', 10, 1, 0, 'playwright'), tool('web_ui', 5, 0, 1, 'cypress')]);
+    const s = catStats([tool('web_ui', 10, 1, 0, 'playwright'), tool('web_ui', 5, 0, 1, 'webdriverio')]);
     expect(s.total).toBe(17);
     expect(s.passed).toBe(15);
     expect(s.failed).toBe(1);

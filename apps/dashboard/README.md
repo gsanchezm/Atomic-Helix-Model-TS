@@ -162,15 +162,15 @@ Two files, two edits:
 
 1. **Server** — `src/server/normalize/index.ts`:
    ```ts
-   import { cypressAdapter } from './cypress.js';
+   import { newtoolAdapter } from './newtool.js';
    export const ADAPTERS = {
      // ...existing...
-     cypress: { id: 'cypress', kind: 'web_ui', adapter: cypressAdapter },
+     newtool: { id: 'newtool', kind: 'web_ui', adapter: newtoolAdapter },
    };
    ```
-   Write `src/server/normalize/cypress.ts` with the adapter. If the kind is one of the five already supported (`web_ui`, `mobile_ui`, `api`, `performance`, `visual`), there's no client-side change.
+   Write `src/server/normalize/newtool.ts` with the adapter. If the kind is one of the five already supported (`web_ui`, `mobile_ui`, `api`, `performance`, `visual`), there's no client-side change.
 
-2. **Client** — drop `public/assets/logos/cypress.svg`. The card and detail header pick it up automatically via `/assets/logos/cypress.svg`.
+2. **Client** — drop `public/assets/logos/newtool.svg`. The card and detail header pick it up automatically via `/assets/logos/newtool.svg`.
 
 If the new tool needs a brand-new kind (say `accessibility`):
 - Add it to `ToolKind` in `src/shared/kinds.ts` and to the `TOOL_KINDS` array.

@@ -17,7 +17,7 @@ describe('CategorySection', () => {
   it('renders a CategoryHeader and only the tools of the given kind, in a two-column grid', () => {
     const tools: ToolSummary[] = [
       toolWebUi('playwright', 10, 0, 0),
-      toolWebUi('cypress', 5, 0, 0),
+      toolWebUi('webdriverio', 5, 0, 0),
       toolApi('api', 3, 0, 0),
     ];
     const { container } = render(
@@ -27,7 +27,7 @@ describe('CategorySection', () => {
     );
     expect(screen.getByText('Web')).toBeInTheDocument();
     expect(screen.getByText('playwright')).toBeInTheDocument();
-    expect(screen.getByText('cypress')).toBeInTheDocument();
+    expect(screen.getByText('webdriverio')).toBeInTheDocument();
     expect(screen.queryByText('api')).toBeNull();
     expect(container.querySelector('.tool-grid.two')).not.toBeNull();
   });
