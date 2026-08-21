@@ -643,14 +643,31 @@ async function scrollIntoViewAndroid(
 
     const uiScrollable = `new UiScrollable(${scrollableSelector}).scrollIntoView(${innerSelector})`;
     const pkgBefore = await androidPkgOrNA(driver);
+    // Diagnostic only — this call's own try/catch previously swallowed the
+    // outcome entirely unless the foreground package also changed, so there
+    // was no visibility into whether the UiScrollable command actually ran,
+    // threw, or how long it took. 2026-08-21 birthday-picker investigation
+    // (docs/bugs/android-birthday-picker-scroll-2026-08-20.md): the bimodal
+    // pass/fail pattern traces to THIS call — passing attempts never even
+    // enter scrollIntoViewSafe's manual retry loop (this call alone resolves
+    // them), failing attempts fall through to a loop that also never moves
+    // anything. durationMs/threw distinguishes "UiScrollable couldn't find a
+    // scrollable/target" (fast, throws) from "found it but bounds stayed bad"
+    // (this returns true, no throw) from "the touch just didn't register"
+    // (slow, still throws — a real multi-swipe search took its full timeout).
+    const startedAt = Date.now();
     try {
         await driver.$(`android=${uiScrollable}`);
+        const durationMs = Date.now() - startedAt;
+        logger.info({ selector, scrollableSelector, durationMs }, '[Appium] scrollIntoViewAndroid: UiScrollable.scrollIntoView resolved');
         const pkgAfter = await androidPkgOrNA(driver);
         if (pkgAfter !== pkgBefore) {
             logger.warn({ selector, scrollableSelector, pkgBefore, pkgAfter }, '[Appium] scrollIntoViewAndroid: foreground package changed across the UiScrollable call');
         }
         return true;
     } catch (err) {
+        const durationMs = Date.now() - startedAt;
+        logger.info({ selector, scrollableSelector, durationMs, error: (err as Error).message }, '[Appium] scrollIntoViewAndroid: UiScrollable.scrollIntoView threw');
         const pkgAfter = await androidPkgOrNA(driver);
         if (pkgAfter !== pkgBefore) {
             logger.warn({ selector, scrollableSelector, pkgBefore, pkgAfter, error: (err as Error).message }, '[Appium] scrollIntoViewAndroid: foreground package changed across a failing UiScrollable call');
