@@ -1525,6 +1525,9 @@ jobs:
           PLUGIN_ZAP: 'true'
           PLUGIN_API: 'true'
 
+      - name: Stagger start (spread backend login load across the run)
+        run: sleep $(( RANDOM % 76 ))
+
       - name: Capture run start time
         if: always()
         run: echo "RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
