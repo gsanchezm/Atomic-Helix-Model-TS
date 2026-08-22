@@ -327,6 +327,9 @@ jobs:
           DRIVER: api
           PLUGIN_API: 'true'
 
+      - name: Stagger start (spread backend login load across the run)
+        run: sleep $(( RANDOM % 76 ))
+
       - name: Capture run start time
         if: always()
         run: echo "RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
@@ -466,6 +469,9 @@ jobs:
           PLUGIN_PIXELMATCH: 'false'
           PLUGIN_API: 'true'
 
+      - name: Stagger start (spread backend login load across the run)
+        run: sleep $(( RANDOM % 76 ))
+
       - name: Capture run start time
         if: always()
         run: echo "RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
@@ -596,6 +602,9 @@ jobs:
           # Pixelmatch off — see e2e-web for full rationale.
           PLUGIN_PIXELMATCH: 'false'
           PLUGIN_API: 'true'
+
+      - name: Stagger start (spread backend login load across the run)
+        run: sleep $(( RANDOM % 76 ))
 
       - name: Capture run start time
         if: always()
@@ -1208,6 +1217,9 @@ jobs:
           PLUGIN_APPIUM: 'true'
           PLUGIN_API: 'true'
 
+      - name: Stagger start (spread backend login load across the run)
+        run: sleep $(( RANDOM % 76 ))
+
       - name: Capture run start time
         if: always()
         run: echo "RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
@@ -1396,6 +1408,9 @@ jobs:
           MINIO_PORT: '9000'
           MINIO_ACCESS_KEY: minioadmin
           MINIO_SECRET_KEY: minioadmin
+
+      - name: Stagger start (spread backend login load across the run)
+        run: sleep $(( RANDOM % 76 ))
 
       - name: Capture run start time
         if: always()
