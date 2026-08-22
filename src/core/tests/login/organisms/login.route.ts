@@ -27,7 +27,24 @@ import { writeWebSecuritySection, isScannerUnavailable } from '@core/tests/suppo
 const log = logger.child({ layer: 'route', domain: 'login' });
 
 interface ZapSummary {
-    findings: Array<{ name: string; risk: string; confidence: string; instances: number }>;
+    findings: Array<{
+        name: string;
+        risk: string;
+        confidence: string;
+        instances: number;
+        description?: string;
+        solution?: string;
+        cweId?: string;
+        wascId?: string;
+        instanceDetails?: Array<{
+            uri?: string;
+            method?: string;
+            param?: string;
+            attack?: string;
+            evidence?: string;
+            otherInfo?: string;
+        }>;
+    }>;
     byRisk: Record<string, number>;
 }
 
@@ -255,6 +272,10 @@ export class LoginRoute {
                         openApiUrl: apiScan.openApiUrl,
                         authToken: token,
                         timeoutMs: apiScan.timeoutMs,
+                        // Explicit, distinct from the baseline scan's reportDir — both
+                        // otherwise default to the same sessionId-keyed path, and
+                        // whichever scan finishes second clobbers the other's raw report.
+                        reportDir: 'reports/security/zap/api-scan',
                     }),
                     'zap',
                 );

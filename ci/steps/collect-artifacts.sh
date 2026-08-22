@@ -8,6 +8,15 @@ mkdir -p "$DEST/logs"
 cp -f reports/"$PROFILE"*.json "$DEST/" 2>/dev/null || true
 cp -rf "logs/$PROFILE"/* "$DEST/logs/" 2>/dev/null || true
 
+# Raw scanner report (e.g. reports/security/zap/{api-scan,baseline-scan}/zap-report.json)
+# — not the already-summarized reports/<profile>*.json above. Only the summary
+# used to be uploaded, which loses per-alert url/param/evidence detail that a
+# summary-only artifact can't recover from after the run ends.
+if [ -d "reports/security/$PROFILE" ]; then
+    mkdir -p "$DEST/raw"
+    cp -rf "reports/security/$PROFILE"/* "$DEST/raw/" 2>/dev/null || true
+fi
+
 if [ "${ARCHITECTURE_TYPE:-standard}" = "TOM" ]; then
     pnpm run metrics:manifest || { echo "metrics:manifest failed" >&2; exit 1; }
     pnpm run metrics:all || { echo "metrics:all failed" >&2; exit 1; }

@@ -34,7 +34,24 @@ function readJson<T>(file: string, fallback: T): T {
 
 export interface ZapScanSection {
   byRisk: Record<string, number>;
-  findings: Array<{ name: string; risk: string; confidence: string; instances: number }>;
+  findings: Array<{
+    name: string;
+    risk: string;
+    confidence: string;
+    instances: number;
+    description?: string;
+    solution?: string;
+    cweId?: string;
+    wascId?: string;
+    instanceDetails?: Array<{
+      uri?: string;
+      method?: string;
+      param?: string;
+      attack?: string;
+      evidence?: string;
+      otherInfo?: string;
+    }>;
+  }>;
 }
 
 /**

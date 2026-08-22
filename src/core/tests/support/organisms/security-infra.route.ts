@@ -18,7 +18,24 @@ const log = logger.child({ layer: 'route', domain: 'security-infra' });
 const REPO_ROOT = resolve(__dirname, '../../../../..');
 
 interface ZapSummary {
-    findings: Array<{ name: string; risk: string; confidence: string; instances: number }>;
+    findings: Array<{
+        name: string;
+        risk: string;
+        confidence: string;
+        instances: number;
+        description?: string;
+        solution?: string;
+        cweId?: string;
+        wascId?: string;
+        instanceDetails?: Array<{
+            uri?: string;
+            method?: string;
+            param?: string;
+            attack?: string;
+            evidence?: string;
+            otherInfo?: string;
+        }>;
+    }>;
     byRisk: Record<string, number>;
 }
 
@@ -51,7 +68,14 @@ export class SecurityInfraRoute {
             log.info({ targetUrl: spec.targetUrl }, 'Running ZAP baseline (passive) crawl');
             await sendIntent(
                 INTENT.RUN_ZAP_BASELINE_SCAN,
-                JSON.stringify({ targetUrl: spec.targetUrl, timeoutMs: spec.timeoutMs }),
+                JSON.stringify({
+                    targetUrl: spec.targetUrl,
+                    timeoutMs: spec.timeoutMs,
+                    // Explicit, distinct from the API scan's reportDir — both otherwise
+                    // default to the same sessionId-keyed path, and whichever scan
+                    // finishes second clobbers the other's raw report.
+                    reportDir: 'reports/security/zap/baseline-scan',
+                }),
                 'zap',
             );
             const parsed = await sendIntent(INTENT.PARSE_ZAP_REPORT, '', 'zap');
