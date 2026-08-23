@@ -72,7 +72,10 @@ and the dashboard ingest pipeline can never accidentally pick it up. It runs onl
 ## Running it
 
 Requires the same live stack as the atomic suites (proxy + `playwright`/`api` plugins at minimum;
-`mobilewright` for the §8.4 portability instrument) — see the root `README.md`'s Quickstart.
+`appium` for the §8.4 portability/determinism mobile leg — the mobile instrument changed from
+Mobilewright to Appium 2026-07-25, see `docs/paper/atomic-testing-formal-definition.md` §7.1) — see the
+root `README.md`'s Quickstart. Both legs are verified live and green: Playwright at K=16 (240/240
+steps) and Appium/Android (15/15 steps).
 
 ```bash
 pnpm test:eval:non-atomic-twin                              # sequential (CUCUMBER_PARALLEL=1)

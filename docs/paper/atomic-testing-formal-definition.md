@@ -40,13 +40,16 @@ Tracking what's sourced vs. still open, so we know where to focus next.
 - [x] Tool scope for this paper's experiments decided 2026-07-23: **Playwright** (web, desktop + responsive), **Mobilewright** (Android + iOS), **API** (the Rule-3 $S_0$ surface, also the constant precondition path for the portability instrument). Appium (legacy), Gatling, and Pixelmatch explicitly out of scope. **SUPERSEDED 2026-07-25** — see next entry.
 - [x] **Mobile instrument changed Mobilewright → Appium, 2026-07-25.** While verifying the twin's mobile leg, found a reproducible, 100%-repeatable Mobilewright defect: whichever of the two sequential expiry-date pickers (month/year) opens *second* on the card-entry screen fails to open at all — confirmed positional (not field-specific) by reversing call order, confirmed not a timing race (an 87s-later retry tap still failed), confirmed not a Mobilewright-dispatch bug (a raw `adb shell input tap` at the same coordinates, bypassing Mobilewright's own driver entirely, also failed). A live cross-check of the identical sequence under Appium, same device, same unmodified app binary, passed cleanly end-to-end — exonerating the app and pointing at Mobilewright/device-session state specifically. Left unresolved: this same Mobilewright flow was explicitly verified working on this same app binary three days earlier (`d02d759`, 2026-07-22) — either that verification was incomplete, or session state degrades over long device-connected runs; not conclusively distinguished. Given a reference-implementation mobile plugin cannot be trusted mid-evaluation to reliably execute a spec-correct two-picker sequence, and Appium is already present in the full AHM implementation as the previously-designated "legacy" path, the pragmatic choice was to swap instruments rather than debug the plugin further or block the evaluation. Full investigation trail kept in the project's own memory system, not reproduced here.
 - [x] **Twin shape superseded**: not two isolated per-domain fused-Outline twins. Adopted instead — a single, cross-domain **horizontal journey** twin, built by *mechanically concatenating* the existing atomic step sequences of **four** domains (login → catalog → pizzaBuilder → checkout), wrapped in a K-row Outline against one shared, undeclared-tag account. Domain-scope expansion (2→4) confirmed by the author 2026-07-20 — it's a consequence of R3 having no honest UI-driven equivalent to cart injection *within* checkout alone. See §8.2–§8.3 for the full design and why this resolves the R1-fusion-vs-parallel-unit-count tension the earlier per-domain design had.
-- [x] **Twin scaffold exists** (discovered stale-checkbox 2026-07-23, see `docs/superpowers/specs/2026-07-23-atomic-testing-evaluation-campaign-design.md`): `evaluation/non-atomic-twin/` directory, `nonAtomicTwin` cucumber profile, the concatenated journey feature + step_definitions/organisms reusing existing molecules — all already built (currently K=8, being bumped to K=16). **Still open:** it has never been run live on any driver. Verify-and-tune (Playwright smoke run, then `DRIVER=mobilewright`) is the actual next task, not construction.
-- [x] **Playwright leg verified live** (2026-07-23, commit `be6a04e`): first-ever live run found and fixed a real harness bug — `CheckoutNonAtomicRoute` was reusing atomic `CheckoutRoute` pieces designed to bootstrap a session from nothing (a second independent login call, and `injectBrowserSession()`'s `SEED_CHECKOUT_SESSION` which deletes the client-side `omnipizza-cart`), which destroyed the twin's real UI-built session/cart before reaching checkout. Fixed: read the real token/cart back from browser storage instead. 8/8 journey instances now green (120/120 steps); atomic `place-delivery-order.feature` re-verified green too (the fix touched two shared, exported helper functions). K is still 8, not yet bumped to 16. Mobilewright-Android leg not yet attempted.
-- [ ] Implement the four delta instruments (§8.4): parallel-safety sweep (reuses the *existing* atomic checkout suite as-is on that arm — no new construction needed there), shared-layer fault-injection harness, determinism repeated-run plan, portability delta.
-- [x] Repeated-run plan decided (2026-07-23, see `docs/superpowers/specs/2026-07-23-atomic-testing-evaluation-campaign-design.md`): **N=30** `run_index` values per arm, on **web (Playwright/Chromium) + Mobilewright-Android** (iOS excluded from the repeated determinism runs — macOS runner concurrency — but still covered by the one-shot portability instrument). Execution environment for **all four** §8.4 instruments: **GitHub Actions** `workflow_dispatch` (repo is public — no minutes ceiling), driven by an idempotent campaign orchestrator over the existing `experiment_batch_id`/`run_index` inputs. Parallel-safety sweep: **K=16** identical Outline rows, 1 dispatch per worker level (1/2/4/8).
+- [x] **Twin scaffold exists** (discovered stale-checkbox 2026-07-23, see `docs/superpowers/specs/2026-07-23-atomic-testing-evaluation-campaign-design.md`): `evaluation/non-atomic-twin/` directory, `nonAtomicTwin` cucumber profile, the concatenated journey feature + step_definitions/organisms reusing existing molecules. **Status as of 2026-08-23: fully verified live, both platforms** — see the next two bullets for the Playwright and mobile (Mobilewright→Appium) verification runs and their outcomes.
+- [x] **Playwright leg verified live** (2026-07-23, commit `be6a04e`): first-ever live run found and fixed a real harness bug — `CheckoutNonAtomicRoute` was reusing atomic `CheckoutRoute` pieces designed to bootstrap a session from nothing (a second independent login call, and `injectBrowserSession()`'s `SEED_CHECKOUT_SESSION` which deletes the client-side `omnipizza-cart`), which destroyed the twin's real UI-built session/cart before reaching checkout. Fixed: read the real token/cart back from browser storage instead. 8/8 journey instances green (120/120 steps); atomic `place-delivery-order.feature` re-verified green too (the fix touched two shared, exported helper functions). **Re-verified at K=16 same day** (commit `fdf7cf1`, 20:17): 16/16 scenarios, 240/240 steps green.
+- [x] **Mobile leg verified live — build-order step 1 (§ campaign design doc) is now fully complete on both platforms, superseding the "Mobilewright-Android leg not yet attempted" status the previous bullet (Playwright verification) used to carry.** First attempt under Mobilewright (2026-07-25, commit `342d2e0`): three root-caused fixes applied (stale `logoutButton` mobilewright locator; an open soft keyboard occluding elements after Android `TYPE`, fixed by dismissing the IME via BACK; the twin had no equivalent of the atomic suite's `addToOrder()` API cart-seed, needed because mobile checkout deep-links with `hydrateCart=true` against a real backend cart — added `seedAndReadCartFromDraft`) — reached **13/15 steps**, blocked on the same card-expiry-year picker defect documented above that triggered the Mobilewright→Appium swap. Re-run under Appium the same day (commit `6561098`) after also fixing a stale Appium `logoutButton` locator (`login.webdriver.locators.json`, content-desc lookup for a button with no such content-desc): **15/15 steps green on the first attempt.**
+- [x] **`CUCUMBER_PARALLEL` is already parameterized in CI** — `ahm-execution-helix.yml` exposes it as a `cucumber_parallel` `workflow_dispatch` input (line ~75), consumed by both Playwright jobs (desktop + responsive) with a `'4'` fallback. This resolves build-order step 2 of `docs/superpowers/specs/2026-07-23-atomic-testing-evaluation-campaign-design.md`, whose §2 "Current-state findings" claims it's still hardcoded — that claim is now stale (the parameterization looks like an incidental side effect of the 2026-08-21 stagger/jitter work, not a deliberate step-2 delivery). Confirmed 2026-08-23 by reading the workflow directly rather than trusting the spec doc.
+- [ ] **New risk found 2026-08-23** — the determinism instrument's two arms are exposed asymmetrically to backend load — the twin performs a real UI login (and UI cart-building) on every one of its N=30×K journey rows, while the atomic arm's precondition is a single API `$S_0$` call. This project has twice this month (2026-08-21 stagger-jitter investigation, 2026-08-22/23 ZAP Path Traversal false-positive investigation) documented that concurrent CI load against the backend produces mid-run 502/503/429 responses, and that job-start jitter alone does not prevent mid-run collisions; the subsequent Render plan upgrade raises the threshold but doesn't remove the structural asymmetry (see §10.1). If that dynamic recurs during the 120-dispatch determinism campaign, it would inflate the twin's measured pass↔fail transition rate for an infrastructure reason, not a method reason — directly confounding the paper's causal claim for exactly the instrument that carries it. (a) **Done this session**: §10.1 threat-to-validity entry added. (b) **Still open**: the campaign orchestrator (build-order step 5) that would actually enforce a concurrency cap and the disclosed `INFRASTRUCTURE_FAILURE`-bucket exclusion/flagging rule doesn't exist yet — disclosure without enforcement is not a mitigation.
+- [ ] Implement the remaining delta instruments (§8.4) — status as of 2026-08-23: **parallel-safety sweep** — the K=16 twin Outline exists and `cucumber_parallel` is a confirmed CI input, but grepping `ahm-execution-helix.yml` for `non-atomic-twin`/`nonAtomicTwin` finds **no job dispatches the twin at all** — the sweep isn't dispatchable in CI yet, that wiring doesn't exist. **Diagnosability fault-injection harness** — not built. **Determinism repeated-run plan** — N=30 parameter decided, campaign orchestrator not built, zero runs executed. **Portability delta** — construction is done (the Appium-Android twin leg above *is* this instrument's artifact per §8.4's "no separate build" design), but the LOC/files-touched measurement itself, and the spec-forced-vs-plugin-gap counting methodology it needs, have not been computed yet. The classification §8.4 requires is captured now, while construction is still fresh, rather than reconstructed later from memory (§8.5): of the four `342d2e0`/`6561098` fixes, `checkout-nonatomic.route.ts`'s `seedAndReadCartFromDraft` is **twin-only code — spec-forced**; the other three (`login.wright.locators.json`'s stale `logoutButton`, `Type.ts`'s post-TYPE IME-dismiss-via-BACK, and `login.webdriver.locators.json`'s stale Appium `logoutButton`) are **shared TOM/plugin-contract code that also affects the atomic suites — plugin-gap**, and should be excluded from the reported portability delta per §8.4's policy once step 4 actually computes it.
+- [x] Repeated-run plan decided (2026-07-23, see `docs/superpowers/specs/2026-07-23-atomic-testing-evaluation-campaign-design.md`): **N=30** `run_index` values per arm, on **web (Playwright/Chromium) + Mobilewright-Android** — written before the 2026-07-25 tool swap; read as **Appium-Android** per §7.1 (iOS excluded from the repeated determinism runs — macOS runner concurrency — but still covered by the one-shot portability instrument). Execution environment for **all four** §8.4 instruments: **GitHub Actions** `workflow_dispatch` (repo is public — no minutes ceiling), driven by an idempotent campaign orchestrator over the existing `experiment_batch_id`/`run_index` inputs. Parallel-safety sweep: **K=16** identical Outline rows, 1 dispatch per worker level (1/2/4/8).
 - [ ] Abstract — write last, once Sections 4–5 and Results are stable.
 - [ ] Related Work — needs actual literature search (test isolation, flaky tests, model-based testing, metamorphic testing; Test Pyramid/Trophy/Honeycomb as heuristic granularity baselines already named in the README). Also needs prior art on author-constructed baselines / mutation-testing-style transformation validity, since §8.1 leans on that argument.
-- [ ] Results — blocked on the twin suites existing and on repeated runs of both arms through the unmodified TOM pipeline.
+- [ ] Results — the twin suites exist and are verified live on both platforms (see above); still blocked on the fault-injection harness, portability tooling, campaign orchestrator, and CI wiring for the twin, then on repeated runs of both arms through the unmodified TOM pipeline.
 - [ ] References — pick a citation format (BibTeX vs. inline numbered) once we know the target venue.
 - [ ] Decide whether Corollaries (§5) need actual proofs or stay as informal justifications.
 
@@ -244,7 +247,8 @@ method-level one.
 
 ### 7.2 Cross-cutting quality attributes as contracts
 
-> TODO — cover: visual, accessibility, and (proposed) security implemented as *contracts* attached to
+> TODO — cover: visual, accessibility, and security (implemented since `5330693`, 2026-07-16 — out of
+> this paper's evaluation scope per §10.2, not unimplemented) as *contracts* attached to
 > existing atomic tests, not as a parallel test layer — evidence that Definition 1 doesn't need a
 > special case for non-functional testing. Link out to the implementation repository rather than
 > reproducing source.
@@ -340,7 +344,12 @@ named — `submitCredentials`, catalog card-click, pizzaBuilder open/size/toppin
 Playwright ones). The determinism instrument (§8.4) additionally requires an **Appium-Android**
 leg of the same concatenated journey, built the same mechanical way from the corresponding Appium
 organisms; this construction is shared with the portability instrument, which measures the LOC/files
-touched to build it (§8.4). See `docs/superpowers/specs/2026-07-23-atomic-testing-evaluation-campaign-design.md`
+touched to build it (§8.4). **Both legs are now built and verified live**, not just specced: Playwright
+is green at K=16 (240/240 steps, commit `fdf7cf1`), and Android is green under Appium (15/15 steps,
+commit `6561098`) after an interim Mobilewright attempt reached 13/15 and surfaced the picker defect
+behind the §7.1 tool substitution. The LOC/files-touched number itself — the portability instrument's
+actual measurement — has not yet been computed from that construction. See
+`docs/superpowers/specs/2026-07-23-atomic-testing-evaluation-campaign-design.md`
 for why the scope widened past the original Playwright-only framing, why iOS is excluded from the
 repeated determinism runs specifically while still covered by the one-shot portability check, and §7.1
 for why this leg's designated tool changed from Mobilewright to Appium mid-evaluation.
@@ -390,8 +399,12 @@ count hasn't been executed) is reported as **not yet measured**, not as a placeh
 
 ## 9. Results
 
-> TODO — blocked on: (1) building the de-atomized twin suites (§8.2–§8.3), (2) running both arms
-> through the unmodified TOM pipeline for each instrument in §8.4. Skeleton below shows the target
+> TODO — blocked on running both arms through the unmodified TOM pipeline for each instrument in §8.4
+> (the de-atomized twin suites themselves are built and verified live on both platforms as of
+> 2026-08-23 — see the working notes above — so this is a runs-and-tooling blocker, not a
+> construction blocker: the fault-injection harness, portability delta tooling, and campaign
+> orchestrator still need building; the parallel-safety sweep additionally has no CI job dispatching
+> the twin yet). Skeleton below shows the target
 > shape; **no values are estimated or filled until real runs produce them.**
 
 ### 9.1 Parallel safety
@@ -459,12 +472,37 @@ count hasn't been executed) is reported as **not yet measured**, not as a placeh
   ever folded into it. Mitigated structurally, not just by disclosure: the primary causal instruments
   (§8.4) hold the browser constant at Chromium; cross-browser is a separate, secondary check (§10.2)
   and its results are never merged into the primary determinism/parallel-safety/diagnosability numbers.
+- **Backend-load asymmetry contaminating the determinism instrument (found 2026-08-23, not yet
+  mitigated in tooling).** The twin's precondition is a real UI login plus UI cart-building on every
+  journey row; the atomic arm's precondition is a single API `$S_0$` call. Both arms hit the same
+  shared backend, but the twin issues materially more requests per run to do it. This project has
+  independently documented, twice in the same month and outside this evaluation, that concurrent CI
+  load against the reference application's backend produces mid-run 502/503/429 responses, and that
+  job-start staggering does not prevent mid-run collisions once a run is underway (`ci(helix)` commits
+  `7c2079c`/`b9a3151`, and the ZAP Path Traversal false-positive investigation that reproduced the same
+  load-correlated pattern). If this recurs during the 120-dispatch determinism campaign (§8.4), it would
+  raise the twin's measured pass↔fail transition rate for a backend-capacity reason, not a method
+  reason — a direct threat to the instrument that carries the paper's central causal claim. The backend
+  hosting plan was since upgraded from Render's free tier (verified via a subsequent all-33-jobs-green
+  `platform=all` run, `32614000923`), which raises the load threshold before this triggers but does not
+  remove the structural asymmetry itself — the twin still issues materially more requests per run than
+  the atomic arm, so the confound is dormant, not resolved, and could resurface at the determinism
+  campaign's actual concurrency (multiple simultaneous `workflow_dispatch` calls, a heavier load shape
+  than any single `platform=all` run). Not yet mitigated: the campaign orchestrator that would enforce a
+  concurrency cap and a disclosed `INFRASTRUCTURE_FAILURE`-bucket exclusion/flagging rule for this
+  instrument specifically (mirroring the existing plugin-gap bookkeeping policy for the portability
+  instrument, §8.4) has not been built. Tracked as an open working-note (top of document) until the
+  orchestrator design closes it.
 
 ### 10.2 Limitations
 
 > TODO — known, honest gaps to disclose rather than hide:
-> - Security is a *proposed*, not implemented, cross-cutting contract — excluded from §9 results by
->   design, not oversight.
+> - Security is an implemented cross-cutting contract (since `5330693`, 2026-07-16 — ZAP web +
+>   MobSF mobile, contract-shaped on `login` and infra-shaped in `support/`) but is a deliberate scope
+>   exclusion from this paper's evaluation, not an unbuilt one — §7.1 fixes the tool scope to
+>   Playwright/Appium/API, and security's DAST-style checks don't map onto any of the four §8.4
+>   causal instruments as designed. Excluded from §9 results by scope, not by non-existence or
+>   oversight.
 > - Load/stress performance data conflation on same-day runs is a known, accepted limitation of the
 >   current dataset.
 > - **Cross-browser generalization is secondary, not primary.** Whether the atomic-vs-twin delta

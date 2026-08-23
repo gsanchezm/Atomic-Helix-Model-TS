@@ -10,6 +10,34 @@ dispatch bug, and not an app defect via a clean Appium cross-check on the same d
 `docs/paper/atomic-testing-formal-definition.md` §7.1 for the full disclosure. Left as originally
 written below for the historical record of what was decided on 2026-07-23; read "Mobilewright-Android"
 as "Appium-Android" throughout.
+
+**UPDATE 2026-08-23:** §4 build-order step 1 ("verify and tune the existing twin") is now **fully
+complete on both platforms** — Playwright green at K=16 (240/240 steps, `fdf7cf1`), Android green under
+Appium (15/15 steps, `6561098`, after an interim Mobilewright attempt reached 13/15 and surfaced the
+picker defect above, `342d2e0`). §2's "current-state finding" that `CUCUMBER_PARALLEL` is hardcoded is
+also stale — `ahm-execution-helix.yml` now exposes it as a `cucumber_parallel` `workflow_dispatch`
+input, closing build-order step 2 (likely an incidental side effect of unrelated 2026-08-21
+stagger/jitter work, not a deliberate delivery of this step). Steps 3–5 (fault-injection harness,
+portability LOC/files-touched tooling, campaign orchestrator) remain unbuilt. **New finding, not
+accounted for in §3's approved parameters:** the determinism instrument's two arms are asymmetrically
+exposed to backend load (twin does real UI login+cart-build per row; atomic arm does one API call) —
+this project has since documented, independently, that concurrent CI load against the backend produces
+mid-run 502/503/429 and that job-start jitter alone doesn't prevent mid-run collisions. Whoever designs
+the build-order-step-5 orchestrator needs to fold in a concurrency cap and a disclosed
+`INFRASTRUCTURE_FAILURE`-bucket exclusion/flagging rule for the determinism instrument specifically —
+see `docs/paper/atomic-testing-formal-definition.md` §10.1's new entry (added 2026-08-23) for the full
+argument. This is a design gap in §3/§5 below, not yet closed. Also note: the backend hosting plan was
+upgraded off Render's free tier since §3's 156-dispatch cost estimate was written, verified via a
+subsequent all-33-jobs-green `platform=all` run (`32614000923`) — this raises the load threshold before
+the asymmetry above triggers but does not remove it structurally, since the determinism campaign's
+actual concurrency (multiple simultaneous `workflow_dispatch` calls) is heavier than any single
+`platform=all` run. Separately: **no CI job dispatches the twin at all today** (`grep -c
+non-atomic-twin .github/workflows/ahm-execution-helix.yml` returns 0) — build-order step 5's
+orchestrator needs to add that wiring, not just parameterize `cucumber_parallel` on jobs that already
+exist. Last: the plugin-gap-vs-spec-forced classification §6 defers to "its own brainstorm" for the
+portability tooling has a first pass already captured, from the build-order-step-1 fixes themselves,
+in the paper's working notes (`docs/paper/atomic-testing-formal-definition.md`, the "Implement the
+remaining delta instruments" bullet) — reuse it rather than re-deriving from `342d2e0`/`6561098`.
 **Scope:** Decides *where* and *how many times* the four §8.4 evaluation instruments run, and the
 order remaining build work happens in. Does not design the internals of the fault-injection harness
 or the portability delta tooling — those get their own brainstorm when their turn comes (see §6).
