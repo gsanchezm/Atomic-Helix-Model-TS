@@ -6,6 +6,7 @@ import { resolveSelector } from '@kernel/selector-resolution';
 import { ensurePortFree } from '@kernel/port-guard';
 import { INTENT } from '@kernel/intents';
 import { WriteLock } from '@kernel/write-lock';
+import { injectedFaultFor } from '@kernel/fault-injection';
 import {
     assertActionAllowed,
     bindAddress,
@@ -266,12 +267,19 @@ async function handleExecuteIntent(call: any, callback: any): Promise<void> {
             // Intercept the logical key and resolve it to a platform/viewport-specific concrete selector.
             const concreteSelector = resolveSelector(actionId, targetSelector, platform);
 
-            // Measure strictly the temporal cost of the driver (Playwright/Appium) execution.
-            pluginStartMark = performance.now();
-            outcome = await suppressChaos(() =>
-                routeToPlugin(platform, actionId, concreteSelector),
-            );
-            pluginDurationMs = performance.now() - pluginStartMark;
+            // Diagnosability harness (build-order step 3): a dispatch targeting this actionId for
+            // fault injection short-circuits before the real plugin call — see fault-injection.ts.
+            const injectedFault = injectedFaultFor(actionId);
+            if (injectedFault) {
+                outcome = injectedFault;
+            } else {
+                // Measure strictly the temporal cost of the driver (Playwright/Appium) execution.
+                pluginStartMark = performance.now();
+                outcome = await suppressChaos(() =>
+                    routeToPlugin(platform, actionId, concreteSelector),
+                );
+                pluginDurationMs = performance.now() - pluginStartMark;
+            }
         }
 
     } catch (error: any) {

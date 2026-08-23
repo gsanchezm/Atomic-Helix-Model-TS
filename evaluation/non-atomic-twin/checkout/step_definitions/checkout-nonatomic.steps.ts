@@ -21,7 +21,9 @@ Given('the OmniPizza login screen is open', async function () {
 });
 
 When('they log in as {string}', async function (userAlias: string) {
-    await route(this).loginViaUi(userAlias);
+    // Diagnosability harness (build-order step 3): mirrors the same override in the atomic arm's
+    // checkout.steps.ts, so both arms authenticate as the same chaos user for a given dispatch.
+    await route(this).loginViaUi(process.env.DIAGNOSABILITY_CHAOS_USER || userAlias);
 });
 
 // -- connective glue (disclosed — no atomic counterpart to pair with; see

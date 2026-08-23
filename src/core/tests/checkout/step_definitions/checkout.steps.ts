@@ -13,7 +13,10 @@ function route(world: unknown): CheckoutRoute {
 }
 
 Given('the OmniPizza user is logged in as {string}', async function (userAlias: string) {
-    await route(this).loginAs(userAlias);
+    // Diagnosability harness (build-order step 3): a dispatch targeting a backend/data bucket
+    // overrides which seeded chaos user this precondition login authenticates as — see
+    // docs/superpowers/specs/2026-08-23-diagnosability-fault-injection-harness-design.md.
+    await route(this).loginAs(process.env.DIAGNOSABILITY_CHAOS_USER || userAlias);
 });
 
 Given('they are ordering in market {string}', async function (market: string) {

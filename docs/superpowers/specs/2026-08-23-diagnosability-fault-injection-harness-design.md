@@ -1,7 +1,15 @@
 # Atomic Testing Paper — Diagnosability Fault-Injection Harness — Design
 
 **Date:** 2026-08-23
-**Status:** Approved (design); implementation pending
+**Status:** Implemented same day — `src/kernel/fault-injection.ts` (new), `chaos-proxy.ts`'s
+`handleExecuteIntent` hook, and `DIAGNOSABILITY_CHAOS_USER` threaded through both arms' login
+precondition step (`checkout.steps.ts`, `checkout-nonatomic.steps.ts`). Verified live against the real
+stack, not just unit-tested: the classifier round-trip for all 5 chaos-proxy buckets passed, and a live
+`TOM_INJECT_FAULT=UI_ACTION_FAILURE` run against `place-delivery-order.feature` produced 44 real
+`ExecuteIntent` failures carrying the exact injected message in the proxy's own telemetry stream; a
+separate live run confirmed `DIAGNOSABILITY_CHAOS_USER=performance_glitch_user` overrides the login
+precondition (`behavior: "slow_3s"` observed in the backend's own response). Not yet wired into the
+campaign orchestrator (build-order step 5, not built) or CI.
 **Scope:** Build-order step 3 (`docs/superpowers/specs/2026-07-23-atomic-testing-evaluation-campaign-design.md`
 §4/§6) — designs the internals that document deliberately deferred: what fault to inject per bucket,
 how injection is triggered without touching the app under test, how blast radius is captured
