@@ -48,9 +48,11 @@ Tracking what's sourced vs. still open, so we know where to focus next.
 - [ ] Implement the remaining delta instruments (§8.4) — status as of 2026-08-23: **parallel-safety sweep** — the K=16 twin Outline exists and `cucumber_parallel` is a confirmed CI input, but grepping `ahm-execution-helix.yml` for `non-atomic-twin`/`nonAtomicTwin` finds **no job dispatches the twin at all** — the sweep isn't dispatchable in CI yet, that wiring doesn't exist. **Diagnosability fault-injection harness** — not built. **Determinism repeated-run plan** — N=30 parameter decided, campaign orchestrator not built, zero runs executed. **Portability delta** — construction is done (the Appium-Android twin leg above *is* this instrument's artifact per §8.4's "no separate build" design), but the LOC/files-touched measurement itself, and the spec-forced-vs-plugin-gap counting methodology it needs, have not been computed yet. The classification §8.4 requires is captured now, while construction is still fresh, rather than reconstructed later from memory (§8.5): of the four `342d2e0`/`6561098` fixes, `checkout-nonatomic.route.ts`'s `seedAndReadCartFromDraft` is **twin-only code — spec-forced**; the other three (`login.wright.locators.json`'s stale `logoutButton`, `Type.ts`'s post-TYPE IME-dismiss-via-BACK, and `login.webdriver.locators.json`'s stale Appium `logoutButton`) are **shared TOM/plugin-contract code that also affects the atomic suites — plugin-gap**, and should be excluded from the reported portability delta per §8.4's policy once step 4 actually computes it.
 - [x] Repeated-run plan decided (2026-07-23, see `docs/superpowers/specs/2026-07-23-atomic-testing-evaluation-campaign-design.md`): **N=30** `run_index` values per arm, on **web (Playwright/Chromium) + Mobilewright-Android** — written before the 2026-07-25 tool swap; read as **Appium-Android** per §7.1 (iOS excluded from the repeated determinism runs — macOS runner concurrency — but still covered by the one-shot portability instrument). Execution environment for **all four** §8.4 instruments: **GitHub Actions** `workflow_dispatch` (repo is public — no minutes ceiling), driven by an idempotent campaign orchestrator over the existing `experiment_batch_id`/`run_index` inputs. Parallel-safety sweep: **K=16** identical Outline rows, 1 dispatch per worker level (1/2/4/8).
 - [ ] Abstract — write last, once Sections 4–5 and Results are stable.
-- [ ] Related Work — needs actual literature search (test isolation, flaky tests, model-based testing, metamorphic testing; Test Pyramid/Trophy/Honeycomb as heuristic granularity baselines already named in the README). Also needs prior art on author-constructed baselines / mutation-testing-style transformation validity, since §8.1 leans on that argument.
-- [ ] Results — the twin suites exist and are verified live on both platforms (see above); still blocked on the fault-injection harness, portability tooling, campaign orchestrator, and CI wiring for the twin, then on repeated runs of both arms through the unmodified TOM pipeline.
-- [ ] References — pick a citation format (BibTeX vs. inline numbered) once we know the target venue.
+- [x] **Related Work sourced 2026-08-23** — §2 filled in (granularity heuristics incl. Google's test-size taxonomy, flaky tests/test isolation incl. industrial scale data, model-based testing, metamorphic testing incl. the oracle-problem survey, BDD/Gherkin incl. specification-by-example, and a new §2.6 test-fixture/isolation-patterns subsection) plus the §8.1 author-constructed-baseline-validity paragraph. **27 citations total**, independently verified across two passes the same day (15 then +12, the second pass at the author's explicit request for ≥25 references) — real DOI/arXiv/URL/ISBN fetched or cross-checked against publisher/institutional-repo records, not assumed from title plausibility alone; 0 rejected across both passes. Full reference list now in §References.
+- [x] **Diagnosability fault-injection harness designed 2026-08-23** (build-order step 3) — see `docs/superpowers/specs/2026-08-23-diagnosability-fault-injection-harness-design.md`. Two-site mechanism: OmniPizza's existing 7 seeded "chaos users" (zero new backend code, session-scoped so safe under concurrent dispatches) for API/data buckets, a new small `chaos-proxy.ts` hook for tool/UI buckets. 11/14 taxonomy buckets have a grounded mechanism (1 needs a known-contract-mismatch check before use, 1 needs implementation-time confirmation); `VISUAL_DIFF_FAILURE`/`VISUAL_BASELINE_MISSING` honestly excluded (twin runs no visual contract). Not yet implemented.
+- [ ] **New finding 2026-08-23 — parallel-safety instrument (§8.4/§9.1) returned a null result, root-caused.** First-ever run of the K=16 twin at `CUCUMBER_PARALLEL=4`: 16/16 scenarios, 240/240 steps, zero degradation (`retry:0`, so not retry-masked). Read OmniPizza's backend source directly (`~/Documents/Repos/OmniPizza/backend/database.py:89-91`, `routers/auth.py:60`): its three mutable stores (`orders`, `sessions`, `user_profiles`) are keyed by UUID/`session_id`, **never by username** — a fresh `session_id` is minted on every login regardless of which account logs in. There is no server-side shared mutable state keyed by account in this application, so the twin's R2 violation (shared `standard_user`, no per-instance fixture) cannot produce a data collision here at any worker count or repetition — a structural finding, not a sample-size one. This also reframes the original motivation for `write-lock.hooks.ts`/`@writes-shared-state` (see project memory `project_parallelism_write_lock`, 2026-07-13): the "known race against OmniPizza's shared `standard_user` account" it cites was very likely backend-capacity/rate-limiting under concurrent login bursts (independently documented twice this month, §10.1), not an application-level data race. **Open decision for the author:** redesign the instrument against a genuinely account-keyed resource (none found yet after reading the full `InMemoryDB` and checkout/auth routers), reframe what it measures (capacity resilience, not collision-correctness), or disclose the null result as a limitation. Not resolved by this session — do not silently reinterpret §8.4's Corollary 2 causal story without that decision.
+- [ ] Results — the twin suites exist and are verified live on both platforms (see above); still blocked on implementing the (now-designed) fault-injection harness, portability tooling, campaign orchestrator, and CI wiring for the twin, then on repeated runs of both arms through the unmodified TOM pipeline. The parallel-safety instrument specifically is also blocked on the open decision above.
+- [x] References — inline `[Author, Year]` + alphabetical reference list adopted 2026-08-23 (§References). Revisit only if the target venue mandates a different style.
 - [ ] Decide whether Corollaries (§5) need actual proofs or stay as informal justifications.
 
 ---
@@ -100,13 +102,188 @@ independent of layer, tool, or platform. TODO: expand.
 
 ## 2. Related Work
 
-> TODO. Candidate lines to cover:
-> - Granularity heuristics: Test Pyramid (Cohn), Testing Trophy (Dodds), Testing Honeycomb (Spotify) — position these as *heuristic*, non-formal, and orthogonal to atomicity.
-> - Test isolation and flaky test literature (e.g., Luo et al. on flaky tests, test order dependency research).
-> - Model-based testing / formal specification-driven testing.
-> - Metamorphic testing (as a contrast: metamorphic relations vs. atomic isolation).
-> - BDD/Gherkin as a specification language — and where this work departs from typical BDD practice (no UI-driven `Given`, disjoint per-scenario state).
-> - Microkernel / plugin-based test execution architectures (cite the companion TOM paper here, not re-explained).
+This section situates atomic testing, as formalized in this paper, against six adjacent bodies of
+work. None of them define atomicity as a per-scenario predicate over state disjointness, precondition
+injection, and outcome determinism; each addresses a related but distinct concern, and the contrast is
+made explicit in each subsection below. (Microkernel/plugin-based test execution architecture is out of
+scope here — cite the companion Test-Oriented Microkernel paper directly rather than re-covering it.)
+
+### 2.1 Granularity Heuristics
+
+The Test Pyramid [Cohn, 2009; Fowler, 2012], the Testing Trophy [Dodds, 2019], and the Testing Honeycomb
+[Schaffer and Dybeck, 2018] are the three most widely cited heuristics for shaping a test suite's
+composition. Cohn's pyramid recommends a large base of unit tests, a thinner layer of service tests, and
+a still thinner layer of UI tests, in that decreasing order of quantity as tests move up in cost and
+fragility. Fowler's later bliki entry states the same shape in the terms most commonly quoted in
+practitioner discourse today — many fast, low-level unit tests; fewer, coarser-grained service/
+integration tests; and a minimal number of slow, brittle end-to-end UI tests at the top — and is, in
+practice, at least as frequently cited a primary source for the pyramid metaphor as Cohn's earlier
+formulation, so the two are cited together here. Dodds's trophy shifts the weight of that recommendation
+toward integration tests, adding a static-analysis layer beneath unit tests. Schaffer and Dybeck's
+honeycomb, developed for Spotify's microservice architecture, inverts the pyramid's proportions again,
+favoring integration tests over unit tests when service boundaries are the primary source of risk.
+
+All three are heuristics about the *proportion of tests across layers* — how many unit versus
+integration versus end-to-end tests a suite should contain; none of them specifies what makes an
+individual test case well-formed. A more recent line of practitioner literature, Winters, Manshreck, and
+Wright's *Software Engineering at Google* [2020] (the testing chapter written by Bender), introduces a
+second axis that is explicitly orthogonal to this proportion question rather than a fourth member of the
+proportion set: *size* — small, medium, or large — defined not by which layer of the pyramid a test
+occupies but by the process, network, filesystem, and thread access a test is permitted, with
+determinism stated as a size requirement in its own right. Size does constrain an individual test case,
+which distinguishes it from the three proportion heuristics above; it is nonetheless a different
+constraint from atomicity. Size bounds *what resources and processes a test may touch*; atomicity bounds
+*how a scenario's state relates to every other scenario's* — disjoint state, independently
+API-injected preconditions, and a single deterministic outcome per scenario. A small test in Google's
+taxonomy could still violate atomicity by sharing fixture state with a sibling small test, and a large
+test could satisfy atomicity by injecting fully disjoint preconditions despite a resource footprint that
+places it outside the small category. Size and atomicity constrain different properties of a test case —
+resource access versus inter-scenario state relationships — so they compose rather than compete.
+
+Atomicity, as defined in this paper, therefore remains layer- and size-agnostic: it is a predicate that
+can be evaluated against any single scenario regardless of which layer of a pyramid, trophy, or honeycomb
+it occupies, or which size class it falls into. A unit test that shares mutable fixture state with other
+unit tests violates atomicity despite sitting at the heuristics' most-recommended layer; an end-to-end UI
+scenario with API-injected, disjoint preconditions satisfies it despite sitting at their least-recommended
+layer. Because the granularity heuristics — proportion-based and size-based alike — are silent on this
+inter-scenario axis, atomicity is orthogonal to them rather than a competing or refining proposal.
+
+### 2.2 Test Isolation and Flaky Tests
+
+Luo et al. [2014] established the empirical baseline for this literature with a study of 201 commits
+fixing flaky tests across 51 open-source projects, producing a taxonomy of root causes that includes
+asynchronous waits, concurrency, and test-order dependency. Eck, Palomba, Castelluccio, and Bacchelli
+[2019] complement that root-cause taxonomy with the developer's perspective, surveying and interviewing
+practicing engineers to characterize how flaky tests are actually triaged and diagnosed once they appear
+— root cause and triage are different questions, and Luo et al.'s taxonomy answers only the first. Lam et
+al.'s iDFlakies [2019] built an automated framework that isolates one of those categories —
+order-dependent (OD) versus non-order-dependent (NOD) flakiness — by randomizing test execution order
+across 422 flaky tests. Bell et al.'s DeFlaker [2018] takes a complementary, rerun-free approach, flagging
+a newly failing test as flaky when its failure correlates with code outside the latest change's coverage,
+reporting 95.5% recall without the cost of repeated executions. Parry, Kapfhammer, Hilton, and McMinn's
+more recent survey [2022] synthesizes this and subsequent work into a single taxonomy of causes, detection
+techniques, and mitigations, giving an up-to-date map of the field against which the four narrower,
+earlier studies above can be situated.
+
+The scale of the underlying problem is not merely academic: Micco's account of Google's test
+infrastructure [2016] reports that roughly 1.5% of all test runs exhibit some flaky result, grounding this
+paper's motivation for a scenario-authoring method that removes order-dependency and shared mutable state
+as sources of flakiness by construction, rather than detecting or triaging it after the fact.
+
+This body of work is fundamentally diagnostic: it detects, classifies, and triages nondeterminism in tests
+that already exist and have already exhibited flaky behavior, whether through repeated runs (Luo et al.,
+iDFlakies), coverage analysis (DeFlaker), developer interviews (Eck et al.), or survey synthesis (Parry et
+al.). Atomicity, by contrast, is constructive rather than diagnostic. Because each scenario's
+preconditions are injected independently via API DAOs and its state is required to be disjoint from every
+other scenario's, the order-dependent (OD) category that iDFlakies is built to separate out becomes
+structurally unreachable rather than merely detectable after the fact. Luo et al.'s taxonomy is useful
+here precisely as a specification of the failure modes atomicity's constraints are designed to preclude by
+construction, not as a detection technique this paper adopts.
+
+### 2.3 Model-Based and Specification-Driven Testing
+
+Utting, Pretschner, and Legeard [2012] provide the standard taxonomy of model-based testing (MBT),
+classifying approaches by the characteristics of the model used, the strategy for generating test cases
+from it, and the traceability maintained between model and tests. Utting and Legeard's earlier,
+practitioner-oriented book [2007] grounds that taxonomy's abstract categories in concrete workflow: model
+notations, test-selection criteria, and the generation and execution tooling needed to run an MBT pipeline
+end-to-end — a level of tooling detail the 2012 taxonomy paper does not itself provide, and one that
+parallels this paper's own contract-driven, tool-generated approach to scenario execution. Broy, Jonsson,
+Katoen, Leucker, and Pretschner's edited volume [2005] extends the MBT picture to reactive systems
+specifically, collecting foundational treatments of finite-state-machine and labeled-transition-system
+test generation for systems whose behavior is driven by ongoing external events — the same reactive,
+event-driven shape as the UI and API flows this framework automates, and further grounds (alongside Dick
+and Faivre, below) for treating state-machine-derived test generation as an established methodology this
+paper's Gherkin scenarios are compatible with, even though they are not themselves machine-generated.
+Dick and Faivre [1993] offer an early, concrete instance of specification-driven generation: they reduce a
+VDM specification's partitions to disjunctive normal form and construct a finite-state machine over the
+resulting partitions, which is then traversed to both generate and *sequence* test cases.
+
+MBT literature addresses test *provenance* — where a test case comes from and how it is derived and traced
+back to a model. Atomicity is agnostic to provenance; it constrains the well-formedness of an individual
+test case regardless of whether that case was hand-written, model-generated, or produced by any other
+means. The contrast sharpens with Dick and Faivre specifically: their FSM-based approach deliberately
+chains tests together, so that reaching one test in the sequence requires having already traversed the
+states reached by prior tests. This is the direct inverse of the atomic requirement that each scenario's
+precondition be independently injectable and its state disjoint from every other scenario's —
+MBT-style sequencing optimizes for efficient traversal of a model's state space across tests, exactly where
+atomicity insists on independence between them.
+
+### 2.4 Metamorphic Testing
+
+Chen, Cheung, and Yiu [1998] introduced metamorphic testing to address the oracle problem: when no single
+expected output is available to check a test against, a metamorphic relation instead relates the outputs
+of multiple, related executions to one another. Barr, Harman, McMinn, Shahbaz, and Yoo's survey of the
+oracle problem itself [2015] frames the broader landscape metamorphic testing is one response to: it
+catalogues the general strategies the field has developed for determining pass/fail outcomes — specified,
+derived, and implicit oracles, alongside metamorphic relations — and situates metamorphic testing as the
+strategy of choice specifically when no other oracle is derivable from the specification or the system
+itself. Segura et al.'s survey [2016] formalizes the metamorphic-testing mechanism as the field matured,
+characterizing metamorphic relations as constraints over sets of test-case outputs and cataloguing the
+domains in which they have been applied where full oracles are infeasible. Chen, Kuo, Liu, Poon, Towey,
+Tse, and Zhou's later, broader review [2018] extends that survey with subsequent developments in relation
+identification, automated test generation for metamorphic testing, and its integration with fault
+localization and automated program repair, without duplicating Segura et al.'s earlier scope.
+
+Metamorphic testing and atomic testing address different problems and are not in competition. Metamorphic
+testing exists, per Barr et al.'s taxonomy of oracle strategies, precisely because a full oracle is
+*unavailable*; it substitutes a relation across several executions' outputs for a single expected value.
+Atomicity applies when an oracle *is* available, and requires that each scenario check exactly one
+behavior against one deterministic outcome, without coupling to any other scenario's execution or state.
+The two are complementary rather than conflicting: nothing prevents a metamorphic relation from being
+evaluated over a set of individually atomic scenarios, each independently satisfying disjoint-state
+atomicity, with the relation checked across their separately deterministic outcomes rather than through
+any shared mutable state between them.
+
+### 2.5 BDD/Gherkin as a Specification Language
+
+Dan North's original article [North, 2006] coined behaviour-driven development and introduced the
+Given/When/Then structure this paper's scenarios are written in, reframing testing vocabulary around
+"behaviour" rather than "test." Adzic's *Specification by Example* [2011] extends that reframing from
+vocabulary into practice, formalizing "living documentation" — executable examples maintained as the
+single source of truth shared between business stakeholders and developers — as the mechanism by which
+BDD-style specifications stay synchronized with the system they describe; this paper's treatment of each
+Gherkin scenario as an executable, API-verifiable contract for a single behavior draws directly on that
+living-documentation framing. Binamungu, Embury, and Konstantinou [2020] surveyed 56 industrial BDD
+practitioners to derive and validate four quality principles for Gherkin specifications: step reuse,
+conservation of domain vocabulary, elimination of technical vocabulary, and a consistent level of
+abstraction within a scenario.
+
+This paper adopts Gherkin per North's original vocabulary and Adzic's living-documentation practice as its
+specification language, but layers an additional execution-semantics constraint on top of the
+specification-quality guidance all three citations provide. North's own examples, and BDD practice
+generally, permit a `Given` step to be driven through the UI (e.g., logging in by clicking through a login
+form) and permit scenarios to share long-lived fixtures across a suite; Adzic's living-documentation
+practice is likewise silent on where a `Given` step's state comes from, so long as the example stays
+synchronized with the system. Binamungu et al.'s four principles target the readability and
+maintainability of the Gherkin *text* — they say nothing about what state a `Given` step may touch or
+whether that state may be shared across scenarios; their "step reuse" principle concerns reusing step
+*definitions*, which this paper's design is fully compatible with. What this paper departs from typical
+BDD practice on, and what none of the three citations addresses, is two specific execution-semantics
+constraints: preconditions are injected exclusively through API DAOs rather than the UI, and state is
+required to be disjoint per scenario rather than shared. The departure is additive — a constraint on top
+of existing specification-quality work — not a rejection of it.
+
+### 2.6 Test Fixture and Isolation Patterns
+
+Meszaros's *xUnit Test Patterns* [2007] is the canonical catalogue of fixture-management patterns for the
+xUnit family of test frameworks, and its Fresh Fixture pattern — each test constructs its own private
+fixture rather than reusing or sharing one — is the direct design-pattern precedent for this paper's
+requirement that every scenario's state be disjoint from every other scenario's. Meszaros treats Fresh
+Fixture as one legitimate choice among several named alternatives (Shared Fixture, Prebuilt Fixture, Lazy
+Setup, and others), each with documented trade-offs between isolation and setup cost; the catalogue is
+deliberately permissive, offering a vocabulary for choosing a fixture strategy rather than a predicate a
+given scenario must satisfy. Atomicity narrows that choice into an obligation: it requires
+Fresh-Fixture-equivalent disjointness of every scenario's state as a well-formedness condition, not merely
+as one option among several, and adds two clauses xUnit Test Patterns does not itself specify — that the
+fixture be established through API-injected preconditions rather than through the system's own UI, and
+that the scenario's outcome be deterministic. The catalogue is also largely silent on *how* a fixture
+should be established for a UI- or API-driven end-to-end scenario specifically, since its patterns were
+developed primarily for xUnit-style unit tests; that gap is exactly where this paper's API-DAO
+precondition-injection clause sits. Read against Luo et al.'s flaky-test taxonomy (§2.2), a Shared Fixture
+in Meszaros's terms is precisely the mechanism by which the order-dependent (OD) failure category arises —
+Fresh Fixture, and atomicity's stricter version of it, is the constructive answer to that failure mode
+rather than a mechanism for detecting it after the fact.
 
 ---
 
@@ -271,6 +448,25 @@ This paper therefore adopts a **comparative, causal design**: hold the execution
 and vary only the authoring method, so that any measured difference is attributable to atomicity
 itself. This is heavier than a descriptive audit, but it is the only design that licenses a causal
 claim ("atomicity causes X"), not merely a correlational one ("the atomic suite happens to have X").
+
+**On the validity of an author-constructed comparison baseline.** A natural objection to this
+evaluation is that an author-constructed non-atomic baseline risks encoding the very bias the
+comparison is meant to measure. That risk is substantially mitigated to the extent that each non-atomic
+twin is not composed freely but produced from its atomic counterpart by applying a fixed, documented
+set of de-atomization operators — e.g., collapsing per-scenario preconditions into a shared fixture or
+reintroducing UI-driven `Given` steps — which is the same construct-validity logic that licenses
+mutation testing's mechanically-derived program variants as legitimate comparison artifacts rather than
+adversarially hand-picked counterexamples [DeMillo et al., 1978; Jia and Harman, 2011; Papadakis et al.,
+2019]. Papadakis et al.'s more recent survey brings that mutation-testing account up to date — reviewing
+roughly two further decades of mutation-operator, tool, and empirical development — without changing the
+underlying construct-validity logic the comparison relies on. Wohlin et al.'s
+treatment of construct validity in controlled software-engineering experiments specifies what such a
+derivation must report to be defensible: the operators applied, their scope, and the threats introduced
+by holding the rest of the artifact fixed [Wohlin et al., 2012]. Under that discipline, the twin's
+non-atomicity functions as a controlled independent variable rather than an uncontrolled source of
+experimenter bias, and its validity becomes an empirical property of the documented derivation
+procedure rather than an assumption asked to be taken on faith — see §8.3 for this paper's own
+disclosed operator set.
 
 ### 8.2 Constructing a fair non-atomic baseline
 
@@ -523,7 +719,108 @@ count hasn't been executed) is reported as **not yet measured**, not as a placeh
 
 ## References
 
-> TODO — pick citation style once venue is known. Placeholder numbered list to grow as sources are found in §2.
+Adzic, G. (2011). *Specification by Example: How Successful Teams Deliver the Right Software*. Manning
+Publications. ISBN 978-1-61729-008-4.
+
+Barr, E. T., Harman, M., McMinn, P., Shahbaz, M., & Yoo, S. (2015). The Oracle Problem in Software
+Testing: A Survey. *IEEE Transactions on Software Engineering*, 41(5), 507–525.
+https://doi.org/10.1109/TSE.2014.2372785
+
+Bell, J., Legunsen, O., Hilton, M., Eloussi, L., Yung, T., & Marinov, D. (2018). DeFlaker: Automatically
+Detecting Flaky Tests. In *Proceedings of the 40th International Conference on Software Engineering
+(ICSE 2018)*, pp. 433–444, Gothenburg, Sweden. https://doi.org/10.1145/3180155.3180164
+
+Binamungu, L. P., Embury, S. M., & Konstantinou, N. (2020). Characterising the Quality of Behaviour
+Driven Development Specifications. In *Agile Processes in Software Engineering and Extreme Programming
+(XP 2020)*, Lecture Notes in Business Information Processing, vol. 383, Springer, Cham.
+https://doi.org/10.1007/978-3-030-49392-9_6
+
+Broy, M., Jonsson, B., Katoen, J.-P., Leucker, M., & Pretschner, A. (Eds.). (2005). *Model-Based Testing
+of Reactive Systems: Advanced Lectures*. Lecture Notes in Computer Science, vol. 3472, Springer, Berlin,
+Heidelberg. https://doi.org/10.1007/b137241
+
+Chen, T. Y., Cheung, S. C., & Yiu, S. M. (1998). Metamorphic Testing: A New Approach for Generating Next
+Test Cases. Technical Report HKUST-CS98-01, Department of Computer Science, Hong Kong University of
+Science and Technology. Self-archived as arXiv:2002.12543 [cs.SE].
+
+Chen, T. Y., Kuo, F.-C., Liu, H., Poon, P.-L., Towey, D., Tse, T. H., & Zhou, Z. Q. (2018). Metamorphic
+Testing: A Review of Challenges and Opportunities. *ACM Computing Surveys*, 51(1), Article 4, 1–27.
+https://doi.org/10.1145/3143561
+
+Cohn, M. (2009). *Succeeding with Agile: Software Development Using Scrum*. Addison-Wesley Professional
+(Addison-Wesley Signature Series). ISBN 978-0-321-57936-2.
+
+DeMillo, R. A., Lipton, R. J., & Sayward, F. G. (1978). Hints on Test Data Selection: Help for the
+Practicing Programmer. *Computer (IEEE)*, 11(4), 34–41. https://doi.org/10.1109/C-M.1978.218136
+
+Dick, J., & Faivre, A. (1993). Automating the Generation and Sequencing of Test Cases from Model-Based
+Specifications. In *FME '93: Industrial-Strength Formal Methods*, Lecture Notes in Computer Science,
+vol. 670, pp. 268–284. https://doi.org/10.1007/BFb0024651
+
+Dodds, K. C. (2019). Write tests. Not too many. Mostly integration. kentcdodds.com.
+https://kentcdodds.com/blog/write-tests
+
+Eck, M., Palomba, F., Castelluccio, M., & Bacchelli, A. (2019). Understanding Flaky Tests: The
+Developer's Perspective. In *Proceedings of the 2019 27th ACM Joint Meeting on European Software
+Engineering Conference and Symposium on the Foundations of Software Engineering (ESEC/FSE 2019)*,
+pp. 830–840, Tallinn, Estonia. https://doi.org/10.1145/3338906.3338945
+
+Fowler, M. (2012). TestPyramid. martinfowler.com (bliki). https://martinfowler.com/bliki/TestPyramid.html
+
+Jia, Y., & Harman, M. (2011). An Analysis and Survey of the Development of Mutation Testing. *IEEE
+Transactions on Software Engineering*, 37(5), 649–678. https://doi.org/10.1109/TSE.2010.62
+
+Lam, W., Oei, R., Shi, A., Marinov, D., & Xie, T. (2019). iDFlakies: A Framework for Detecting and
+Partially Classifying Flaky Tests. In *2019 IEEE 12th International Conference on Software Testing,
+Verification and Validation (ICST 2019)*, pp. 312–322, Xi'an, China.
+https://doi.org/10.1109/ICST.2019.00038
+
+Luo, Q., Hariri, F., Eloussi, L., & Marinov, D. (2014). An Empirical Analysis of Flaky Tests. In
+*Proceedings of the 22nd ACM SIGSOFT International Symposium on Foundations of Software Engineering
+(FSE 2014)*, pp. 643–653, Hong Kong, China. https://doi.org/10.1145/2635868.2635920
+
+Meszaros, G. (2007). *xUnit Test Patterns: Refactoring Test Code*. Addison-Wesley Professional
+(Addison-Wesley Signature Series). ISBN 978-0-13-149505-0.
+
+Micco, J. (2016). Flaky Tests at Google and How We Mitigate Them. Google Testing Blog.
+https://testing.googleblog.com/2016/05/flaky-tests-at-google-and-how-we.html
+
+North, D. (2006). Introducing BDD. *Better Software* magazine; self-hosted at dannorth.net.
+https://dannorth.net/blog/introducing-bdd/
+
+Papadakis, M., Kintis, M., Zhang, J., Jia, Y., Le Traon, Y., & Harman, M. (2019). Mutation Testing
+Advances: An Analysis and Survey. *Advances in Computers*, 112, 275–378.
+https://doi.org/10.1016/bs.adcom.2018.03.015
+
+Parry, O., Kapfhammer, G. M., Hilton, M., & McMinn, P. (2022). A Survey of Flaky Tests. *ACM
+Transactions on Software Engineering and Methodology*, 31(1), Article 17, 1–50.
+https://doi.org/10.1145/3476105
+
+Schaffer, A., & Dybeck, R. (2018). Testing of Microservices. Spotify Engineering.
+https://engineering.atspotify.com/2018/01/testing-of-microservices
+
+Segura, S., Fraser, G., Sánchez, A. B., & Ruiz-Cortés, A. (2016). A Survey on Metamorphic Testing. *IEEE
+Transactions on Software Engineering*, 42(9), 805–824. https://doi.org/10.1109/TSE.2016.2532875
+
+Utting, M., & Legeard, B. (2007). *Practical Model-Based Testing: A Tools Approach*. Morgan Kaufmann.
+ISBN 978-0-12-372501-1.
+
+Utting, M., Pretschner, A., & Legeard, B. (2012). A Taxonomy of Model-Based Testing Approaches.
+*Software Testing, Verification and Reliability*, 22(5), 297–312. https://doi.org/10.1002/stvr.456
+
+Winters, T., Manshreck, T., & Wright, H. (Eds.). (2020). *Software Engineering at Google: Lessons
+Learned from Programming Over Time*. O'Reilly Media. Chapter 11, "Testing Overview," written by
+A. Bender. ISBN 978-1-492-08279-8.
+
+Wohlin, C., Runeson, P., Höst, M., Ohlsson, M. C., Regnell, B., & Wesslén, A. (2012). *Experimentation
+in Software Engineering*. Springer, Berlin, Heidelberg. https://doi.org/10.1007/978-3-642-29044-2
+
+> **27 citations total** (15 verified 2026-08-23 morning + 12 verified 2026-08-23, same day, in a
+> second expansion pass requested by the author — "vamos por lo menos con 25 referencias"). All 27
+> were independently verified (real DOI/arXiv/URL/ISBN fetched or cross-checked against
+> publisher/institutional-repo records — not assumed from title plausibility) — see the working notes'
+> Related Work entry. Citation style (inline `[Author, Year]`) may need reformatting once the target
+> venue is known.
 
 ---
 
