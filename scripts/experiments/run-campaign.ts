@@ -80,6 +80,15 @@
 import { execFileSync } from 'child_process';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import {
+  CampaignItem,
+  EXPECTED_JOB_COUNT,
+  GH_PLATFORM_INPUT,
+  JOB_NAME_PREFIXES,
+  PRIMARY_STEP_NAME,
+  buildCampaignItems,
+  legKeyOf,
+} from './lib/campaign-matrix';
 
 const REPO_ROOT = join(__dirname, '..', '..');
 const WORKFLOW_FILE = 'ahm-execution-helix.yml';
@@ -163,27 +172,22 @@ run-campaign.ts — §8.4 campaign orchestrator (determinism + parallel-safety o
 }
 
 // ---------------------------------------------------------------------------
-// Matrix — one entry per workflow_dispatch call.
+// Matrix — one entry per workflow_dispatch call. The item identity (arm,
+// platform, batch id, run_index) lives in lib/campaign-matrix.ts, shared with
+// aggregate-campaign-artifacts.ts so the two scripts can't drift apart on
+// what the campaign actually consists of. This script extends each item with
+// the dispatch-only concerns (which `platform` input to send, which job
+// names/step name to expect back).
 // ---------------------------------------------------------------------------
-type Arm = 'atomic' | 'twin';
-type PlatformLeg = 'web' | 'android';
-type LegKey = `${Arm}-${PlatformLeg}`;
-
-interface DispatchSpec {
-  id: string; // stable, human-readable — used as the manifest key
-  instrument: 'determinism' | 'parallel-safety';
-  arm: Arm;
-  platformLeg: PlatformLeg;
+interface DispatchSpec extends CampaignItem {
   ghPlatformInput: string; // the `platform` workflow_dispatch input value
-  experimentBatchId: string;
-  runIndex: string; // repurposed as a worker-level label for parallel-safety (no repeats needed there)
-  cucumberParallel?: string; // only set for parallel-safety; determinism holds this constant (job default)
   // Name-prefix matchers against `gh run view --json jobs`' job `name` field.
-  // e2e-web's matrix (browser x suite) means MULTIPLE jobs share one dispatch —
-  // see the "browser matrix" note below. Only jobs matching one of these
-  // prefixes are inspected for this dispatch's outcome/infra classification;
-  // everything else in the run (gate-*, resolve-*, and for web the non-Chromium
-  // matrix legs) is irrelevant to this dispatch and ignored.
+  // e2e-web's matrix (browser x suite) means MULTIPLE jobs share one dispatch
+  // — see the "browser matrix" cost note in lib/campaign-matrix.ts. Only jobs
+  // matching one of these prefixes are inspected for this dispatch's
+  // outcome/infra classification; everything else in the run (gate-*,
+  // resolve-*, and for web the non-Chromium matrix legs) is irrelevant to
+  // this dispatch and ignored.
   relevantJobNamePrefixes: string[];
   // How many jobs SHOULD match relevantJobNamePrefixes. Asserted at runtime —
   // if it doesn't match, the job-name-prefix assumption has drifted from
@@ -202,140 +206,19 @@ interface DispatchSpec {
   primaryStepName: string;
 }
 
-function pad3(n: number): string {
-  return String(n).padStart(3, '0');
+function toDispatchSpec(item: CampaignItem): DispatchSpec {
+  const key = legKeyOf(item.arm, item.platformLeg);
+  return {
+    ...item,
+    ghPlatformInput: GH_PLATFORM_INPUT[key],
+    relevantJobNamePrefixes: JOB_NAME_PREFIXES[key],
+    expectedJobCount: EXPECTED_JOB_COUNT[key],
+    primaryStepName: PRIMARY_STEP_NAME[key],
+  };
 }
 
-// Confirmed against ahm-execution-helix.yml (2026-08-24 read):
-//   platform=playwright-desktop -> gate-web-desktop -> e2e-web
-//     (name: "E2E — Playwright Desktop ${{ matrix.suite }} (${{ matrix.browser }})",
-//      matrix: browser=[chromium,firefox,webkit] x suite=[reads,writes] = 6 jobs/dispatch;
-//      primary step: "Run E2E tests")
-//   platform=appium-android     -> gate-android -> e2e-android
-//     (name: "E2E — Appium Android ${{ matrix.suite }}", matrix: suite=[reads,writes] = 2 jobs/dispatch;
-//      primary step: "Run E2E tests")
-//   platform=twin-web           -> gate-twin-web -> eval-twin-web
-//     (name: "Eval — Non-atomic Twin (Web, parallel=<N>)", single job;
-//      primary step: "Run non-atomic twin")
-//   platform=twin-android       -> gate-twin-android -> eval-twin-android
-//     (name: "Eval — Non-atomic Twin (Android)", single job;
-//      primary step: "Run non-atomic twin")
-//
-// The atomic-web/atomic-android job-name strings below were verified against a
-// real completed run (`gh run view <id> --json jobs`) on 2026-08-24. The
-// twin-web/twin-android strings were NOT — see `expectedJobCount` above.
-//
-// IMPORTANT — disclosed cost note, not a correctness issue: e2e-web's matrix is
-// NOT parameterized by any workflow_dispatch input, so every web-atomic dispatch
-// always runs all 3 browsers x 2 suites (6 jobs), even though §8.3 of the paper
-// holds browser constant at Chromium for the causal instruments. This script
-// only inspects the 2 Chromium jobs (`relevantJobNamePrefixes` below) for this
-// dispatch's own outcome — the Firefox/WebKit legs run as harmless, unused
-// overhead (arguably reusable later for §10.2's secondary cross-browser check,
-// but that is not this instrument). This roughly triples the wall-clock/cost of
-// every web-atomic dispatch versus a hypothetical Chromium-only job. Flagged
-// here rather than fixed, because pinning the matrix would mean editing
-// e2e-web's `strategy.matrix` — out of this script's scope (see plan discussion).
-const JOB_NAME_PREFIXES: Record<LegKey, string[]> = {
-  'atomic-web': [
-    'E2E — Playwright Desktop reads (chromium)',
-    'E2E — Playwright Desktop writes (chromium)',
-  ],
-  'atomic-android': ['E2E — Appium Android reads', 'E2E — Appium Android writes'],
-  'twin-web': ['Eval — Non-atomic Twin (Web'],
-  'twin-android': ['Eval — Non-atomic Twin (Android)'],
-};
-
-const EXPECTED_JOB_COUNT: Record<LegKey, number> = {
-  'atomic-web': 2,
-  'atomic-android': 2,
-  'twin-web': 1,
-  'twin-android': 1,
-};
-
-const PRIMARY_STEP_NAME: Record<LegKey, string> = {
-  'atomic-web': 'Run E2E tests',
-  'atomic-android': 'Run E2E tests',
-  'twin-web': 'Run non-atomic twin',
-  'twin-android': 'Run non-atomic twin',
-};
-
-const GH_PLATFORM_INPUT: Record<LegKey, string> = {
-  'atomic-web': 'playwright-desktop',
-  'atomic-android': 'appium-android',
-  'twin-web': 'twin-web',
-  'twin-android': 'twin-android',
-};
-
-// §3 decision 3: N=30 run_index values per arm, web + Appium-Android, both arms.
-// One experiment_batch_id for the whole instrument (matches
-// tom-quantitative-protocol.md §8's "fix one batch id, cycle run_index" pattern)
-// — arm/platform are already disambiguated downstream via TOOL_NAME/PLATFORM,
-// which every run's manifest already carries (generate-run-manifest.ts).
-function buildDeterminismMatrix(batchSuffix: string): DispatchSpec[] {
-  const batchId = `det-2026-campaign${batchSuffix}`;
-  const legs: Array<[Arm, PlatformLeg]> = [
-    ['atomic', 'web'],
-    ['atomic', 'android'],
-    ['twin', 'web'],
-    ['twin', 'android'],
-  ];
-  const specs: DispatchSpec[] = [];
-  for (const [arm, platformLeg] of legs) {
-    const key: LegKey = `${arm}-${platformLeg}`;
-    for (let i = 1; i <= 30; i++) {
-      specs.push({
-        id: `determinism__${arm}__${platformLeg}__${pad3(i)}`,
-        instrument: 'determinism',
-        arm,
-        platformLeg,
-        ghPlatformInput: GH_PLATFORM_INPUT[key],
-        experimentBatchId: batchId,
-        runIndex: pad3(i),
-        relevantJobNamePrefixes: JOB_NAME_PREFIXES[key],
-        expectedJobCount: EXPECTED_JOB_COUNT[key],
-        primaryStepName: PRIMARY_STEP_NAME[key],
-      });
-    }
-  }
-  return specs;
-}
-
-// §3 decision 4: K=16 (already the Outline's row count — not this script's
-// concern), 1 dispatch per worker level (1/2/4/8), both arms, WEB ONLY — the
-// design doc's own dispatch-count math (8 = 4 levels x 2 arms, no platform
-// multiplier) and ahm-execution-helix.yml's own eval-twin-android ("always
-// runs at parallel=1, single emulator") confirm Android has no role in this
-// specific instrument. run_index is repurposed as a worker-level label
-// ('w1'/'w2'/'w4'/'w8') since this instrument needs exactly one sample per
-// level, not N repeats — the existing manifest schema has no dedicated
-// worker-count field, and inventing one would violate §5's "no new
-// aggregation logic" principle. The label is joinable via each dispatch's own
-// GH workflowRunId already captured in the per-run manifest.
-function buildParallelSafetyMatrix(batchSuffix: string): DispatchSpec[] {
-  const batchId = `ps-2026-campaign${batchSuffix}`;
-  const workerLevels = [1, 2, 4, 8];
-  const arms: Arm[] = ['atomic', 'twin'];
-  const specs: DispatchSpec[] = [];
-  for (const arm of arms) {
-    const key: LegKey = `${arm}-web`;
-    for (const level of workerLevels) {
-      specs.push({
-        id: `parallel-safety__${arm}__web__w${level}`,
-        instrument: 'parallel-safety',
-        arm,
-        platformLeg: 'web',
-        ghPlatformInput: GH_PLATFORM_INPUT[key],
-        experimentBatchId: batchId,
-        runIndex: `w${level}`,
-        cucumberParallel: String(level),
-        relevantJobNamePrefixes: JOB_NAME_PREFIXES[key],
-        expectedJobCount: EXPECTED_JOB_COUNT[key],
-        primaryStepName: PRIMARY_STEP_NAME[key],
-      });
-    }
-  }
-  return specs;
+function buildSpecs(instrument: Cli['instrument'], batchSuffix: string): DispatchSpec[] {
+  return buildCampaignItems(instrument, batchSuffix).map(toDispatchSpec);
 }
 
 // ---------------------------------------------------------------------------
@@ -603,13 +486,7 @@ async function waitAndClassify(spec: DispatchSpec, runId: number, cli: Cli): Pro
 async function main(): Promise<void> {
   const cli = parseCli(process.argv.slice(2));
 
-  let specs: DispatchSpec[] = [];
-  if (cli.instrument === 'determinism' || cli.instrument === 'all') {
-    specs = specs.concat(buildDeterminismMatrix(cli.batchSuffix));
-  }
-  if (cli.instrument === 'parallel-safety' || cli.instrument === 'all') {
-    specs = specs.concat(buildParallelSafetyMatrix(cli.batchSuffix));
-  }
+  const specs = buildSpecs(cli.instrument, cli.batchSuffix);
 
   console.log(`Campaign matrix: ${specs.length} dispatches (instrument=${cli.instrument}, ref=${cli.ref})`);
   const byInstrument = specs.reduce<Record<string, number>>((acc, s) => {
