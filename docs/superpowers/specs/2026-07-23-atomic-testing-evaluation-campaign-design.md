@@ -38,6 +38,24 @@ exist. Last: the plugin-gap-vs-spec-forced classification §6 defers to "its own
 portability tooling has a first pass already captured, from the build-order-step-1 fixes themselves,
 in the paper's working notes (`docs/paper/atomic-testing-formal-definition.md`, the "Implement the
 remaining delta instruments" bullet) — reuse it rather than re-deriving from `342d2e0`/`6561098`.
+**UPDATE 2026-08-23 (later same day):** the "no CI job dispatches the twin at all today" gap noted
+above is now closed. `ahm-execution-helix.yml` gained two new `platform` values (`twin-web`,
+`twin-android`, plus a coarse `twin` that runs both) with their own gate jobs
+(`gate-twin-web`/`gate-twin-android`) and the actual dispatchable jobs (`eval-twin-web`/
+`eval-twin-android`), which run the `nonAtomicTwin` cucumber profile under Playwright/Chromium and
+Appium/Android respectively — deliberately excluded from `platform: all` so an ordinary CI run can
+never accidentally fire a §8.4 campaign dispatch. `eval-twin-web` exposes the existing
+`cucumber_parallel` input for the parallel-safety sweep (1/2/4/8); `eval-twin-android` always runs at
+parallel=1 (single emulator) since §3 decision 4's own dispatch-count math (8 = 4 worker levels × 2
+arms, no platform multiplier) confirms the parallel-safety sweep was scoped to web only — Android's
+role is the determinism (§3 decision 3, N=30) and portability (§3 decision 6) instruments, neither of
+which needs worker concurrency. **This closes build-order step "CI wiring" as its own deliverable,
+ahead of and independent from step 5.** The campaign orchestrator (§5, `scripts/experiments/run-
+campaign.ts`) still does not exist — nothing yet drives these two jobs across the full ~156-dispatch
+matrix, resumes after a partial failure, or enforces the concurrency cap / `INFRASTRUCTURE_FAILURE`
+exclusion rule the 2026-08-23 (morning) update above flagged as a design gap. A single manual dispatch
+of `platform: twin-web` or `twin-android` is possible today; the campaign at scale is not.
+
 **Scope:** Decides *where* and *how many times* the four §8.4 evaluation instruments run, and the
 order remaining build work happens in. Does not design the internals of the fault-injection harness
 or the portability delta tooling — those get their own brainstorm when their turn comes (see §6).
@@ -147,7 +165,12 @@ menu. Step 1 is no longer "build" — it's verify-and-tune, since the artifact a
 4. **Build the portability delta measurement** — LOC/files-touched tooling. Since step 1 confirmed
    (rather than newly built) the Mobilewright-Android leg, this instrument's artifact is whatever diff
    step 1 actually produced (likely near-zero, which is itself the finding for Corollary 1).
-5. **Build the campaign orchestrator** (§5) and run it.
+5. **Build the campaign orchestrator** (§5) and run it. **CI wiring (the capability for
+   `ahm-execution-helix.yml` to dispatch the twin at all) was pulled out of this step and delivered
+   ahead of it, 2026-08-23 — see the "UPDATE 2026-08-23 (later same day)" note above.** What remains
+   in this step is strictly the orchestrator script itself: driving `eval-twin-web`/`eval-twin-android`
+   across the full campaign matrix, resumability, the concurrency cap, and the
+   `INFRASTRUCTURE_FAILURE` exclusion rule.
 
 ## 5. Orchestration mechanism
 

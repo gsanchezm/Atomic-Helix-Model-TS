@@ -45,13 +45,14 @@ Tracking what's sourced vs. still open, so we know where to focus next.
 - [x] **Mobile leg verified live — build-order step 1 (§ campaign design doc) is now fully complete on both platforms, superseding the "Mobilewright-Android leg not yet attempted" status the previous bullet (Playwright verification) used to carry.** First attempt under Mobilewright (2026-07-25, commit `342d2e0`): three root-caused fixes applied (stale `logoutButton` mobilewright locator; an open soft keyboard occluding elements after Android `TYPE`, fixed by dismissing the IME via BACK; the twin had no equivalent of the atomic suite's `addToOrder()` API cart-seed, needed because mobile checkout deep-links with `hydrateCart=true` against a real backend cart — added `seedAndReadCartFromDraft`) — reached **13/15 steps**, blocked on the same card-expiry-year picker defect documented above that triggered the Mobilewright→Appium swap. Re-run under Appium the same day (commit `6561098`) after also fixing a stale Appium `logoutButton` locator (`login.webdriver.locators.json`, content-desc lookup for a button with no such content-desc): **15/15 steps green on the first attempt.**
 - [x] **`CUCUMBER_PARALLEL` is already parameterized in CI** — `ahm-execution-helix.yml` exposes it as a `cucumber_parallel` `workflow_dispatch` input (line ~75), consumed by both Playwright jobs (desktop + responsive) with a `'4'` fallback. This resolves build-order step 2 of `docs/superpowers/specs/2026-07-23-atomic-testing-evaluation-campaign-design.md`, whose §2 "Current-state findings" claims it's still hardcoded — that claim is now stale (the parameterization looks like an incidental side effect of the 2026-08-21 stagger/jitter work, not a deliberate step-2 delivery). Confirmed 2026-08-23 by reading the workflow directly rather than trusting the spec doc.
 - [ ] **New risk found 2026-08-23** — the determinism instrument's two arms are exposed asymmetrically to backend load — the twin performs a real UI login (and UI cart-building) on every one of its N=30×K journey rows, while the atomic arm's precondition is a single API `$S_0$` call. This project has twice this month (2026-08-21 stagger-jitter investigation, 2026-08-22/23 ZAP Path Traversal false-positive investigation) documented that concurrent CI load against the backend produces mid-run 502/503/429 responses, and that job-start jitter alone does not prevent mid-run collisions; the subsequent Render plan upgrade raises the threshold but doesn't remove the structural asymmetry (see §10.1). If that dynamic recurs during the 120-dispatch determinism campaign, it would inflate the twin's measured pass↔fail transition rate for an infrastructure reason, not a method reason — directly confounding the paper's causal claim for exactly the instrument that carries it. (a) **Done this session**: §10.1 threat-to-validity entry added. (b) **Still open**: the campaign orchestrator (build-order step 5) that would actually enforce a concurrency cap and the disclosed `INFRASTRUCTURE_FAILURE`-bucket exclusion/flagging rule doesn't exist yet — disclosure without enforcement is not a mitigation.
-- [ ] Implement the remaining delta instruments (§8.4) — status as of 2026-08-23: **parallel-safety sweep** — the K=16 twin Outline exists and `cucumber_parallel` is a confirmed CI input, but grepping `ahm-execution-helix.yml` for `non-atomic-twin`/`nonAtomicTwin` finds **no job dispatches the twin at all** — the sweep isn't dispatchable in CI yet, that wiring doesn't exist. **Diagnosability fault-injection harness** — not built. **Determinism repeated-run plan** — N=30 parameter decided, campaign orchestrator not built, zero runs executed. **Portability delta** — construction is done (the Appium-Android twin leg above *is* this instrument's artifact per §8.4's "no separate build" design), but the LOC/files-touched measurement itself, and the spec-forced-vs-plugin-gap counting methodology it needs, have not been computed yet. The classification §8.4 requires is captured now, while construction is still fresh, rather than reconstructed later from memory (§8.5): of the four `342d2e0`/`6561098` fixes, `checkout-nonatomic.route.ts`'s `seedAndReadCartFromDraft` is **twin-only code — spec-forced**; the other three (`login.wright.locators.json`'s stale `logoutButton`, `Type.ts`'s post-TYPE IME-dismiss-via-BACK, and `login.webdriver.locators.json`'s stale Appium `logoutButton`) are **shared TOM/plugin-contract code that also affects the atomic suites — plugin-gap**, and should be excluded from the reported portability delta per §8.4's policy once step 4 actually computes it.
+- [x] **Portability delta tooling built and run 2026-08-23** (build-order step 4) — `scripts/experiments/portability-delta.ts` (`pnpm experiments:portability-delta`), output `reports/portability-delta.json` (gitignored, regenerate on demand). Two deliberately separate measurements, not one hybrid number (a mixed structural-vs-historical delta would fail §8.1's own construct-validity standard — see the design note in §8.4/§9.4): (1) a **symmetric structural check**, identical procedure both arms — do the `.feature`/`step_definitions` files contain any `PLATFORM`/`DRIVER`-conditional code? **Zero for both** (atomic: 0/11 files scanned across login+catalog+pizzaBuilder+checkout; twin: 0/4 files scanned) — direct structural support for Corollary 1. (2) The twin's mobile-port cost (`342d2e0`/`6561098`), refined from a 2-way to a **3-way** classification after checking whether each fix survived the Mobilewright→Appium swap: `checkout-nonatomic.route.ts`'s `seedAndReadCartFromDraft` is twin-only code, verified present unchanged at the Appium-green commit and HEAD — **spec-forced, counted** (1 file, 63 LOC). `login.webdriver.locators.json`'s stale Appium locator is shared plugin-contract code — **plugin-gap, excluded but disclosed** (1 file, 5 LOC). `login.wright.locators.json` and `Type.ts` are Mobilewright-only fixes from the abandoned attempt, never exercised again after the swap to Appium (§7.1 excludes Mobilewright from this paper's tool scope entirely) — **out-of-scope, neither counted nor plugin-gap** (2 files, 16 LOC). No atomic-arm equivalent computed for (2): the atomic suites' Android support predates this evaluation at unknown effort/circumstance parity, so a historical diff would not be a like-for-like §8.1 comparison — reported as a labeled, non-comparable line item instead (§9.4).
+- [x] **CI wiring for the non-atomic twin — closed 2026-08-23** (the "no CI job dispatches the twin at all" gap flagged repeatedly this session, e.g. §9.1's partial parallel-safety data point above). `ahm-execution-helix.yml` gained `twin`/`twin-web`/`twin-android` `platform` values, dedicated gates (`gate-twin-web`/`gate-twin-android`, deliberately excluded from `platform: all` and the disabled push/PR fallback so an ordinary CI run can never fire a §8.4 campaign dispatch by accident), and the actual dispatchable jobs (`eval-twin-web`/`eval-twin-android`) running the `nonAtomicTwin` cucumber profile. `eval-twin-web` exposes `cucumber_parallel` (1/2/4/8) — this is specifically what unblocks the parallel-safety sweep's remaining worker levels; `eval-twin-android` runs at a fixed parallel=1 (single emulator — the sweep is web-only per the campaign design's own dispatch-count math, Android's role is the determinism/portability instruments). **One known gap, not yet confirmed fixed as of this writing:** `consolidate`'s `needs:` list doesn't include the two new jobs, so a `platform=twin-web -f architecture_type=TOM` dispatch risks `consolidate` completing before the twin's own metrics artifact uploads — flagged to whoever lands this diff, verify before relying on TOM-mode consolidation for a twin dispatch. This closes the CI-wiring *capability* only, one dispatch at a time — the campaign orchestrator (build-order step 5) that would drive the full ~156-dispatch matrix, with resumability and a concurrency cap, still doesn't exist.
 - [x] Repeated-run plan decided (2026-07-23, see `docs/superpowers/specs/2026-07-23-atomic-testing-evaluation-campaign-design.md`): **N=30** `run_index` values per arm, on **web (Playwright/Chromium) + Mobilewright-Android** — written before the 2026-07-25 tool swap; read as **Appium-Android** per §7.1 (iOS excluded from the repeated determinism runs — macOS runner concurrency — but still covered by the one-shot portability instrument). Execution environment for **all four** §8.4 instruments: **GitHub Actions** `workflow_dispatch` (repo is public — no minutes ceiling), driven by an idempotent campaign orchestrator over the existing `experiment_batch_id`/`run_index` inputs. Parallel-safety sweep: **K=16** identical Outline rows, 1 dispatch per worker level (1/2/4/8).
 - [ ] Abstract — write last, once Sections 4–5 and Results are stable.
 - [x] **Related Work sourced 2026-08-23** — §2 filled in (granularity heuristics incl. Google's test-size taxonomy, flaky tests/test isolation incl. industrial scale data, model-based testing, metamorphic testing incl. the oracle-problem survey, BDD/Gherkin incl. specification-by-example, and a new §2.6 test-fixture/isolation-patterns subsection) plus the §8.1 author-constructed-baseline-validity paragraph. **27 citations total**, independently verified across two passes the same day (15 then +12, the second pass at the author's explicit request for ≥25 references) — real DOI/arXiv/URL/ISBN fetched or cross-checked against publisher/institutional-repo records, not assumed from title plausibility alone; 0 rejected across both passes. Full reference list now in §References.
-- [x] **Diagnosability fault-injection harness designed 2026-08-23** (build-order step 3) — see `docs/superpowers/specs/2026-08-23-diagnosability-fault-injection-harness-design.md`. Two-site mechanism: OmniPizza's existing 7 seeded "chaos users" (zero new backend code, session-scoped so safe under concurrent dispatches) for API/data buckets, a new small `chaos-proxy.ts` hook for tool/UI buckets. 11/14 taxonomy buckets have a grounded mechanism (1 needs a known-contract-mismatch check before use, 1 needs implementation-time confirmation); `VISUAL_DIFF_FAILURE`/`VISUAL_BASELINE_MISSING` honestly excluded (twin runs no visual contract). Not yet implemented.
-- [ ] **New finding 2026-08-23 — parallel-safety instrument (§8.4/§9.1) returned a null result, root-caused.** First-ever run of the K=16 twin at `CUCUMBER_PARALLEL=4`: 16/16 scenarios, 240/240 steps, zero degradation (`retry:0`, so not retry-masked). Read OmniPizza's backend source directly (`~/Documents/Repos/OmniPizza/backend/database.py:89-91`, `routers/auth.py:60`): its three mutable stores (`orders`, `sessions`, `user_profiles`) are keyed by UUID/`session_id`, **never by username** — a fresh `session_id` is minted on every login regardless of which account logs in. There is no server-side shared mutable state keyed by account in this application, so the twin's R2 violation (shared `standard_user`, no per-instance fixture) cannot produce a data collision here at any worker count or repetition — a structural finding, not a sample-size one. This also reframes the original motivation for `write-lock.hooks.ts`/`@writes-shared-state` (see project memory `project_parallelism_write_lock`, 2026-07-13): the "known race against OmniPizza's shared `standard_user` account" it cites was very likely backend-capacity/rate-limiting under concurrent login bursts (independently documented twice this month, §10.1), not an application-level data race. **Open decision for the author:** redesign the instrument against a genuinely account-keyed resource (none found yet after reading the full `InMemoryDB` and checkout/auth routers), reframe what it measures (capacity resilience, not collision-correctness), or disclose the null result as a limitation. Not resolved by this session — do not silently reinterpret §8.4's Corollary 2 causal story without that decision.
-- [ ] Results — the twin suites exist and are verified live on both platforms (see above); still blocked on implementing the (now-designed) fault-injection harness, portability tooling, campaign orchestrator, and CI wiring for the twin, then on repeated runs of both arms through the unmodified TOM pipeline. The parallel-safety instrument specifically is also blocked on the open decision above.
+- [x] **Diagnosability fault-injection harness designed 2026-08-23** (build-order step 3) — see `docs/superpowers/specs/2026-08-23-diagnosability-fault-injection-harness-design.md`. Two-site mechanism: OmniPizza's existing 7 seeded "chaos users" (zero new backend code, session-scoped so safe under concurrent dispatches) for API/data buckets, a new small `chaos-proxy.ts` hook for tool/UI buckets. 11/14 taxonomy buckets have a grounded mechanism (1 needs a known-contract-mismatch check before use, 1 needs implementation-time confirmation); `VISUAL_DIFF_FAILURE`/`VISUAL_BASELINE_MISSING` honestly excluded (twin runs no visual contract). **Implemented and live-verified the same day** (`src/kernel/fault-injection.ts`, `chaos-proxy.ts` integration, commit `048667c`) — `tsc --noEmit` clean, standalone verification confirmed all 5 chaos-proxy-injectable buckets classify correctly, and a live run against `place-delivery-order.feature` produced real injected failures in telemetry. Not yet wired into the campaign orchestrator or dispatched via CI — the mechanism works locally, nothing dispatches it at scale yet.
+- [x] **New finding 2026-08-23 — parallel-safety instrument (§8.4/§9.1) returned a null result, root-caused.** First-ever run of the K=16 twin at `CUCUMBER_PARALLEL=4`: 16/16 scenarios, 240/240 steps, zero degradation (`retry:0`, so not retry-masked). Read OmniPizza's backend source directly (`~/Documents/Repos/OmniPizza/backend/database.py:89-91`, `routers/auth.py:60`): its three mutable stores (`orders`, `sessions`, `user_profiles`) are keyed by UUID/`session_id`, **never by username** — a fresh `session_id` is minted on every login regardless of which account logs in. There is no server-side shared mutable state keyed by account in this application, so the twin's R2 violation (shared `standard_user`, no per-instance fixture) cannot produce a data collision here at any worker count or repetition — a structural finding, not a sample-size one. This also reframes the original motivation for `write-lock.hooks.ts`/`@writes-shared-state` (see project memory `project_parallelism_write_lock`, 2026-07-13): the "known race against OmniPizza's shared `standard_user` account" it cites was very likely backend-capacity/rate-limiting under concurrent login bursts (independently documented twice this month, §10.1), not an application-level data race. **Resolved 2026-08-23:** the author chose to **reframe** the instrument rather than redesign it or disclose the null result as a bare limitation — its prediction is rewritten in §8.4, the interim (partial) finding is reported in §9.1, and the implication for `write-lock.hooks.ts`'s original rationale is disclosed in §10.1.
+- [ ] Results — the twin suites exist and are verified live on both platforms (see above), and §9.4 (portability) is now fully populated; §9.1 (parallel safety) has one partial data point, and the twin is now dispatchable via CI (one call at a time — see the CI-wiring bullet above). §9.2 (diagnosability) and §9.3 (determinism), and the rest of §9.1's sweep, remain blocked on the campaign orchestrator (build-order step 5, not yet built) to actually drive the full matrix, then on repeated runs of both arms through the unmodified TOM pipeline.
 - [x] References — inline `[Author, Year]` + alphabetical reference list adopted 2026-08-23 (§References). Revisit only if the target venue mandates a different style.
 - [ ] Decide whether Corollaries (§5) need actual proofs or stay as informal justifications.
 
@@ -340,7 +341,10 @@ than being separately engineered:
   alternate platforms; they are out of scope here (§7.1) but not counterevidence to the corollary.
 - **Corollary 2 — Parallel safety.** TODO: Rule 2 ($S_{t_i} \cap S_{t_j} = \emptyset$) implies the test
   suite is safe to execute concurrently without explicit ordering, except for tests that declare a
-  shared-state dependency explicitly (an escape hatch, not a violation).
+  shared-state dependency explicitly (an escape hatch, not a violation). This paper's reference
+  application has no naturally occurring account-keyed shared mutable state, so this corollary cannot
+  be empirically discriminated via data-collision on this dataset — see §8.4/§9.1 for what was
+  measured instead.
 - **Corollary 3 — Deterministic diagnosis.** TODO: Rules 1 + 4 together imply that a failing atomic
   test identifies both *what* broke and that the break is reproducible, not transient.
 
@@ -567,10 +571,10 @@ generalization check (§10.2) — not one of the primary instruments.
 
 | Corollary | Prediction | Instrument | Why this shape, not a single ratio |
 |---|---|---|---|
-| **Parallel safety** (from R2) | Atomic checkout suite's failure rate stays flat as concurrency increases (it already declares `@writes-shared-state` on `standard_user` and is serialized by the existing FIFO write-lock hook — verified in `write-lock.hooks.ts`, gated on that tag alone); the twin's climbs | Run the **existing, unmodified** atomic checkout suite (no new construction needed on this arm) and the twin's K-row Outline both at `CUCUMBER_PARALLEL = 1, 2, 4, 8`; plot failure rate vs. worker count for each | A curve isolates *where* contention starts; a single ratio hides that shape. Using the twin's K identical journey rows (not a fused/reduced scenario count) keeps the number of parallelizable units stable across sweep points — the flaw in the earlier fused-Outline design |
+| **Parallel safety** (from R2) | **Reframed 2026-08-23 — see the note below the table.** A source-level audit of OmniPizza's backend (`backend/database.py:89-91`, `backend/routers/auth.py:60`) found its three mutable stores (`orders`, `sessions`, `user_profiles`) keyed by UUID/`session_id`, never by username — this reference application has no account-keyed collision surface for R2 to guard against. The instrument therefore no longer predicts a data-collision failure-rate delta; it instead measures whether concurrent same-account UI traffic (the twin's R2 violation) degrades correctness or exposes backend-capacity limits as concurrency increases | Run the **existing, unmodified** atomic checkout suite (no new construction needed on this arm) and the twin's K-row Outline both at `CUCUMBER_PARALLEL = 1, 2, 4, 8`; plot failure rate vs. worker count for each | A curve still isolates *where* contention starts — now read as *where backend capacity limits, if any, start*, not as a data-collision signal. Using the twin's K identical journey rows (not a fused/reduced scenario count) keeps the number of parallelizable units stable across sweep points — the flaw in the earlier fused-Outline design |
 | **Diagnosability** (from R1, compounded) | A fault fails exactly the atomic scenario that owns it, classified into its true failure bucket; the same fault in the journey produces a wider blast radius (the whole journey fails) and can surface far from its true cause (e.g. a cart-calculation fault only manifesting at the order-confirmation assertion) | Systematic fault injection at a layer **both arms genuinely share** — backend/network, not UI vs. API setup, since the twin's setup is now all-UI while the atomic arm's is API and a setup-layer fault wouldn't be the "same" fault in both. One representative fault per entry in the existing 14-bucket taxonomy (`scripts/metrics/lib/failure-buckets.ts`). Measure blast radius (# scenarios/oracles failing) and localization accuracy (does the reported bucket name the true cause, or the symptom where it happened to surface) | Injecting from the *whole* taxonomy, at a shared layer, removes both fault-selection bias and arm-asymmetric injection as sources of bias |
 | **Determinism** (from R4, mediated by R2) | The twin shows a higher pass↔fail transition rate across repeated runs than the atomic suite, *even with TOM's chaos suppression identical in both arms* | Repeat each suite across **N=30** `run_index` values under one `experiment_batch_id`, on **web (Playwright/Chromium) + Appium-Android** (iOS excluded from repetition), both arms at `retry: 0` (see §8.3) so a masked retry doesn't hide the signal; reuse the existing reliability infrastructure (`measure-reliability.ts`, pass→fail / fail→pass transition probabilities) | TOM's chaos suppression (`λ < 0`) only absorbs *transient* noise and fails fast on deterministic ones (README:27,48). R2 collisions in the twin are deterministic, not transient — TOM won't retry them away. That's the mechanism making the delta attributable to the method. Suppression applies identically to both arms, so it still partially masks method-induced flakiness in the twin too — read the delta as a **conservative, lower-bound** estimate |
-| **Platform invariance** (from R3, Corollary 1) | Porting the atomic suites from Playwright (web) to Appium (Android + iOS) costs ~0 spec changes; porting the twin journey costs materially more | For both arms, measure LOC/files touched in the `.feature`/step-definition layer needed to also pass under Appium, with the API surface held as the common $S_0$ path on the atomic side (the twin's Appium-Android leg built for the determinism instrument is the artifact measured here — no separate construction) | Isolates the *specification*-level cost from the architecture, which is held constant and already supports both platforms |
+| **Platform invariance** (from R3, Corollary 1) | **Measured 2026-08-23 — see the note below the table.** Porting the atomic suites from Playwright (web) to Appium (Android + iOS) costs 0 spec-layer changes, confirmed structurally; porting the twin journey costs 0 spec-layer changes too, but a small, non-zero amount of twin-only implementation code (63 LOC, 1 file) that the atomic arm has no equivalent of | For both arms, check the `.feature`/step-definition layer for platform-conditional code (structural, symmetric across arms); separately, for the twin only, classify each file touched while getting its mobile leg green as spec-forced (counts), plugin-gap (excluded, disclosed), or out-of-scope (Mobilewright artifacts, §7.1 — neither counted nor plugin-gap) | Isolates the *specification*-level cost from the architecture, which is held constant and already supports both platforms; the two measurements are kept separate rather than combined into one number because they use different procedures (structural check vs. classified historical diff) — combining them would fail §8.1's own construct-validity standard |
 
 **Threat specific to the portability instrument.** Mobile execution (Appium, Android + iOS) is
 not optional here — it *is* the instrument, not an add-on (see §7.1). But it makes this instrument the
@@ -584,6 +588,51 @@ a missing or unreliable plugin action gets logged separately and excluded from t
 the gap itself disclosed rather than silently worked around — see §7.1 for the Mobilewright→Appium
 substitution this policy produced. Also tracked in §10.1.
 
+**Note on the portability instrument's measurement (2026-08-23).** Computed by
+`scripts/experiments/portability-delta.ts` (`pnpm experiments:portability-delta`); full output in
+`reports/portability-delta.json` (gitignored, regenerate on demand rather than trusting a stale copy).
+Two separate procedures, not one combined delta — a single "atomic: 0 vs. twin: N" number would mix a
+structural claim (inspecting the current tree) with a historical git-diff (a past port event), which
+fails this paper's own construct-validity standard (§8.1: the same operator, applied the same way, to
+both arms). **Structural check (symmetric, both arms):** the `.feature`/`step_definitions` files for
+login+catalog+pizzaBuilder+checkout (atomic, 11 files) and for the twin (4 files) contain zero
+`PLATFORM`/`DRIVER`-conditional code — the specification is identical across Playwright and Appium for
+both arms. This is Corollary 1's actual claim, and it holds for both arms equally. **Twin-only mobile-port
+cost (not symmetric, no atomic equivalent — disclosed as such, not hidden):** of the four files touched
+getting the twin's mobile leg green (`342d2e0`, `6561098`), one survives, unchanged, into the
+Appium-green state and HEAD — `checkout-nonatomic.route.ts`'s `seedAndReadCartFromDraft`, twin-only code
+forced by the specification itself (mobile checkout deep-links with a real backend cart the twin had no
+equivalent of) — **spec-forced, 1 file, 63 LOC, counted**. One is shared plugin-contract code relevant to
+Appium specifically (`login.webdriver.locators.json`'s stale locator) — **plugin-gap, 1 file, 5 LOC,
+excluded but disclosed**, per the mitigation policy above. Two are fixes made during the abandoned
+Mobilewright attempt (`login.wright.locators.json`, `Type.ts`) — since Mobilewright is outside this
+paper's tool scope entirely (§7.1) and neither fix was exercised again after the swap to Appium, these
+are **out of scope, 2 files, 16 LOC, neither counted nor plugin-gap**. No atomic-arm number is reported
+for this half of the measurement: the atomic suites' Android support predates this evaluation, at
+unknown effort/circumstance parity, so a historical diff of those original commits would not be a
+like-for-like comparison — reported in §9.4 as a labeled, non-comparable line item instead of a
+fabricated zero.
+
+**Note on the parallel-safety instrument's reframing (2026-08-23).** The first-ever dispatch of this
+instrument, K=16 at `CUCUMBER_PARALLEL=4` (one of the four planned worker levels), returned a null
+result: 16/16 scenarios, 240/240 steps, zero degradation, `retry:0` so the result is not retry-masked.
+Root-caused by reading OmniPizza's backend source directly rather than inferring from behavior alone
+(`backend/database.py:89-91`, `backend/routers/auth.py:60`): the application's three mutable stores are
+keyed by UUID/`session_id`, minted fresh on every login regardless of account, and never by username —
+there is no server-side shared mutable state keyed by account for the twin's R2 violation (shared
+`standard_user`, no per-instance fixture) to collide against, at any worker count. The instrument's
+causal target is therefore reframed from data-collision correctness to concurrent-traffic resilience —
+the row above no longer predicts a failure-rate delta attributable to R2, only measures whether
+concurrent same-account UI load degrades correctness or surfaces backend-capacity limits. This does not
+call Corollary 2 (§5) into question in general — it remains a direct logical consequence of Rule 2's
+disjoint-state requirement — only that this specific reference application cannot demonstrate it via
+data collision. One further implication follows, disclosed here as a hypothesis this evaluation did not
+directly test rather than a proven claim: given the absence of account-keyed backend state, the original
+2026-07-13 rationale for `write-lock.hooks.ts`/`@writes-shared-state` (avoiding "the known race against
+OmniPizza's shared `standard_user` account") was most likely protecting against backend-capacity/
+rate-limiting under concurrent login bursts — independently documented twice this month, §10.1 — rather
+than an application-level data race.
+
 ### 8.5 Evidence policy (inherited from the framework's own norm)
 
 Consistent with `docs/research/metrics-protocol.md` §9: no fabricated or estimated values. A metric
@@ -595,15 +644,24 @@ count hasn't been executed) is reported as **not yet measured**, not as a placeh
 
 ## 9. Results
 
-> TODO — blocked on running both arms through the unmodified TOM pipeline for each instrument in §8.4
-> (the de-atomized twin suites themselves are built and verified live on both platforms as of
-> 2026-08-23 — see the working notes above — so this is a runs-and-tooling blocker, not a
-> construction blocker: the fault-injection harness, portability delta tooling, and campaign
-> orchestrator still need building; the parallel-safety sweep additionally has no CI job dispatching
-> the twin yet). Skeleton below shows the target
-> shape; **no values are estimated or filled until real runs produce them.**
+> TODO — §9.4 (portability) is fully populated as of 2026-08-23; §9.1 (parallel safety) has one partial
+> data point. §9.2 (diagnosability) and §9.3 (determinism) remain blocked: the fault-injection harness
+> is built (see working notes) but not yet wired into the campaign orchestrator, and the campaign
+> orchestrator itself (build-order step 5) doesn't exist yet — CI wiring for the twin is in progress as
+> of 2026-08-23. The de-atomized twin suites themselves are built and verified live on both platforms
+> (see the working notes above), so the remaining blockers are runs-and-tooling, not construction.
+> **No values are estimated or filled until real runs produce them.**
 
 ### 9.1 Parallel safety
+
+**Partial — 1 of 4 planned worker levels dispatched.** The `worker=4` twin-only dispatch (§8.4's
+reframing note): 16/16 scenarios, 240/240 steps, zero failures, `retry:0`. Per the reframe above, this
+is evidence of backend resilience under concurrent same-account UI traffic, not evidence bearing on
+Corollary 2's general claim — this application has no data-collision surface for that claim to be
+tested against (§8.4). The twin is now dispatchable via CI (`ahm-execution-helix.yml`, closed
+2026-08-23 — see the working notes above), one worker level at a time; the remaining worker levels
+(1/2/8) and the atomic arm's own sweep are pending the campaign orchestrator (build-order step 5, not
+yet built) to actually drive the full matrix rather than one-off manual dispatches.
 
 | Workers | Atomic suite — failure rate | Non-atomic twin — failure rate |
 |---|---|---|
@@ -642,10 +700,25 @@ count hasn't been executed) is reported as **not yet measured**, not as a placeh
 
 ### 9.4 Portability (cost to add a second platform)
 
-| Suite | Files touched | LOC changed |
+Two separate measurements — see §8.4's "Note on the portability instrument's measurement" for why they
+are not combined into one delta. Computed by `pnpm experiments:portability-delta`
+(`reports/portability-delta.json`).
+
+**Structural check** — `.feature`/`step_definitions` files containing `PLATFORM`/`DRIVER`-conditional
+code, out of files scanned:
+
+| Suite | Platform-conditional files | Files scanned |
 |---|---|---|
-| Atomic | — | — |
-| Non-atomic twin | — | — |
+| Atomic (login+catalog+pizzaBuilder+checkout) | 0 | 11 |
+| Non-atomic twin | 0 | 4 |
+
+**Twin-only mobile-port cost** — no atomic-arm equivalent (see note above for why):
+
+| Classification | Files | LOC changed | Counted in delta? |
+|---|---|---|---|
+| Spec-forced (`checkout-nonatomic.route.ts`) | 1 | 63 | Yes |
+| Plugin-gap, Appium-relevant (`login.webdriver.locators.json`) | 1 | 5 | No — disclosed |
+| Out-of-scope, Mobilewright (`login.wright.locators.json`, `Type.ts`) | 2 | 16 | No — out of §7.1 tool scope |
 
 ---
 
@@ -689,6 +762,16 @@ count hasn't been executed) is reported as **not yet measured**, not as a placeh
   instrument specifically (mirroring the existing plugin-gap bookkeeping policy for the portability
   instrument, §8.4) has not been built. Tracked as an open working-note (top of document) until the
   orchestrator design closes it.
+- **Reference application has no natural parallel-safety collision surface (found 2026-08-23, reframed
+  not mitigated).** OmniPizza's `InMemoryDB` has zero mutable state keyed by username — confirmed by
+  reading `backend/database.py` and `backend/routers/auth.py` directly (see §8.4's reframing note for
+  the exact locations: `database.py:89-91`, `auth.py:60`). This means the parallel-safety instrument
+  (§8.4/§9.1) cannot empirically discriminate Corollary 2 via data-collision on this specific reference
+  application, at any worker count — a limitation of this dataset's applicability to that corollary, not
+  a refutation of the corollary itself, which remains a general logical consequence of Rule 2's
+  disjoint-state requirement (§5). Also disclosed, hedged as noted-not-proven since it was not directly
+  tested: this reframes the likely original motivation for `write-lock.hooks.ts` as probable
+  backend-capacity protection rather than a correctness requirement in this application.
 
 ### 10.2 Limitations
 

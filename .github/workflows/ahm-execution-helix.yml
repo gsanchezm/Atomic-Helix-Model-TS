@@ -29,7 +29,7 @@ on:
         required: false
         default: all
         type: choice
-        options: [all, api, web, playwright, playwright-desktop, playwright-responsive, pixelmatch, pixelmatch-desktop, pixelmatch-responsive, mobile, android, ios, appium, appium-android, appium-ios, perf, gatling, security, a11y]
+        options: [all, api, web, playwright, playwright-desktop, playwright-responsive, pixelmatch, pixelmatch-desktop, pixelmatch-responsive, mobile, android, ios, appium, appium-android, appium-ios, perf, gatling, security, a11y, twin, twin-web, twin-android]
       architecture_type:
         description: 'Pipeline identity — selects the reporting/metrics tail'
         required: false
@@ -73,7 +73,7 @@ on:
         type: choice
         options: ['28', '29', '30', '31', '32', '33']
       cucumber_parallel:
-        description: 'Cucumber worker count (playwright-desktop/responsive only — the §8.4 parallel-safety sweep uses 1/2/4/8)'
+        description: 'Cucumber worker count (playwright-desktop/responsive and twin-web — the §8.4 parallel-safety sweep uses 1/2/4/8; twin-android always runs at 1, single emulator)'
         required: false
         default: '4'
 
@@ -214,6 +214,34 @@ jobs:
       - run: echo "Accessibility selected"
 
   # ---------------------------------------------------------------------------
+  # Gates: §8.4 evaluation-campaign artifact (the non-atomic twin).
+  # Deliberately NOT gated on `platform == 'all'` or the
+  # `github.event_name != 'workflow_dispatch'` auto-trigger fallback that
+  # every other gate above uses — a campaign dispatch (§8.4) must always be
+  # an explicit, single-purpose choice, never something an ordinary
+  # `platform=all` (or a future re-enabled push/PR trigger) fires by
+  # accident. See docs/superpowers/specs/2026-07-23-atomic-testing-
+  # evaluation-campaign-design.md §3 decision 1.
+  # ---------------------------------------------------------------------------
+  gate-twin-web:
+    name: Gate — Non-atomic Twin (Web)
+    runs-on: ubuntu-latest
+    if: >-
+      inputs.platform == 'twin'
+      || inputs.platform == 'twin-web'
+    steps:
+      - run: echo "Non-atomic twin (web) selected"
+
+  gate-twin-android:
+    name: Gate — Non-atomic Twin (Android)
+    runs-on: ubuntu-latest
+    if: >-
+      inputs.platform == 'twin'
+      || inputs.platform == 'twin-android'
+    steps:
+      - run: echo "Non-atomic twin (Android) selected"
+
+  # ---------------------------------------------------------------------------
   # Resolver: latest OmniPizza release
   #
   # Queries GitHub's `/releases/latest` for the OmniPizza repo and exposes
@@ -227,7 +255,9 @@ jobs:
   # included too — security-mobsf needs
   # this job's outputs to download both platform binaries for its static
   # scan; without this, a `platform=security` dispatch would skip this
-  # resolver and cascade-skip security-mobsf (which `needs:` it).
+  # resolver and cascade-skip security-mobsf (which `needs:` it). `twin`/
+  # `twin-android` included for the same reason — eval-twin-android needs
+  # the resolved APK download URL too.
   # ---------------------------------------------------------------------------
   resolve-omnipizza-release:
     name: Resolve — OmniPizza latest release
@@ -242,6 +272,8 @@ jobs:
       || inputs.platform == 'appium-android'
       || inputs.platform == 'appium-ios'
       || inputs.platform == 'security'
+      || inputs.platform == 'twin'
+      || inputs.platform == 'twin-android'
     outputs:
       tag: ${{ steps.fetch.outputs.tag }}
       base_url: ${{ steps.fetch.outputs.base_url }}
@@ -1850,6 +1882,302 @@ jobs:
   # or skip, but does not resurrect on a cancelled run.
   # Spec: docs/superpowers/specs/2026-07-29-gatling-ci-perf-isolation-design.md
   # ---------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # Job 5b/5c: Evaluation — Non-atomic Twin (§8.4 evaluation-campaign artifact)
+  #
+  # NOT part of ordinary CI gating — both jobs below only run on an explicit
+  # `platform: twin` / `twin-web` / `twin-android` dispatch, never on `all`
+  # (gate-twin-web / gate-twin-android above). This closes the CI-wiring gap
+  # tracked in docs/superpowers/specs/2026-07-23-atomic-testing-evaluation-
+  # campaign-design.md §4 ("no CI job dispatches the twin at all today") and
+  # docs/paper/atomic-testing-formal-definition.md's working notes — it adds
+  # the *capability* to dispatch the twin once via `workflow_dispatch`; it
+  # does not itself run the ~156-dispatch campaign (build-order step 5, the
+  # campaign orchestrator, still needs to be built to drive this at scale).
+  #
+  # Excluded from perf-fence's needs: `platform` is a single-choice input and
+  # `twin`/`twin-web`/`twin-android` are not part of `all`, so these jobs and
+  # perf-gatling can never be dispatched in the same workflow run — no fence
+  # is needed between them.
+  #
+  # Report filenames are platform-suffixed (non-atomic-twin-web.json /
+  # non-atomic-twin-android.json), unlike the local dev scripts'
+  # reports/non-atomic-twin.json (package.json's test:eval:non-atomic-twin*),
+  # because both jobs' artifacts can land in the same downstream
+  # download-artifact merge (e.g. `consolidate`) and would otherwise collide.
+  # ---------------------------------------------------------------------------
+  eval-twin-web:
+    name: Eval — Non-atomic Twin (Web, parallel=${{ inputs.cucumber_parallel || '4' }})
+    needs: gate-twin-web
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-jammy
+      options: --user 0
+    env:
+      TOOL_NAME: non-atomic-twin-web
+      PLATFORM: web
+      VIEWPORT: desktop
+      DRIVER: playwright
+      BROWSER: chromium
+      TOM_RUN_ID: >-
+        ${{ inputs.architecture_type == 'TOM'
+            && format('tom-{0}-{1}-{2}-non-atomic-twin-web', github.run_id, github.run_attempt, inputs.run_index || github.run_attempt)
+            || format('gh-{0}-{1}-non-atomic-twin-web', github.run_id, github.run_attempt) }}
+
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+      - name: Cache pnpm store
+        uses: actions/cache@v5
+        with:
+          path: ~/.pnpm-store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Start proxy + plugins
+        shell: bash
+        run: bash ci/steps/start-stack.sh web
+        env:
+          BASE_URL: ${{ secrets.BASE_URL }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          BROWSER: chromium
+          PLATFORM: web
+          VIEWPORT: desktop
+          DRIVER: playwright
+          HEADLESS: 'true'
+          PLAYWRIGHT_ADDRESS: 127.0.0.1:50052
+          API_ADAPTER_ADDRESS: 127.0.0.1:50055
+          PLUGIN_PLAYWRIGHT: 'true'
+          PLUGIN_PIXELMATCH: 'false'
+          PLUGIN_API: 'true'
+
+      - name: Stagger start (spread backend login load across the run)
+        run: sleep $(( RANDOM % 76 ))
+
+      - name: Capture run start time
+        if: always()
+        run: echo "RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Run non-atomic twin
+        shell: bash
+        run: ./node_modules/.bin/cucumber-js --profile nonAtomicTwin --format "json:reports/non-atomic-twin-web.json" --format progress
+        env:
+          BASE_URL: ${{ secrets.BASE_URL }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          BROWSER: chromium
+          CUCUMBER_PARALLEL: ${{ inputs.cucumber_parallel || '4' }}
+          PLATFORM: web
+          VIEWPORT: desktop
+          DRIVER: playwright
+          PROXY_ADDRESS: 127.0.0.1:50051
+          HEADLESS: 'true'
+          PLUGIN_PIXELMATCH: 'false'
+
+      - name: Capture run end time
+        if: always()
+        run: echo "RUN_ENDED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Collect artifacts
+        if: always()
+        run: bash ci/steps/collect-artifacts.sh non-atomic-twin-web
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ahm-artifacts-${{ github.job }}-${{ github.run_id }}
+          path: artifacts/non-atomic-twin-web/
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Teardown
+        if: always()
+        run: bash ci/steps/teardown.sh
+
+  eval-twin-android:
+    name: Eval — Non-atomic Twin (Android)
+    needs: [gate-twin-android, resolve-omnipizza-release]
+    runs-on: ubuntu-latest
+    env:
+      TOOL_NAME: non-atomic-twin-android
+      PLATFORM: android
+      DRIVER: appium
+      TOM_RUN_ID: >-
+        ${{ inputs.architecture_type == 'TOM'
+            && format('tom-{0}-{1}-{2}-non-atomic-twin-android', github.run_id, github.run_attempt, inputs.run_index || github.run_attempt)
+            || format('gh-{0}-{1}-non-atomic-twin-android', github.run_id, github.run_attempt) }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+      - name: Cache pnpm store
+        uses: actions/cache@v5
+        with:
+          path: ~/.pnpm-store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Android platform tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y android-sdk-platform-tools
+          adb version
+
+      - name: Download Android app artifact
+        env:
+          OMNIPIZZA_RELEASE_BASE_URL: ${{ needs.resolve-omnipizza-release.outputs.base_url }}
+          OMNIPIZZA_RELEASE_TAG: ${{ needs.resolve-omnipizza-release.outputs.tag }}
+        run: |
+          mkdir -p assets/apps/android
+          echo "Downloading OmniPizza Android APK from release ${OMNIPIZZA_RELEASE_TAG}"
+          curl -fL "$OMNIPIZZA_RELEASE_BASE_URL/omnipizza-release.apk" \
+            -o assets/apps/android/app-release.apk
+          ls -lh assets/apps/android/app-release.apk
+
+      - name: Start MinIO Telemetry Storage
+        run: |
+          if docker compose version >/dev/null 2>&1; then
+            docker compose -f infrastructure/minio-compose.yml up -d
+          else
+            docker-compose -f infrastructure/minio-compose.yml up -d
+          fi
+          sleep 5
+
+      - name: Start Android emulator (docker-android)
+        run: |
+          docker run -d \
+            --name android-emulator \
+            --privileged \
+            --device /dev/kvm \
+            -p 5554:5554 \
+            -p 5555:5555 \
+            -e API_LEVEL=${{ inputs.android_api_level || '33' }} \
+            -e IMG_TYPE=google_apis \
+            -e ARCHITECTURE=x86_64 \
+            -e DEVICE_ID=pixel \
+            -e MEMORY=4096 \
+            -e CORES=2 \
+            -e DISABLE_ANIMATION=true \
+            -e DISABLE_HIDDEN_POLICY=true \
+            -e SKIP_AUTH=1 \
+            halimqarroum/docker-android:api-${{ inputs.android_api_level || '33' }}
+
+      - name: Start Appium server
+        run: |
+          pnpm exec appium --relaxed-security &
+          sleep 5
+
+      - name: Wait for emulator to be ready
+        run: |
+          echo "Waiting for ADB device to appear..."
+          adb connect localhost:5555
+          for i in $(seq 1 40); do
+            if adb -s localhost:5555 shell getprop sys.boot_completed 2>/dev/null | grep -q "1"; then
+              echo "Emulator ready after $((i * 15))s"
+              break
+            fi
+            echo "  Attempt $i/40 — waiting 15s..."
+            sleep 15
+          done
+          adb devices
+          adb -s localhost:5555 shell getprop sys.boot_completed 2>/dev/null | grep -q "1" \
+            || { echo "Emulator did not report boot_completed within 600s"; exit 1; }
+
+      - name: Start proxy + Appium plugin
+        run: bash ci/steps/start-stack.sh android
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          PLATFORM: android
+          DRIVER: appium
+          APPIUM_HOST: localhost
+          APPIUM_PORT: '4723'
+          CAP_PROFILE: docker_android
+          ANDROID_APP_PATH: assets/apps/android/app-release.apk
+          ANDROID_UDID: localhost:5555
+          PLUGIN_APPIUM: 'true'
+          PLUGIN_API: 'true'
+
+      - name: Stagger start (spread backend login load across the run)
+        run: sleep $(( RANDOM % 76 ))
+
+      - name: Capture run start time
+        if: always()
+        run: echo "RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Run non-atomic twin
+        shell: bash
+        run: ./node_modules/.bin/cucumber-js --profile nonAtomicTwin --format "json:reports/non-atomic-twin-android.json" --format progress
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          PLATFORM: android
+          DRIVER: appium
+          APPIUM_HOST: localhost
+          APPIUM_PORT: '4723'
+          CAP_PROFILE: docker_android
+          ANDROID_APP_PATH: assets/apps/android/app-release.apk
+          ANDROID_UDID: localhost:5555
+          MINIO_ENDPOINT: localhost
+          MINIO_PORT: '9000'
+          MINIO_ACCESS_KEY: minioadmin
+          MINIO_SECRET_KEY: minioadmin
+
+      - name: Capture run end time
+        if: always()
+        run: echo "RUN_ENDED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Show Android emulator logs
+        if: failure()
+        run: |
+          docker ps -a --filter name=android-emulator
+          if docker ps -a --format '{{.Names}}' | grep -qx android-emulator; then
+            docker logs --tail 200 android-emulator
+          else
+            echo "android-emulator container was not created."
+          fi
+
+      - name: Collect artifacts
+        if: always()
+        run: bash ci/steps/collect-artifacts.sh non-atomic-twin-android
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ahm-artifacts-${{ github.job }}-${{ github.run_id }}
+          path: artifacts/non-atomic-twin-android/
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Stop emulator
+        if: always()
+        run: docker rm -f android-emulator || true
+
+      - name: Teardown
+        if: always()
+        run: bash ci/steps/teardown.sh
+
   perf-fence:
     name: Perf — exclusivity fence
     needs:
@@ -1992,6 +2320,11 @@ jobs:
   # the final word there). `needs:` targets the shared job keys above rather
   # than TOM's original per-tool job names.
   #
+  # eval-twin-web/eval-twin-android ARE in the `needs:` list below — without
+  # them, `consolidate` (gated only on `always()`) could finish and upload
+  # before the twin jobs' own metrics land, racing the parallel-safety
+  # instrument's data collection.
+  #
   # NOT extended by this task: a11y-web, security-zap and security-mobsf are
   # absent from the `needs:` list below, so their artifacts do not feed this
   # consolidated run. Left as-is; out of this task's scope to change.
@@ -2011,6 +2344,8 @@ jobs:
       - e2e-ios
       - perf-gatling
       - perf-gatling-smoke
+      - eval-twin-web
+      - eval-twin-android
     if: ${{ always() && inputs.architecture_type == 'TOM' }}
     runs-on: ubuntu-latest
     env:
