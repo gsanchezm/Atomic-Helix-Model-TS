@@ -571,10 +571,11 @@ generalization check (§10.2) — not one of the primary instruments.
 
 | Corollary | Prediction | Instrument | Why this shape, not a single ratio |
 |---|---|---|---|
-| **Parallel safety** (from R2) | **Reframed 2026-08-23 — see the note below the table.** A source-level audit of OmniPizza's backend (`backend/database.py:89-91`, `backend/routers/auth.py:60`) found its three mutable stores (`orders`, `sessions`, `user_profiles`) keyed by UUID/`session_id`, never by username — this reference application has no account-keyed collision surface for R2 to guard against. The instrument therefore no longer predicts a data-collision failure-rate delta; it instead measures whether concurrent same-account UI traffic (the twin's R2 violation) degrades correctness or exposes backend-capacity limits as concurrency increases | Run the **existing, unmodified** atomic checkout suite (no new construction needed on this arm) and the twin's K-row Outline both at `CUCUMBER_PARALLEL = 1, 2, 4, 8`; plot failure rate vs. worker count for each | A curve still isolates *where* contention starts — now read as *where backend capacity limits, if any, start*, not as a data-collision signal. Using the twin's K identical journey rows (not a fused/reduced scenario count) keeps the number of parallelizable units stable across sweep points — the flaw in the earlier fused-Outline design |
+| **Parallel safety** (from R2) | **Reframed 2026-08-23 — see the note below the table.** A source-level audit of OmniPizza's backend (`backend/database.py:89-91`, `backend/routers/auth.py:60`) found its three mutable stores (`orders`, `sessions`, `user_profiles`) keyed by UUID/`session_id`, never by username — this reference application has no account-keyed collision surface for R2 to guard against. The instrument therefore no longer predicts a data-collision failure-rate delta; it instead measures whether concurrent same-account UI traffic (the twin's R2 violation) degrades correctness or exposes backend-capacity limits as concurrency increases | Run the **existing, unmodified** atomic `@desktop` suite (the full ~97-scenario suite exercised by CI's `e2e-web` job — not a checkout-only subset; no new construction needed on this arm) and the twin's K-row Outline both at `CUCUMBER_PARALLEL = 1, 2, 4, 8`; plot failure rate vs. worker count for each | A curve still isolates *where* contention starts — now read as *where backend capacity limits, if any, start*, not as a data-collision signal. Using the twin's K identical journey rows (not a fused/reduced scenario count) keeps the number of parallelizable units stable across sweep points — the flaw in the earlier fused-Outline design. The atomic/twin scenario-count mismatch (97 vs. 16) doesn't bias this instrument: failure rate is computed *within* each arm, not as a cross-arm ratio, so unequal volume between arms is irrelevant to the curve's shape (see the execution-efficiency instrument below for why this same mismatch *does* disqualify a cross-arm wall-clock comparison) |
 | **Diagnosability** (from R1, compounded) | A fault fails exactly the atomic scenario that owns it, classified into its true failure bucket; the same fault in the journey produces a wider blast radius (the whole journey fails) and can surface far from its true cause (e.g. a cart-calculation fault only manifesting at the order-confirmation assertion) | Systematic fault injection at a layer **both arms genuinely share** — backend/network, not UI vs. API setup, since the twin's setup is now all-UI while the atomic arm's is API and a setup-layer fault wouldn't be the "same" fault in both. One representative fault per entry in the existing 14-bucket taxonomy (`scripts/metrics/lib/failure-buckets.ts`). Measure blast radius (# scenarios/oracles failing) and localization accuracy (does the reported bucket name the true cause, or the symptom where it happened to surface) | Injecting from the *whole* taxonomy, at a shared layer, removes both fault-selection bias and arm-asymmetric injection as sources of bias |
 | **Determinism** (from R4, mediated by R2) | The twin shows a higher pass↔fail transition rate across repeated runs than the atomic suite, *even with TOM's chaos suppression identical in both arms* | Repeat each suite across **N=30** `run_index` values under one `experiment_batch_id`, on **web (Playwright/Chromium) + Appium-Android** (iOS excluded from repetition), both arms at `retry: 0` (see §8.3) so a masked retry doesn't hide the signal; reuse the existing reliability infrastructure (`measure-reliability.ts`, pass→fail / fail→pass transition probabilities) | TOM's chaos suppression (`λ < 0`) only absorbs *transient* noise and fails fast on deterministic ones (README:27,48). R2 collisions in the twin are deterministic, not transient — TOM won't retry them away. That's the mechanism making the delta attributable to the method. Suppression applies identically to both arms, so it still partially masks method-induced flakiness in the twin too — read the delta as a **conservative, lower-bound** estimate |
 | **Platform invariance** (from R3, Corollary 1) | **Measured 2026-08-23 — see the note below the table.** Porting the atomic suites from Playwright (web) to Appium (Android + iOS, both live-verified in CI) costs 0 spec-layer changes, confirmed structurally; the same structural check on the twin also reads 0 — but the twin's *live* mobile port was only ever run on Android (iOS was never attempted for the twin, and is out of scope per §8.3's exclusion of iOS from the repeated determinism/twin runs), and that Android-only port costs a small, non-zero amount of twin-only implementation code (63 LOC, 1 file) that the atomic arm has no equivalent of | For both arms, check the `.feature`/step-definition layer for platform-conditional code (structural, symmetric across arms, and platform-agnostic by construction — it does not require live execution on either mobile platform); separately, for the twin only, classify each file touched while getting its **Android** mobile leg green as spec-forced (counts), plugin-gap (excluded, disclosed), or out-of-scope (Mobilewright artifacts, §7.1 — neither counted nor plugin-gap) | Isolates the *specification*-level cost from the architecture, which is held constant and already supports both platforms; the two measurements are kept separate rather than combined into one number because they use different procedures (structural check vs. classified historical diff) — combining them would fail §8.1's own construct-validity standard |
+| **Execution efficiency** (from R3, ancillary — companion to Platform invariance, not a §5 Rule-derived corollary in its own right) | **Illustrative pass 2026-08-25 — see the note below the table.** Reaching a given precondition state via API injection (`LoginDao`, the checkout DAO's cart-population call — the same mechanisms named in §8.3's R3 row) costs less step-time than reaching the *same* state via the UI molecule sequence R3's transformation substitutes for it (`submitCredentials`, catalog→builder UI navigation) | Per-operation `cucumber-jsonl` step-`durationMs` for two comparandum pairs that reach an identical functional end state by a genuinely different mechanism in each arm ("logged in"; "cart populated with 1 item") — **not** whole-suite or whole-job wall-clock, and **not** an assembled sum of atomic scenarios (see the design note for both rejected alternatives and why) | Whole-job wall-clock conflates this instrument's own atomic/twin volume and job-shape asymmetry (the `e2e-web` job's full matrix vs. the twin's single unmatrixed job, plus a chained visual-diff job downstream of neither arm's actual test execution) with any method effect. Per-operation step-time removes both: the unit compared is one operation reaching one state, symmetric regardless of how many other scenarios either suite happens to run alongside it |
 
 **Threat specific to the portability instrument.** Mobile execution (Appium, Android + iOS) is
 not optional here — it *is* the instrument, not an add-on (see §7.1). But it makes this instrument the
@@ -636,6 +637,32 @@ OmniPizza's shared `standard_user` account") was most likely protecting against 
 rate-limiting under concurrent login bursts — independently documented twice this month, §10.1 — rather
 than an application-level data race.
 
+**Note on the execution-efficiency instrument (2026-08-25).** Requested after the atomic-web CI
+dispatch's wall-clock was observed running far longer than the twin-web dispatch — a naive reading
+would call that evidence atomic testing is slower, which the instrument below shows is not a valid
+inference from that number. Design, rejected alternatives (whole-job wall-clock; an assembled "sum of
+atomic scenarios" — impossible without either skipping an operation or double-paying a precondition, since
+R1 forbids a single pizzaBuilder scenario that selects size, adds toppings, *and* confirms in one
+behavior), and the full illustrative pass are in
+`docs/superpowers/specs/2026-08-25-execution-efficiency-instrument-design.md`. Computed by
+`scripts/experiments/execution-efficiency-delta.ts`
+(`pnpm experiments:execution-efficiency-delta`), which reads `metrics/raw/cucumber-jsonl/*.jsonl` —
+step-level, not `sendIntent`-level (`metrics/raw/tool-events/*.jsonl`, which
+`scripts/metrics/aggregate-durations.ts` expects, is not populated by this campaign's uploaded
+artifacts) — so this instrument measures **step-time**, disclosed as one level coarser than the
+individual gRPC intents a step may issue, not wall-clock and not mechanism-time. Two comparandum pairs
+only, both reaching an identical functional end state by a different mechanism in each arm with no R1
+independence cost on either side ("logged in": atomic `LoginDao` Background step vs. twin's login-screen
+UI molecule; "cart populated": atomic's checkout cart-injection step vs. twin's full catalog→builder UI
+sequence) — a catalog/builder-click step pair, driven by UI in *both* arms, is kept only as a disclosed
+negative control, and the atomic-only "builder is open" precondition step is excluded entirely because
+it pays R1's independence cost, not R3's mechanism cost, and would misattribute the two. The illustrative
+pass (zero new dispatches — mined from the already-completed parallel-safety `w1` pair) reads: "logged
+in" 109ms atomic vs. 365ms twin (twin ≈3.4× atomic, N=1 vs. N=16-within-run); "cart populated" 188ms vs.
+656ms (≈3.5×, same N); negative control 69ms vs. 52ms (≈parity, as expected of an operation with no R3
+substitution on either side). **Not a §9 result** — the atomic side is N=1 per comparandum, and §8.5's
+evidence policy requires adequate N before reporting a number, not just a directionally-consistent one.
+
 ### 8.5 Evidence policy (inherited from the framework's own norm)
 
 Consistent with `docs/research/metrics-protocol.md` §9: no fabricated or estimated values. A metric
@@ -647,12 +674,13 @@ count hasn't been executed) is reported as **not yet measured**, not as a placeh
 
 ## 9. Results
 
-> TODO — §9.4 (portability) is fully populated as of 2026-08-23; §9.1 (parallel safety) has one partial
-> data point. §9.2 (diagnosability) and §9.3 (determinism) remain blocked: the fault-injection harness
-> is built (see working notes) but not yet wired into the campaign orchestrator, and the campaign
-> orchestrator itself (build-order step 5) doesn't exist yet — CI wiring for the twin is in progress as
-> of 2026-08-23. The de-atomized twin suites themselves are built and verified live on both platforms
-> (see the working notes above), so the remaining blockers are runs-and-tooling, not construction.
+> TODO — §9.4 (portability) is fully populated as of 2026-08-23. §9.1 (parallel safety) has a full
+> `w1-w8` sweep from the campaign orchestrator's 2026-08-24 smoke test, pending
+> `aggregate-campaign-artifacts.ts` + `pnpm metrics:experiment` to turn it into a populated table. §9.2
+> (diagnosability) and §9.3 (determinism) remain blocked: the fault-injection harness is built (see
+> working notes) but not yet wired into the campaign orchestrator, and the 120-dispatch determinism
+> campaign itself hasn't been launched. §9.5 (execution efficiency, added 2026-08-25) has an
+> illustrative N=1-per-comparandum pass only — see §8.4's note — not yet an adequate-N result.
 > **No values are estimated or filled until real runs produce them.**
 
 ### 9.1 Parallel safety
@@ -722,6 +750,22 @@ code, out of files scanned:
 | Spec-forced (`checkout-nonatomic.route.ts`) | 1 | 63 | Yes |
 | Plugin-gap, Appium-relevant (`login.webdriver.locators.json`) | 1 | 5 | No — disclosed |
 | Out-of-scope, Mobilewright (`login.wright.locators.json`, `Type.ts`) | 2 | 16 | No — out of §7.1 tool scope |
+
+### 9.5 Execution efficiency (ancillary R3 measurement)
+
+> **Illustrative pass only — not yet a reportable result.** See §8.4's note and
+> `docs/superpowers/specs/2026-08-25-execution-efficiency-instrument-design.md` for the full design,
+> the rejected alternatives, and why. Computed by `pnpm experiments:execution-efficiency-delta`, mined
+> from the already-completed parallel-safety `w1` pair (atomic-web GH run `32768226121`, twin-web GH run
+> `32793108181`) — zero new dispatches. The atomic side is N=1 per comparandum; the twin side gets N=16
+> "for free" from its K=16 identical Outline rows within that one run. §8.5's evidence policy withholds
+> this from being reported as a number until the atomic side has adequate N too.
+
+| Comparandum | Atomic step-time | Twin step-time | Ratio (twin/atomic) |
+|---|---|---|---|
+| Reach "logged in" | 109ms (N=1) | 365ms (N=16 mean) | ≈3.4× |
+| Reach "cart populated" | 188ms (N=1) | 656ms (N=16 mean) | ≈3.5× |
+| *(negative control)* catalog-click → builder rendered — UI-driven in both arms, no R3 substitution | 69ms (N=1) | 52ms (N=16 mean) | ≈0.75× (near parity, as expected) |
 
 ---
 

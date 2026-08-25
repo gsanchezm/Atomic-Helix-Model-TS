@@ -4,7 +4,7 @@
     "Maintainability": [
       {
         "metric_name": "average_file_size_loc",
-        "metric_value": "71.27",
+        "metric_value": "71.7",
         "metric_unit": "loc",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -20,7 +20,7 @@
       },
       {
         "metric_name": "duplicated_code_percentage",
-        "metric_value": "8.34",
+        "metric_value": "7.46",
         "metric_unit": "percent",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -28,7 +28,7 @@
       },
       {
         "metric_name": "duplicated_loc",
-        "metric_value": "1111",
+        "metric_value": "1406",
         "metric_unit": "loc",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -44,7 +44,7 @@
       },
       {
         "metric_name": "files_touched_per_change",
-        "metric_value": "12.26",
+        "metric_value": "2.26",
         "metric_unit": "files",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -52,7 +52,7 @@
       },
       {
         "metric_name": "max_file_size_loc",
-        "metric_value": "380",
+        "metric_value": "849",
         "metric_unit": "loc",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -60,11 +60,11 @@
       },
       {
         "metric_name": "telemetry_completeness_percentage",
-        "metric_value": "100",
+        "metric_value": "NOT_AVAILABLE",
         "metric_unit": "percent",
         "tool_name": "ALL",
         "platform": "ALL",
-        "source_file": "metrics/raw/tool-events/*.jsonl"
+        "source_file": "metrics/raw/tool-events/*.jsonl (none)"
       }
     ],
     "Modifiability": [
@@ -210,7 +210,7 @@
       },
       {
         "metric_name": "feature_to_tool_coverage",
-        "metric_value": "NOT_AVAILABLE",
+        "metric_value": "0.23",
         "metric_unit": "ratio",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -218,7 +218,7 @@
       },
       {
         "metric_name": "locator_contract_reuse_count",
-        "metric_value": "7",
+        "metric_value": "15",
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -226,7 +226,7 @@
       },
       {
         "metric_name": "scenario_reuse_ratio",
-        "metric_value": "0.95",
+        "metric_value": "0.61",
         "metric_unit": "ratio",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -234,7 +234,7 @@
       },
       {
         "metric_name": "shared_contract_reuse_count",
-        "metric_value": "20",
+        "metric_value": "28",
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -242,7 +242,7 @@
       },
       {
         "metric_name": "shared_step_reuse_count",
-        "metric_value": "14",
+        "metric_value": "15",
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -268,7 +268,7 @@
     "Reliability": [
       {
         "metric_name": "fail_rate",
-        "metric_value": "0.17",
+        "metric_value": "0.01",
         "metric_unit": "ratio",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -276,7 +276,7 @@
       },
       {
         "metric_name": "fail_to_pass_probability",
-        "metric_value": "0.78",
+        "metric_value": "",
         "metric_unit": "ratio",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -284,7 +284,7 @@
       },
       {
         "metric_name": "flaky_scenario_count",
-        "metric_value": "52",
+        "metric_value": "0",
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -292,7 +292,7 @@
       },
       {
         "metric_name": "infrastructure_failure_rate",
-        "metric_value": "0.1",
+        "metric_value": "0",
         "metric_unit": "ratio",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -300,7 +300,7 @@
       },
       {
         "metric_name": "pass_rate",
-        "metric_value": "0.83",
+        "metric_value": "0.99",
         "metric_unit": "ratio",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -308,7 +308,7 @@
       },
       {
         "metric_name": "pass_to_fail_probability",
-        "metric_value": "0.02",
+        "metric_value": "0",
         "metric_unit": "ratio",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -324,7 +324,7 @@
       },
       {
         "metric_name": "tool_failure_rate",
-        "metric_value": "0.05",
+        "metric_value": "0",
         "metric_unit": "ratio",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -334,7 +334,7 @@
     "Performance Efficiency": [
       {
         "metric_name": "grpc_or_ipc_latency_ms",
-        "metric_value": "1.22",
+        "metric_value": "NOT_AVAILABLE",
         "metric_unit": "ms",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -342,7 +342,7 @@
       },
       {
         "metric_name": "job_duration_ms",
-        "metric_value": "NOT_AVAILABLE",
+        "metric_value": "39750",
         "metric_unit": "ms",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -350,7 +350,7 @@
       },
       {
         "metric_name": "p50_scenario_duration_ms",
-        "metric_value": "1144",
+        "metric_value": "NOT_AVAILABLE",
         "metric_unit": "ms",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -358,7 +358,7 @@
       },
       {
         "metric_name": "p95_scenario_duration_ms",
-        "metric_value": "66340",
+        "metric_value": "NOT_AVAILABLE",
         "metric_unit": "ms",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -366,7 +366,7 @@
       },
       {
         "metric_name": "p99_scenario_duration_ms",
-        "metric_value": "132835",
+        "metric_value": "NOT_AVAILABLE",
         "metric_unit": "ms",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -374,7 +374,7 @@
       },
       {
         "metric_name": "proxy_overhead_ms",
-        "metric_value": "0.05",
+        "metric_value": "NOT_AVAILABLE",
         "metric_unit": "ms",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -382,7 +382,7 @@
       },
       {
         "metric_name": "scenario_duration_ms",
-        "metric_value": "11634.99",
+        "metric_value": "NOT_AVAILABLE",
         "metric_unit": "ms",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -406,7 +406,7 @@
       },
       {
         "metric_name": "workflow_duration_ms",
-        "metric_value": "NOT_AVAILABLE",
+        "metric_value": "18192000",
         "metric_unit": "ms",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -448,7 +448,7 @@
       },
       {
         "metric_name": "missing_run_manifest_count",
-        "metric_value": "26",
+        "metric_value": "3",
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -456,7 +456,7 @@
       },
       {
         "metric_name": "missing_scenario_duration_count",
-        "metric_value": "454",
+        "metric_value": "519",
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -480,19 +480,19 @@
       },
       {
         "metric_name": "telemetry_completeness_percentage",
-        "metric_value": "0",
+        "metric_value": "NOT_AVAILABLE",
         "metric_unit": "percent",
         "tool_name": "ALL",
         "platform": "ALL",
-        "source_file": "metrics/raw/tool-events"
+        "source_file": "metrics/raw/tool-events (none)"
       },
       {
         "metric_name": "telemetry_event_count",
-        "metric_value": "3284",
+        "metric_value": "0",
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
-        "source_file": "metrics/raw/tool-events"
+        "source_file": "metrics/raw/tool-events (none)"
       },
       {
         "metric_name": "unclassified_failure_percentage",
@@ -506,7 +506,7 @@
     "Portability": [
       {
         "metric_name": "environment_specific_config_count",
-        "metric_value": "12",
+        "metric_value": "13",
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -530,7 +530,7 @@
       },
       {
         "metric_name": "platform_specific_code_count",
-        "metric_value": "14",
+        "metric_value": "43",
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -538,7 +538,7 @@
       },
       {
         "metric_name": "platform_specific_locator_count",
-        "metric_value": "7",
+        "metric_value": "15",
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -554,7 +554,7 @@
       },
       {
         "metric_name": "successful_tool_count",
-        "metric_value": "0",
+        "metric_value": "2",
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -580,7 +580,7 @@
       },
       {
         "metric_name": "oracle_composition_count",
-        "metric_value": "5",
+        "metric_value": "6",
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -588,7 +588,7 @@
       },
       {
         "metric_name": "oracle_count",
-        "metric_value": "2",
+        "metric_value": "1",
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
@@ -612,7 +612,7 @@
       },
       {
         "metric_name": "tool_count",
-        "metric_value": "0",
+        "metric_value": "2",
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",

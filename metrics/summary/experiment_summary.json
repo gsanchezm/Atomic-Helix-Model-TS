@@ -1,34 +1,34 @@
 {
   "architecture_type": "TOM",
-  "experiment_batch_id": "batch-001",
-  "run_index": "001",
-  "generated_at": "2026-05-29T01:57:19.704Z",
+  "experiment_batch_id": "ps-2026-campaign",
+  "run_index": "w1",
+  "generated_at": "2026-08-24T19:29:31.278Z",
   "totals": {
-    "scenarios": 22,
-    "executions": 454,
-    "pass": 376,
-    "fail": 78
+    "scenarios": 36,
+    "executions": 519,
+    "pass": 516,
+    "fail": 3
   },
   "artifacts": {
     "scenario_inventory.csv": {
       "present": true,
-      "rows": 22
+      "rows": 36
     },
     "platform_coverage_matrix.csv": {
       "present": true,
-      "rows": 22
+      "rows": 36
     },
     "scenario_outcome_history.csv": {
       "present": true,
-      "rows": 454
+      "rows": 519
     },
     "scenario_durations.csv": {
       "present": true,
-      "rows": 599
+      "rows": 0
     },
     "platform_durations.csv": {
       "present": true,
-      "rows": 1
+      "rows": 0
     },
     "api_isolated_results.csv": {
       "present": true,
@@ -44,11 +44,11 @@
     },
     "failure_buckets.csv": {
       "present": true,
-      "rows": 85
+      "rows": 3
     },
     "proxy_overhead_summary.csv": {
       "present": true,
-      "rows": 15
+      "rows": 0
     }
   }
 }
