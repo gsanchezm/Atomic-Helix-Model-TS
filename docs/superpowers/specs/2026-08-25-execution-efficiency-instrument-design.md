@@ -131,11 +131,53 @@ extracts both comparandum pairs plus the negative control from a given atomic/tw
 pair (by GH run ID or local manifest lookup), and appends to a running samples file so repeats
 accumulate toward a defensible N. Reused directly against the N=1 pair above to produce the table.
 
+## Android leg (added 2026-08-26)
+
+Extended to a second platform on request. Same comparandum pairs, same step *text* (confirmed — the
+atomic scenarios queried carry the `@android` tag with zero platform-conditional Gherkin, and the twin's
+single feature file has zero `PLATFORM`/`DRIVER`-conditional code per §8.3's own structural finding) —
+only the cucumber-jsonl file-name pattern and `tool_name` differ (`appium-android-{reads,writes}` /
+`non-atomic-twin-android`, confirmed against `ahm-execution-helix.yml`'s `TOM_RUN_ID` construction
+directly, not assumed from the web pattern). `execution-efficiency-delta.ts`,
+`scripts/experiments/lib/campaign-matrix.ts`, and `run-campaign.ts`/`aggregate-campaign-artifacts.ts`'s
+CLIs now take a `--platform-leg web|android` — **required, no default**, on all three tools (an earlier
+draft had mismatched defaults between scripts, caught and fixed by adversarial review before any real
+dispatch). A new `efficiency` campaign-matrix instrument (`buildExecutionEfficiencyItems`) reuses the
+orchestrator's dispatch/poll/classify machinery unchanged, deliberately kept out of the formal
+128-dispatch `'all'` campaign.
+
+**iOS was deliberately NOT extended to.** The non-atomic twin has zero iOS implementation anywhere — no
+`eval-twin-ios` CI job, no iOS-specific code under `evaluation/non-atomic-twin/` — consistent with §8.3's
+already-documented, deliberate exclusion of iOS from every other repeated-run instrument (macOS runner
+concurrency). Extending this instrument to iOS would mean building the twin's entire iOS port first — a
+scope decision on par with the original Android port, not a script change — so it stays out of scope
+here, matching the rest of the paper rather than introducing a one-off exception for this instrument.
+
+**Known, disclosed confound specific to the Android login comparandum:** the twin's mobile
+(`appium`/`mobilewright`) login path makes a real extra backend API call (`loginDao.login()`) inside the
+timed `loginMs` step, on top of the UI action itself — the twin's web path does a local-storage
+read-back instead, no network round trip. This is pre-existing code (`checkout-nonatomic.route.ts`,
+predates this instrument by a month, already flagged in its own comments as "unverified" as of
+2026-07-23), not something introduced here — but it means `login::android`'s twin-side duration is not a
+pure UI-vs-API comparison the way `login::web`'s is, and should be read with that caveat.
+
+Adversarially reviewed (2 independent reviewers) before any Android dispatch was fired, specifically to
+catch bugs before paying real CI/emulator-boot cost rather than after. Caught one real BLOCKING bug
+(both reviewers independently): the CLI type-widening to add `'efficiency'` broke
+`aggregate-campaign-artifacts.ts`'s compile for **every** instrument, not just efficiency —
+`buildCampaignItems()`'s parameter type didn't accept `'efficiency'`, and since `ts-node` type-checks a
+whole file before running any of it, `--instrument determinism`/`parallel-safety`/`all` were equally
+broken. Never caught by this session's own `tsc -p tsconfig.json` checks because `tsconfig.json`'s
+`include: ["src/**/*"]` excludes `scripts/**` entirely — a project-wide check that silently checks
+nothing under `scripts/`. Fixed by wiring `buildExecutionEfficiencyItems` into the aggregator and
+verifying with real `ts-node` execution (`--help`/`--dry-run`) going forward, not the project-wide `tsc`,
+for anything under `scripts/experiments/`.
+
 ## Recommended next step (not yet done)
 
-Dispatch N≥10 additional `w1`-equivalent pairs (parallel=1, single Chromium job, no browser matrix, no
-chained visual job — the same shape the parallel-safety `w1` items already are) specifically for this
-instrument, run the extractor over each, and report mean ± spread in §9.5 once N is adequate. This is
-lightweight: it reuses `run-campaign.ts`/`aggregate-campaign-artifacts.ts` unchanged (a `w1`-only
-parallel-safety-shaped dispatch already produces exactly the right artifact shape) — no new CI wiring
-needed, only a handful of extra dispatches.
+Dispatch N≥10 additional single-repeat pairs (parallel=1, no matrix, no chained visual job) per platform
+leg — web reuses the already-completed parallel-safety `w1` pair's shape; android now has its own
+dedicated `efficiency` instrument for exactly this (`pnpm experiments:run-campaign -- --instrument
+efficiency --platform-leg android --repeats N`). Run the extractor over each and report mean ± spread in
+§9.5 once N is adequate on both legs. Android has not yet had a single real dispatch as of this
+memory's timestamp — the tooling is built and reviewed, but zero android data exists yet.

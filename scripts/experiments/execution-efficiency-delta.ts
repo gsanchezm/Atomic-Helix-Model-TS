@@ -18,6 +18,22 @@
 // steps are UI in both arms and kept only as a negative control; the
 // standalone atomic "Given the pizza builder is open for..." step pays R1's
 // independence cost, not R3's mechanism cost, and is excluded entirely).
+//
+// Android leg (added 2026-08-26): the same two comparandum pairs, same step
+// TEXT (confirmed — 'Opening a pizza card launches the builder in <market>'
+// and 'Place a delivery order in <market> paying with credit card' both carry
+// the @android tag in their .feature source, and the twin's single feature
+// file has zero PLATFORM/DRIVER-conditional code per §8.3's structural
+// check), only the cucumber-jsonl file-name pattern and TOOL_NAME differ
+// (confirmed by reading ahm-execution-helix.yml's TOM_RUN_ID construction for
+// e2e-android / eval-twin-android directly, not assumed from the web
+// pattern). iOS is deliberately NOT supported here — the twin has no iOS
+// implementation at all (no eval-twin-ios job, no
+// evaluation/non-atomic-twin iOS code), consistent with §8.3's documented,
+// deliberate exclusion of iOS from every other repeated-run instrument
+// (macOS runner concurrency). Extending this instrument to iOS would mean
+// building the twin's entire iOS port first — a scope decision, not a script
+// change — so it is out of scope here, matching the rest of the paper.
 
 import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
@@ -25,6 +41,23 @@ import { join } from 'path';
 const REPO_ROOT = join(__dirname, '..', '..');
 const CUCUMBER_JSONL_DIR = join(REPO_ROOT, 'metrics', 'raw', 'cucumber-jsonl');
 const SAMPLES_PATH = join(REPO_ROOT, 'reports', 'execution-efficiency-samples.json');
+
+type PlatformLeg = 'web' | 'android';
+
+// File-name suffix patterns per platform leg, confirmed against
+// ahm-execution-helix.yml's TOM_RUN_ID `format(...)` expressions directly:
+//   atomic web:     tom-<runId>-<attempt>-<run_index>-playwright-desktop-{reads,writes}-chromium
+//   atomic android: tom-<runId>-<attempt>-<run_index>-appium-android-{reads,writes}
+//   twin web:       tom-<runId>-<attempt>-<run_index>-non-atomic-twin-web
+//   twin android:   tom-<runId>-<attempt>-<run_index>-non-atomic-twin-android
+const ATOMIC_SUFFIX: Record<PlatformLeg, { reads: RegExp; writes: RegExp }> = {
+  web: { reads: /reads-chromium\.jsonl$/, writes: /writes-chromium\.jsonl$/ },
+  android: { reads: /appium-android-reads\.jsonl$/, writes: /appium-android-writes\.jsonl$/ },
+};
+const TWIN_SUFFIX: Record<PlatformLeg, RegExp> = {
+  web: /non-atomic-twin-web\.jsonl$/,
+  android: /non-atomic-twin-android\.jsonl$/,
+};
 
 interface StepRecord {
   name: string;
@@ -94,19 +127,13 @@ function findScenario(records: ScenarioRecord[], scenarioName: string): Scenario
   return matches[0];
 }
 
-interface Comparandum {
-  key: string;
-  description: string;
-  atomicMs: number;
-  twinMsSamples: number[];
-}
-
-function extractAtomicWeb(runId: string) {
-  const readsFiles = findFilesForRun(runId, /reads-chromium\.jsonl$/);
-  const writesFiles = findFilesForRun(runId, /writes-chromium\.jsonl$/);
+function extractAtomic(runId: string, platformLeg: PlatformLeg) {
+  const { reads: readsPattern, writes: writesPattern } = ATOMIC_SUFFIX[platformLeg];
+  const readsFiles = findFilesForRun(runId, readsPattern);
+  const writesFiles = findFilesForRun(runId, writesPattern);
   if (readsFiles.length !== 1 || writesFiles.length !== 1) {
     throw new Error(
-      `Expected exactly one reads-chromium and one writes-chromium cucumber-jsonl file for run ${runId}; found reads=${readsFiles.length} writes=${writesFiles.length}. Did aggregate-campaign-artifacts.ts merge this run yet?`,
+      `Expected exactly one reads and one writes cucumber-jsonl file (platform=${platformLeg}) for run ${runId}; found reads=${readsFiles.length} writes=${writesFiles.length}. Did aggregate-campaign-artifacts.ts merge this run yet?`,
     );
   }
   const reads = loadJsonl(readsFiles[0]);
@@ -125,10 +152,10 @@ function extractAtomicWeb(runId: string) {
   };
 }
 
-function extractTwinWeb(runId: string) {
-  const files = findFilesForRun(runId, /non-atomic-twin-web\.jsonl$/);
+function extractTwin(runId: string, platformLeg: PlatformLeg) {
+  const files = findFilesForRun(runId, TWIN_SUFFIX[platformLeg]);
   if (files.length !== 1) {
-    throw new Error(`Expected exactly one non-atomic-twin-web cucumber-jsonl file for run ${runId}; found ${files.length}.`);
+    throw new Error(`Expected exactly one twin cucumber-jsonl file (platform=${platformLeg}) for run ${runId}; found ${files.length}.`);
   }
   const allRows = loadJsonl(files[0]);
   if (allRows.length === 0) throw new Error(`Twin run ${runId}'s cucumber-jsonl has zero rows.`);
@@ -179,8 +206,11 @@ function mean(xs: number[]): number {
 }
 
 interface SamplesFile {
+  // Comparandum key is `${metric}::${platformLeg}` (e.g. 'login::web', 'login::android') — web and
+  // android are kept in separate buckets, never averaged together, since they measure different
+  // mechanisms (Playwright vs Appium) even for the "same" operation.
   comparanda: Record<string, { atomicMs: number[]; twinMs: number[] }>;
-  ingestedPairs: string[]; // `${atomicRunId}::${twinRunId}` — re-running the same pair must not double N
+  ingestedPairs: string[]; // `${platformLeg}::${atomicRunId}::${twinRunId}` — re-running the same pair must not double N
 }
 
 function loadSamples(): SamplesFile {
@@ -193,7 +223,28 @@ function loadSamples(): SamplesFile {
     throw new Error(`${SAMPLES_PATH} exists but isn't valid JSON (${(e as Error).message}) — fix or delete it by hand before re-running.`);
   }
   const p = parsed as Partial<SamplesFile>;
-  return { comparanda: p.comparanda ?? {}, ingestedPairs: p.ingestedPairs ?? [] };
+  const comparanda = p.comparanda ?? {};
+  const ingestedPairs = p.ingestedPairs ?? [];
+
+  // Schema guard (added 2026-08-26 alongside the web/android split — caught by adversarial review): a
+  // samples file written before the platformLeg split used bare metric names ('login', not
+  // 'login::web') and 2-part pair keys (atomicRunId::twinRunId, not platformLeg::atomicRunId::twinRunId).
+  // ingestedPairs.includes(pairKey) would silently fail to recognize an old-format entry as
+  // already-ingested, letting a re-run double-count N with no warning — exactly what that guard exists
+  // to prevent. Fail loudly instead of silently misreading stale data.
+  const staleComparandaKeys = Object.keys(comparanda).filter((k) => !k.includes('::'));
+  const stalePairKeys = ingestedPairs.filter((k) => k.split('::').length !== 3);
+  if (staleComparandaKeys.length > 0 || stalePairKeys.length > 0) {
+    throw new Error(
+      `${SAMPLES_PATH} contains pre-migration (platformLeg-less) entries — comparanda keys without '::': ` +
+      `[${staleComparandaKeys.join(', ')}], ingestedPairs not in 'platformLeg::atomicRunId::twinRunId' form: ` +
+      `[${stalePairKeys.join(', ')}]. Re-running against these would silently double-count N (the ` +
+      `idempotency guard wouldn't recognize them as already ingested). Delete the file and re-derive it ` +
+      `from already-completed campaign runs, or hand-migrate its keys, before continuing.`,
+    );
+  }
+
+  return { comparanda, ingestedPairs };
 }
 
 // Plain read-modify-write, no temp-file+rename (unlike aggregate-campaign-artifacts.ts's
@@ -201,16 +252,23 @@ function loadSamples(): SamplesFile {
 // far more likely failure mode — re-running the SAME pair sequentially — is guarded by ingestedPairs
 // below, not by file-locking. Two genuinely concurrent invocations would still race; don't run this
 // script from two terminals at once.
-function appendSamples(atomicRunId: string, twinRunId: string, atomic: ReturnType<typeof extractAtomicWeb>, twin: ReturnType<typeof extractTwinWeb>) {
+function appendSamples(
+  platformLeg: PlatformLeg,
+  atomicRunId: string,
+  twinRunId: string,
+  atomic: ReturnType<typeof extractAtomic>,
+  twin: ReturnType<typeof extractTwin>,
+) {
   const samples = loadSamples();
-  const pairKey = `${atomicRunId}::${twinRunId}`;
+  const pairKey = `${platformLeg}::${atomicRunId}::${twinRunId}`;
   if (samples.ingestedPairs.includes(pairKey)) {
     console.warn(
-      `[execution-efficiency-delta] atomic run ${atomicRunId} / twin run ${twinRunId} was already ingested — skipping to avoid doubling N. Delete its entry from ${SAMPLES_PATH}'s ingestedPairs first if you actually intend to re-ingest.`,
+      `[execution-efficiency-delta] platform=${platformLeg} atomic run ${atomicRunId} / twin run ${twinRunId} was already ingested — skipping to avoid doubling N. Delete its entry from ${SAMPLES_PATH}'s ingestedPairs first if you actually intend to re-ingest.`,
     );
     return samples;
   }
-  const push = (key: string, atomicMs: number, twinMs: number[]) => {
+  const push = (metric: string, atomicMs: number, twinMs: number[]) => {
+    const key = `${metric}::${platformLeg}`;
     const entry = (samples.comparanda[key] ??= { atomicMs: [], twinMs: [] });
     entry.atomicMs.push(atomicMs);
     entry.twinMs.push(...twinMs);
@@ -232,24 +290,32 @@ function parseArgs(argv: string[]) {
   const atomicRun = get('--atomic-run');
   const twinRun = get('--twin-run');
   if (!atomicRun || !twinRun) {
-    throw new Error('Usage: execution-efficiency-delta --atomic-run <ghRunId> --twin-run <ghRunId>');
+    throw new Error('Usage: execution-efficiency-delta --atomic-run <ghRunId> --twin-run <ghRunId> --platform-leg <web|android>');
   }
-  return { atomicRun, twinRun };
+  // No default — run-campaign.ts previously defaulted --platform-leg to 'android' while this script
+  // defaulted to 'web', an easy silent-mismatch risk caught by adversarial review (2026-08-26).
+  // Requiring an explicit value here removes that risk entirely.
+  const rawPlatformLeg = get('--platform-leg');
+  if (rawPlatformLeg !== 'web' && rawPlatformLeg !== 'android') {
+    throw new Error(`--platform-leg web|android is required (no default), got "${rawPlatformLeg}"`);
+  }
+  const platformLeg: PlatformLeg = rawPlatformLeg;
+  return { atomicRun, twinRun, platformLeg };
 }
 
 function main(): void {
-  const { atomicRun, twinRun } = parseArgs(process.argv.slice(2));
+  const { atomicRun, twinRun, platformLeg } = parseArgs(process.argv.slice(2));
 
-  const atomic = extractAtomicWeb(atomicRun);
-  const twin = extractTwinWeb(twinRun);
+  const atomic = extractAtomic(atomicRun, platformLeg);
+  const twin = extractTwin(twinRun, platformLeg);
   const before = loadSamples().ingestedPairs.length;
-  const samples = appendSamples(atomicRun, twinRun, atomic, twin);
+  const samples = appendSamples(platformLeg, atomicRun, twinRun, atomic, twin);
   const wasAppended = samples.ingestedPairs.length > before;
 
   console.log(
     wasAppended
-      ? `Extracted from atomic run ${atomicRun} / twin run ${twinRun} — appended to ${SAMPLES_PATH}\n`
-      : `Atomic run ${atomicRun} / twin run ${twinRun} already recorded — nothing appended (see warning above).\n`,
+      ? `Extracted from platform=${platformLeg} atomic run ${atomicRun} / twin run ${twinRun} — appended to ${SAMPLES_PATH}\n`
+      : `platform=${platformLeg} atomic run ${atomicRun} / twin run ${twinRun} already recorded — nothing appended (see warning above).\n`,
   );
   for (const [key, { atomicMs, twinMs }] of Object.entries(samples.comparanda)) {
     console.log(

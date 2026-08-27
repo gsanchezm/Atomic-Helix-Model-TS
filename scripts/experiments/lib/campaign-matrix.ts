@@ -18,7 +18,7 @@ export type LegKey = `${Arm}-${PlatformLeg}`;
 
 export interface CampaignItem {
   id: string; // stable, human-readable — the manifest key both scripts share
-  instrument: 'determinism' | 'parallel-safety';
+  instrument: 'determinism' | 'parallel-safety' | 'efficiency';
   arm: Arm;
   platformLeg: PlatformLeg;
   experimentBatchId: string;
@@ -154,7 +154,47 @@ export function buildParallelSafetyItems(batchSuffix: string): CampaignItem[] {
   return items;
 }
 
-export function buildCampaignItems(instrument: 'determinism' | 'parallel-safety' | 'all', batchSuffix: string): CampaignItem[] {
+// Ancillary execution-efficiency instrument (§8.4/§9.5 — not one of the four §5 Rule-derived
+// corollaries, see docs/superpowers/specs/2026-08-25-execution-efficiency-instrument-design.md).
+// One clean single-worker dispatch per arm per repeat — cucumber_parallel='1' on both arms, matching
+// the parallel-safety w1 methodology, to avoid the backend-contention confound a higher worker count
+// would introduce into a per-operation step-time comparison. For the WEB leg this reaches
+// e2e-web/eval-twin-web's own `CUCUMBER_PARALLEL: ${{ inputs.cucumber_parallel || '4' }}` and actually
+// changes behavior. For the ANDROID leg it's a harmless no-op — e2e-android/eval-twin-android never read
+// that input at all (confirmed against ahm-execution-helix.yml, 2026-08-26 adversarial review); both
+// android jobs always run single-worker by construction (one emulator per job), so the "avoid
+// contention" property already holds there for a structural reason unrelated to this field. Kept set on
+// both legs for a uniform CampaignItem shape, not because android needs it. Deliberately NOT folded
+// into 'all' (kept a separate, explicitly-invoked instrument) — this measurement is ancillary to the
+// paper's four primary causal instruments, not part of the formal 128/156-dispatch campaign.
+export function buildExecutionEfficiencyItems(
+  batchSuffix: string,
+  platformLeg: PlatformLeg,
+  repeats: number,
+): CampaignItem[] {
+  const batchId = `eff-2026-campaign-${platformLeg}${batchSuffix}`;
+  const arms: Arm[] = ['atomic', 'twin'];
+  const items: CampaignItem[] = [];
+  for (const arm of arms) {
+    for (let i = 1; i <= repeats; i++) {
+      items.push({
+        id: `efficiency__${arm}__${platformLeg}__${pad3(i)}`,
+        instrument: 'efficiency',
+        arm,
+        platformLeg,
+        experimentBatchId: batchId,
+        runIndex: pad3(i),
+        cucumberParallel: '1',
+      });
+    }
+  }
+  return items;
+}
+
+export function buildCampaignItems(
+  instrument: 'determinism' | 'parallel-safety' | 'all',
+  batchSuffix: string,
+): CampaignItem[] {
   let items: CampaignItem[] = [];
   if (instrument === 'determinism' || instrument === 'all') {
     items = items.concat(buildDeterminismItems(batchSuffix));

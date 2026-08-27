@@ -85,8 +85,10 @@ import {
   EXPECTED_JOB_COUNT,
   GH_PLATFORM_INPUT,
   JOB_NAME_PREFIXES,
+  PlatformLeg,
   PRIMARY_STEP_NAME,
   buildCampaignItems,
+  buildExecutionEfficiencyItems,
   legKeyOf,
 } from './lib/campaign-matrix';
 
@@ -99,7 +101,7 @@ const CAMPAIGNS_DIR = join(REPO_ROOT, 'reports', 'campaigns');
 // CLI args — hand-rolled, no dependency. `pnpm experiments:run-campaign -- --help`.
 // ---------------------------------------------------------------------------
 interface Cli {
-  instrument: 'determinism' | 'parallel-safety' | 'all';
+  instrument: 'determinism' | 'parallel-safety' | 'all' | 'efficiency';
   ref: string;
   dryRun: boolean;
   cooldownSeconds: number;
@@ -108,6 +110,14 @@ interface Cli {
   dispatchTimeoutSeconds: number;
   runTimeoutSeconds: number;
   batchSuffix: string;
+  // --instrument efficiency only — REQUIRED (no default) when instrument === 'efficiency'; undefined
+  // otherwise. No default: aggregate-campaign-artifacts.ts must be invoked with the EXACT SAME
+  // --platform-leg/--repeats to reconstruct the same item-id set, and this script previously defaulted
+  // to 'android' while execution-efficiency-delta.ts defaulted to 'web' — an easy-to-miss silent
+  // mismatch caught by adversarial review (2026-08-26). Requiring an explicit value everywhere removes
+  // the mismatch risk entirely rather than trying to keep multiple defaults in sync by convention.
+  platformLeg?: PlatformLeg;
+  repeats?: number;
 }
 
 function parseIntArg(flag: string, raw: string | undefined, fallback: number): number {
@@ -130,7 +140,7 @@ function parseCli(argv: string[]): Cli {
     console.log(`
 run-campaign.ts — §8.4 campaign orchestrator (determinism + parallel-safety only; see file header)
 
-  --instrument <determinism|parallel-safety|all>   default: all
+  --instrument <determinism|parallel-safety|all|efficiency>   default: all
   --ref <branch>                                   default: ${DEFAULT_REF}
                                                     NOTE: must be a branch name, not a tag or SHA —
                                                     'gh run list --branch' only accepts branch names;
@@ -149,13 +159,34 @@ run-campaign.ts — §8.4 campaign orchestrator (determinism + parallel-safety o
   --run-timeout-seconds <n>                         default: 5400 (max wait for one dispatch to reach a
                                                     terminal status before giving up on it)
   --batch-suffix <string>                           default: '' (appended to experiment_batch_id, e.g. for a second campaign attempt)
+  --platform-leg <web|android>                      REQUIRED for --instrument efficiency, no default — must
+                                                    exactly match the --platform-leg you later pass to
+                                                    aggregate-campaign-artifacts.ts
+  --repeats <n>                                     --instrument efficiency only. default: 1 (one clean
+                                                    atomic + one clean twin dispatch per repeat, both at
+                                                    cucumber_parallel=1 — must also match the --repeats you
+                                                    later pass to aggregate-campaign-artifacts.ts)
 `);
     process.exit(0);
   }
 
   const instrument = (get('--instrument') ?? 'all') as Cli['instrument'];
-  if (!['determinism', 'parallel-safety', 'all'].includes(instrument)) {
-    throw new Error(`--instrument must be determinism|parallel-safety|all, got "${instrument}"`);
+  if (!['determinism', 'parallel-safety', 'all', 'efficiency'].includes(instrument)) {
+    throw new Error(`--instrument must be determinism|parallel-safety|all|efficiency, got "${instrument}"`);
+  }
+
+  let platformLeg: PlatformLeg | undefined;
+  let repeats: number | undefined;
+  if (instrument === 'efficiency') {
+    const rawPlatformLeg = get('--platform-leg');
+    if (rawPlatformLeg !== 'web' && rawPlatformLeg !== 'android') {
+      throw new Error(
+        `--instrument efficiency requires --platform-leg web|android (no default) — this MUST match the ` +
+        `--platform-leg you later pass to aggregate-campaign-artifacts.ts, got "${rawPlatformLeg}"`,
+      );
+    }
+    platformLeg = rawPlatformLeg;
+    repeats = parseIntArg('--repeats', get('--repeats'), 1);
   }
 
   return {
@@ -167,6 +198,8 @@ run-campaign.ts — §8.4 campaign orchestrator (determinism + parallel-safety o
     detectPollSeconds: parseIntArg('--detect-poll-seconds', get('--detect-poll-seconds'), 5),
     dispatchTimeoutSeconds: parseIntArg('--dispatch-timeout-seconds', get('--dispatch-timeout-seconds'), 120),
     runTimeoutSeconds: parseIntArg('--run-timeout-seconds', get('--run-timeout-seconds'), 5400),
+    platformLeg,
+    repeats,
     batchSuffix: get('--batch-suffix') ?? '',
   };
 }
@@ -217,8 +250,13 @@ function toDispatchSpec(item: CampaignItem): DispatchSpec {
   };
 }
 
-function buildSpecs(instrument: Cli['instrument'], batchSuffix: string): DispatchSpec[] {
-  return buildCampaignItems(instrument, batchSuffix).map(toDispatchSpec);
+function buildSpecs(cli: Cli): DispatchSpec[] {
+  if (cli.instrument === 'efficiency') {
+    // parseCli() guarantees both are defined whenever instrument === 'efficiency' (throws otherwise) —
+    // TS can't see that cross-function invariant, hence the cast.
+    return buildExecutionEfficiencyItems(cli.batchSuffix, cli.platformLeg as PlatformLeg, cli.repeats as number).map(toDispatchSpec);
+  }
+  return buildCampaignItems(cli.instrument, cli.batchSuffix).map(toDispatchSpec);
 }
 
 // ---------------------------------------------------------------------------
@@ -486,7 +524,7 @@ async function waitAndClassify(spec: DispatchSpec, runId: number, cli: Cli): Pro
 async function main(): Promise<void> {
   const cli = parseCli(process.argv.slice(2));
 
-  const specs = buildSpecs(cli.instrument, cli.batchSuffix);
+  const specs = buildSpecs(cli);
 
   console.log(`Campaign matrix: ${specs.length} dispatches (instrument=${cli.instrument}, ref=${cli.ref})`);
   const byInstrument = specs.reduce<Record<string, number>>((acc, s) => {

@@ -77,7 +77,14 @@
 import { execFileSync } from 'child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { CampaignItem, artifactNamesFor, buildCampaignItems, legKeyOf } from './lib/campaign-matrix';
+import {
+  CampaignItem,
+  PlatformLeg,
+  artifactNamesFor,
+  buildCampaignItems,
+  buildExecutionEfficiencyItems,
+  legKeyOf,
+} from './lib/campaign-matrix';
 
 const REPO_ROOT = join(__dirname, '..', '..');
 const CAMPAIGNS_DIR = join(REPO_ROOT, 'reports', 'campaigns');
@@ -88,10 +95,21 @@ const TMP_DOWNLOAD_ROOT = join(REPO_ROOT, 'reports', 'campaigns', '.artifact-tmp
 // CLI args
 // ---------------------------------------------------------------------------
 interface Cli {
-  instrument: 'determinism' | 'parallel-safety' | 'all';
+  instrument: 'determinism' | 'parallel-safety' | 'all' | 'efficiency';
   batchSuffix: string;
   dryRun: boolean;
   includeInfraFlagged: boolean;
+  // --instrument efficiency only — REQUIRED (no default), and must match the exact values passed to
+  // run-campaign.ts's own --platform-leg/--repeats for this dispatch. Item ids are deterministically
+  // built from these two values (buildExecutionEfficiencyItems), and this script's whole
+  // manifest-cross-reference (items.filter(item => dispatched.get(item.id)...)) depends on
+  // reconstructing the EXACT same id set that was actually dispatched — a mismatched or defaulted
+  // value here would silently miss real completed items rather than fail loudly, which is worse than
+  // requiring the caller to state it explicitly. Caught by adversarial review (2026-08-26): the two
+  // scripts previously had OPPOSITE --platform-leg defaults ('android' here... actually run-campaign.ts;
+  // 'web' in execution-efficiency-delta.ts), a silent-mismatch risk on top of this one.
+  platformLeg?: PlatformLeg;
+  repeats?: number;
 }
 
 function parseCli(argv: string[]): Cli {
@@ -107,7 +125,7 @@ aggregate-campaign-artifacts.ts — downloads GH Actions artifacts for every 'co
 item in a run-campaign.ts manifest and merges their metrics/raw/** into the local
 metrics/ tree, so 'pnpm metrics:experiment' has data to read.
 
-  --instrument <determinism|parallel-safety|all>   default: all — must match the
+  --instrument <determinism|parallel-safety|all|efficiency>   default: all — must match the
                                                     run-campaign.ts manifest(s) you want to aggregate
   --batch-suffix <string>                           default: '' — must match run-campaign.ts's --batch-suffix
   --dry-run                                         list what would be downloaded/merged; touches nothing
@@ -115,17 +133,48 @@ metrics/ tree, so 'pnpm metrics:experiment' has data to read.
                                                     (default: excluded, recorded 'skipped-infra' — only pass
                                                     this after manually reviewing that the flag was a false
                                                     positive for the specific items you're including)
+  --platform-leg <web|android>                      REQUIRED for --instrument efficiency, no default — must
+                                                    exactly match the --platform-leg passed to
+                                                    run-campaign.ts for this dispatch
+  --repeats <n>                                     REQUIRED for --instrument efficiency, no default — must
+                                                    exactly match the --repeats passed to run-campaign.ts
+                                                    for this dispatch (determines the item-id set this
+                                                    script reconstructs to cross-reference the manifest)
 `);
     process.exit(0);
   }
 
   const instrument = (get('--instrument') ?? 'all') as Cli['instrument'];
-  if (!['determinism', 'parallel-safety', 'all'].includes(instrument)) {
-    throw new Error(`--instrument must be determinism|parallel-safety|all, got "${instrument}"`);
+  if (!['determinism', 'parallel-safety', 'all', 'efficiency'].includes(instrument)) {
+    throw new Error(`--instrument must be determinism|parallel-safety|all|efficiency, got "${instrument}"`);
+  }
+
+  let platformLeg: PlatformLeg | undefined;
+  let repeats: number | undefined;
+  if (instrument === 'efficiency') {
+    const rawPlatformLeg = get('--platform-leg');
+    if (rawPlatformLeg !== 'web' && rawPlatformLeg !== 'android') {
+      throw new Error(
+        `--instrument efficiency requires --platform-leg web|android (no default) — pass the exact value ` +
+        `used when dispatching with run-campaign.ts, got "${rawPlatformLeg}"`,
+      );
+    }
+    platformLeg = rawPlatformLeg;
+    const rawRepeats = get('--repeats');
+    const parsedRepeats = Number(rawRepeats);
+    if (!rawRepeats || !Number.isInteger(parsedRepeats) || parsedRepeats < 1) {
+      throw new Error(
+        `--instrument efficiency requires --repeats <positive integer> (no default) — pass the exact value ` +
+        `used when dispatching with run-campaign.ts, got "${rawRepeats}"`,
+      );
+    }
+    repeats = parsedRepeats;
   }
 
   return {
     instrument,
+    platformLeg,
+    repeats,
     batchSuffix: get('--batch-suffix') ?? '',
     dryRun: has('--dry-run'),
     includeInfraFlagged: has('--include-infra-flagged'),
@@ -341,7 +390,10 @@ function mergeArtifactMetricsRaw(artifactDir: string): number {
 async function main(): Promise<void> {
   const cli = parseCli(process.argv.slice(2));
 
-  const items: CampaignItem[] = buildCampaignItems(cli.instrument, cli.batchSuffix);
+  const items: CampaignItem[] =
+    cli.instrument === 'efficiency'
+      ? buildExecutionEfficiencyItems(cli.batchSuffix, cli.platformLeg as PlatformLeg, cli.repeats as number)
+      : buildCampaignItems(cli.instrument, cli.batchSuffix);
   const dispatched = loadRelevantCampaignManifests(cli.instrument, cli.batchSuffix);
 
   const completedItems = items.filter((item) => dispatched.get(item.id)?.status === 'completed');
