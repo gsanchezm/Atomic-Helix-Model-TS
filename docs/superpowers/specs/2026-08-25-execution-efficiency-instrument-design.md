@@ -200,11 +200,65 @@ nothing under `scripts/`. Fixed by wiring `buildExecutionEfficiencyItems` into t
 verifying with real `ts-node` execution (`--help`/`--dry-run`) going forward, not the project-wide `tsc`,
 for anything under `scripts/experiments/`.
 
+## Twin-android "add toppings" failure — investigated (2026-08-27)
+
+The 1/16 dropped Outline row (see above) was investigated rather than left as an unexplained flag.
+Findings, in order of how they narrow the hypothesis:
+
+1. **Not a code bug specific to the twin.** `pizzaBuilder-nonatomic.route.ts` doesn't reimplement "add
+   toppings" — it imports and calls the *same* `addToppings()` from
+   `src/core/tests/pizzaBuilder/molecules/pizzaBuilder-toppings.molecule.ts` that the atomic suite uses.
+   And the atomic suite's own identical operation — `Selecting toppings updates the estimated total for
+   Pepperoni in US` (`@android`-tagged, mushrooms, same market/item) — ran as part of the *same*
+   `atomic-android` dispatch (GH run `33043202001`) and passed. Same code, same topping, same CI window,
+   different outcome — rules out a deterministic per-scenario defect in either arm's own code.
+2. **A real asymmetry in the shared molecule, though not proven causal.**
+   `addToppings()` issues `sendIntent(INTENT.CLICK, ...)` directly, with no preceding
+   `WAIT_FOR_ELEMENT` — its sibling `assertTotalReflectsToppings()` in the same file *does* wait
+   (`WAIT_FOR_ELEMENT` with a 5000ms budget) before reading. A click with no readiness guard is exactly
+   the shape of bug that only manifests as a race under load, which fits a 1-in-16 (and 0-in-1 on the
+   atomic side) failure rate far better than a deterministic defect would.
+3. **The failure is plausibly a known-shape Android/Appium timing flake, not a new phenomenon.**
+   `src/plugins/appium/actions/Click.ts`'s own comments document a *prior*, already-diagnosed incident
+   with the identical error wording ("...because element wasn't found") — a different root cause (an
+   iOS-only keyboard-dismiss tap closing a modal), but the same symptom class: an element resolved lazily
+   by `driver.$(target)` no longer present by the time `.click()` actually queries for it. This
+   codebase's own history already flags Appium action handlers as "may be insufficient for Android
+   flakiness" as a standing, general risk — this is not a new category of problem.
+4. **A concrete, checkable suppression-layer gap.** `chaos-proxy.ts`'s `suppressChaos` retries errors
+   matching `TRANSIENT_SIGNATURE_REGEX`, which includes the substring `nosuchelement` — but the actually
+   observed error text ("...because element wasn't found") does not obviously contain that substring.
+   **Not confirmed** (would need the raw WebdriverIO exception's exact `.name`/`.message` from this run,
+   which wasn't captured at that granularity) — but if the underlying error class doesn't literally match
+   the regex, a plausibly-transient Android click race would be classified as deterministic and skipped
+   by the one mechanism designed to absorb exactly this kind of noise.
+
+**Conclusion: most likely a real, environment/timing-driven Android UI race, exposed by a genuine
+readiness-check gap in a shared molecule, and (unconfirmed) possibly missed by chaos-proxy's transient-jitter
+regex.** Not proven with certainty — would need either a reproduction or finer-grained proxy telemetry
+from that specific run to confirm the exact exception class. Candidate fixes, not yet applied (out of
+this instrument's scope): add a `WAIT_FOR_ELEMENT` before the click in `addToppings()`, and/or widen
+`TRANSIENT_SIGNATURE_REGEX` if the raw error class is confirmed not to match today.
+
 ## Recommended next step (not yet done)
 
 Dispatch N≥10 additional single-repeat pairs (parallel=1, no matrix, no chained visual job) per platform
 leg — web reuses the already-completed parallel-safety `w1` pair's shape; android now has its own
 dedicated `efficiency` instrument for exactly this (`pnpm experiments:run-campaign -- --instrument
 efficiency --platform-leg android --repeats N`). Run the extractor over each and report mean ± spread in
-§9.5 once N is adequate on both legs. Android has not yet had a single real dispatch as of this
-memory's timestamp — the tooling is built and reviewed, but zero android data exists yet.
+§9.5 once N is adequate on both legs. Android has not yet had more than the one dispatch above as of this
+memory's timestamp.
+
+**Why N matters here specifically, not just as a policy citation.** The Android dispatch above supplies
+concrete evidence, not just an abstract "N=1 isn't enough": (a) the twin-android run itself hit a
+plausible timing flake on 1/16 of its own within-run repeats, and (b) even among the 15 *passing* rows,
+individual step durations varied enormously in a single dispatch (e.g. one row's own "enter card details"
+step took 38.6s, "provide delivery details" took 19.4s, vs. much smaller values for simpler steps) —
+direct, measured evidence that this environment has real timing volatility a single dispatch cannot
+average out. A single atomic-side data point (N=1) has no such internal check at all — nothing to compare
+it against, no way to tell whether 128ms/296ms was typical or itself an unusually fast/slow draw. More N
+turns the current point estimate into a defensible mean ± spread, lets a future flaky row (like the one
+already observed) get diluted into a distribution instead of silently or visibly perturbing a single
+number, and applies the exact same evidentiary standard this paper already imposes on its other three
+instruments (determinism's N=30, parallel-safety's K=16) rather than a lighter one for this ancillary
+fifth measurement.
