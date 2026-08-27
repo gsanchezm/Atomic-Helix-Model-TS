@@ -66,6 +66,30 @@ architecture_type = **TOM**. These metrics evaluate the automation architecture,
 | Reliability | pass_to_fail_probability | 0 | ratio | ALL | metrics/processed/scenario_outcome_history.csv |
 | Reliability | retry_count | NOT_AVAILABLE | count | ALL | not measured upstream |
 | Reliability | tool_failure_rate | 0 | ratio | ALL | metrics/processed/failure_buckets.csv (WEB/MOBILE_SESSION + LOCATOR_RESOLUTION / total observations) |
+| Reliability | fail_rate | 0.03 | ratio | UNKNOWN | metrics/processed/scenario_outcome_history.csv |
+| Reliability | fail_to_pass_probability |  | ratio | UNKNOWN | metrics/processed/scenario_outcome_history.csv |
+| Reliability | flaky_scenario_count | 0 | count | UNKNOWN | metrics/processed/scenario_outcome_history.csv |
+| Reliability | infrastructure_failure_rate | 0 | ratio | UNKNOWN | metrics/processed/failure_buckets.csv (INFRASTRUCTURE_FAILURE / total observations) |
+| Reliability | pass_rate | 0.97 | ratio | UNKNOWN | metrics/processed/scenario_outcome_history.csv |
+| Reliability | pass_to_fail_probability |  | ratio | UNKNOWN | metrics/processed/scenario_outcome_history.csv |
+| Reliability | retry_count | NOT_AVAILABLE | count | UNKNOWN | not measured upstream |
+| Reliability | tool_failure_rate | 0 | ratio | UNKNOWN | metrics/processed/failure_buckets.csv (WEB/MOBILE_SESSION + LOCATOR_RESOLUTION / total observations) |
+| Reliability | fail_rate | 0 | ratio | non-atomic-twin-web | metrics/processed/scenario_outcome_history.csv |
+| Reliability | fail_to_pass_probability |  | ratio | non-atomic-twin-web | metrics/processed/scenario_outcome_history.csv |
+| Reliability | flaky_scenario_count | 0 | count | non-atomic-twin-web | metrics/processed/scenario_outcome_history.csv |
+| Reliability | infrastructure_failure_rate | NOT_AVAILABLE | ratio | non-atomic-twin-web | metrics/processed/failure_buckets.csv |
+| Reliability | pass_rate | 1 | ratio | non-atomic-twin-web | metrics/processed/scenario_outcome_history.csv |
+| Reliability | pass_to_fail_probability | 0 | ratio | non-atomic-twin-web | metrics/processed/scenario_outcome_history.csv |
+| Reliability | retry_count | NOT_AVAILABLE | count | non-atomic-twin-web | not measured upstream |
+| Reliability | tool_failure_rate | NOT_AVAILABLE | ratio | non-atomic-twin-web | metrics/processed/failure_buckets.csv |
+| Reliability | fail_rate | 0 | ratio | playwright | metrics/processed/scenario_outcome_history.csv |
+| Reliability | fail_to_pass_probability |  | ratio | playwright | metrics/processed/scenario_outcome_history.csv |
+| Reliability | flaky_scenario_count | 0 | count | playwright | metrics/processed/scenario_outcome_history.csv |
+| Reliability | infrastructure_failure_rate | NOT_AVAILABLE | ratio | playwright | metrics/processed/failure_buckets.csv |
+| Reliability | pass_rate | 1 | ratio | playwright | metrics/processed/scenario_outcome_history.csv |
+| Reliability | pass_to_fail_probability | 0 | ratio | playwright | metrics/processed/scenario_outcome_history.csv |
+| Reliability | retry_count | NOT_AVAILABLE | count | playwright | not measured upstream |
+| Reliability | tool_failure_rate | NOT_AVAILABLE | ratio | playwright | metrics/processed/failure_buckets.csv |
 
 ## Performance Efficiency
 

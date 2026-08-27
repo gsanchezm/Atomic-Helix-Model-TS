@@ -20,27 +20,44 @@ function isTrackedOutcome(value: string): value is TrackedOutcome {
   return value === 'PASS' || value === 'FAIL';
 }
 
-function main(): void {
+// Outcome value lives in `outcome` (Task 1.3) — tolerate `status` as a fallback name.
+const outcomeOf = (r: Record<string, string>): string =>
+  (r.outcome || r.status || '').trim().toUpperCase();
+
+const bucketOf = (r: Record<string, string>): string => (r.failure_bucket || '').trim().toUpperCase();
+
+const TOOL_FAILURE_BUCKETS = new Set([
+  'WEB_SESSION_FAILURE',
+  'MOBILE_SESSION_FAILURE',
+  'LOCATOR_RESOLUTION_FAILURE',
+]);
+
+// Computes the full Reliability metric set for one slice of scenario_outcome_history.csv rows
+// (already filtered to a single tool_name upstream, or the unfiltered whole for the 'ALL' slice) and
+// the failure_buckets.csv rows filtered to match. §9.3's actual claim ("twin shows a higher transition
+// rate than atomic") is a CROSS-ARM comparison — this only becomes answerable once main() calls this
+// once per distinct tool_name, not just once globally, since fail_rate/transition-probability computed
+// across a pooled mix of arms cannot be attributed to either one.
+function computeReliabilityMetrics(
+  outcomeRows: Record<string, string>[],
+  bucketRows: Record<string, string>[],
+  toolName: string | undefined, // undefined -> QualityRecord.tool_name defaults to 'ALL'
+): QualityRecord[] {
   const records: QualityRecord[] = [];
+  const tag = { tool_name: toolName };
 
-  const outcome = readCsv(join(P.processed, 'scenario_outcome_history.csv'));
-  const buckets = readCsv(join(P.processed, 'failure_buckets.csv'));
+  const total = outcomeRows.length;
+  const passes = outcomeRows.filter((r) => outcomeOf(r) === 'PASS').length;
+  const fails = outcomeRows.filter((r) => outcomeOf(r) === 'FAIL').length;
 
-  // Outcome value lives in `outcome` (Task 1.3) — tolerate `status` as a fallback name.
-  const outcomeOf = (r: Record<string, string>): string =>
-    (r.outcome || r.status || '').trim().toUpperCase();
-
-  const total = outcome.length;
-  const passes = outcome.filter((r) => outcomeOf(r) === 'PASS').length;
-  const fails = outcome.filter((r) => outcomeOf(r) === 'FAIL').length;
-
-  // --- pass_rate / fail_rate: NA when there is no outcome history ---
+  // --- pass_rate / fail_rate: NA when there is no outcome history for this slice ---
   records.push({
     metric_category: CATEGORY,
     metric_name: 'pass_rate',
     metric_value: total > 0 ? (round2(passes / total) as number) : NA,
     metric_unit: 'ratio',
     source_file: 'metrics/processed/scenario_outcome_history.csv',
+    ...tag,
   });
   records.push({
     metric_category: CATEGORY,
@@ -48,11 +65,20 @@ function main(): void {
     metric_value: total > 0 ? (round2(fails / total) as number) : NA,
     metric_unit: 'ratio',
     source_file: 'metrics/processed/scenario_outcome_history.csv',
+    ...tag,
   });
 
   // --- Group by (scenario, tool_name, platform); order by run_index for transitions ---
+  // tool_name stays IN the key even though outcomeRows is already tool_name-filtered for every
+  // per-tool_name call site (main() below) — it's redundant there (empirically confirmed: partitioning
+  // by the 2-part vs. 3-part key produces identical groups within a single-tool_name slice) but it is
+  // NOT redundant for the 'ALL' slice, which is fed the full, unfiltered, multi-arm outcome array.
+  // Dropping it there would merge two different arms' rows sharing one (scenario, platform) into a
+  // single transition sequence — fabricating flaky_scenario_count / pass_to_fail_probability /
+  // fail_to_pass_probability out of pure interleaving, not real flakiness in either arm. Caught by
+  // adversarial review (2026-08-26) with an empirical repro before this was ever committed.
   const groups = new Map<string, Record<string, string>[]>();
-  for (const r of outcome) {
+  for (const r of outcomeRows) {
     const scenario = r.scenario || r.scenario_name || '';
     const key = `${scenario}::${r.tool_name || ''}::${r.platform || ''}`;
     if (!groups.has(key)) groups.set(key, []);
@@ -88,6 +114,7 @@ function main(): void {
     metric_value: flakyCount,
     metric_unit: 'count',
     source_file: 'metrics/processed/scenario_outcome_history.csv',
+    ...tag,
   });
 
   // Transition probabilities: null (undefined) when no qualifying transitions exist.
@@ -99,6 +126,7 @@ function main(): void {
       : null,
     metric_unit: 'ratio',
     source_file: 'metrics/processed/scenario_outcome_history.csv',
+    ...tag,
   });
   records.push({
     metric_category: CATEGORY,
@@ -108,6 +136,7 @@ function main(): void {
       : null,
     metric_unit: 'ratio',
     source_file: 'metrics/processed/scenario_outcome_history.csv',
+    ...tag,
   });
 
   // retry_count: not tracked upstream -> NA.
@@ -117,17 +146,22 @@ function main(): void {
     metric_value: NA,
     metric_unit: 'count',
     source_file: 'not measured upstream',
+    ...tag,
   });
 
-  // --- Failure-bucket distribution -> infrastructure / tool failure rates ---
-  // Needs failure_buckets.csv. Rate is over total outcome observations.
-  if (buckets.length === 0 || total === 0) {
+  // --- Failure-bucket distribution -> infrastructure / tool failure rates, same slice ---
+  const scopedBuckets = toolName === undefined
+    ? bucketRows
+    : bucketRows.filter((r) => (r.tool_name || '').trim() === toolName);
+
+  if (scopedBuckets.length === 0 || total === 0) {
     records.push({
       metric_category: CATEGORY,
       metric_name: 'infrastructure_failure_rate',
       metric_value: NA,
       metric_unit: 'ratio',
       source_file: 'metrics/processed/failure_buckets.csv',
+      ...tag,
     });
     records.push({
       metric_category: CATEGORY,
@@ -135,25 +169,18 @@ function main(): void {
       metric_value: NA,
       metric_unit: 'ratio',
       source_file: 'metrics/processed/failure_buckets.csv',
+      ...tag,
     });
   } else {
-    const bucketOf = (r: Record<string, string>): string =>
-      (r.failure_bucket || '').trim().toUpperCase();
-    // Infrastructure: explicit INFRASTRUCTURE_FAILURE bucket.
-    const infra = buckets.filter((r) => bucketOf(r) === 'INFRASTRUCTURE_FAILURE').length;
-    // Tool failures: session/driver-level failures attributable to a tool (not assertion/data).
-    const TOOL_BUCKETS = new Set([
-      'WEB_SESSION_FAILURE',
-      'MOBILE_SESSION_FAILURE',
-      'LOCATOR_RESOLUTION_FAILURE',
-    ]);
-    const toolFails = buckets.filter((r) => TOOL_BUCKETS.has(bucketOf(r))).length;
+    const infra = scopedBuckets.filter((r) => bucketOf(r) === 'INFRASTRUCTURE_FAILURE').length;
+    const toolFails = scopedBuckets.filter((r) => TOOL_FAILURE_BUCKETS.has(bucketOf(r))).length;
     records.push({
       metric_category: CATEGORY,
       metric_name: 'infrastructure_failure_rate',
       metric_value: round2(infra / total) as number,
       metric_unit: 'ratio',
       source_file: 'metrics/processed/failure_buckets.csv (INFRASTRUCTURE_FAILURE / total observations)',
+      ...tag,
     });
     records.push({
       metric_category: CATEGORY,
@@ -162,11 +189,42 @@ function main(): void {
       metric_unit: 'ratio',
       source_file:
         'metrics/processed/failure_buckets.csv (WEB/MOBILE_SESSION + LOCATOR_RESOLUTION / total observations)',
+      ...tag,
     });
   }
 
+  return records;
+}
+
+function main(): void {
+  const outcome = readCsv(join(P.processed, 'scenario_outcome_history.csv'));
+  const buckets = readCsv(join(P.processed, 'failure_buckets.csv'));
+
+  // 'ALL' slice — kept for backward compatibility with anything reading the pre-existing pooled row.
+  const records: QualityRecord[] = [...computeReliabilityMetrics(outcome, buckets, undefined)];
+
+  // Per-tool_name slices — the actual cross-arm breakdown §9.3 needs (e.g. 'playwright' vs
+  // 'non-atomic-twin-web'). Blank/missing tool_name is skipped (nothing meaningful to slice on);
+  // 'UNKNOWN' is NOT filtered out here — it's reported as its own honest slice like any other value,
+  // since deciding what counts as noise vs. signal is a reporting-layer judgment, not this script's.
+  // The literal string 'ALL' IS excluded, even though nothing in this codebase's manifest schema
+  // currently produces it: writeQualityCsv (lib/quality.ts) reserves 'ALL' as the default tag for the
+  // pooled slice above, and a raw input row that happened to carry tool_name==='ALL' would otherwise
+  // get its own per-tool slice that's key-identical to the pooled one on every column except
+  // metric_value — two silently-conflicting rows under one tag, with no dedup in writeCsv. Caught by
+  // adversarial review (2026-08-26).
+  const toolNames = [...new Set(outcome.map((r) => (r.tool_name || '').trim()).filter(Boolean))]
+    .filter((t) => t !== 'ALL')
+    .sort();
+  for (const toolName of toolNames) {
+    const slice = outcome.filter((r) => (r.tool_name || '').trim() === toolName);
+    records.push(...computeReliabilityMetrics(slice, buckets, toolName));
+  }
+
   writeQualityCsv(join(P.processed, 'reliability_metrics.csv'), records);
-  console.log(`[measure-reliability] wrote ${records.length} records`);
+  console.log(
+    `[measure-reliability] wrote ${records.length} records (1 'ALL' slice + ${toolNames.length} per-tool_name slice(s): ${toolNames.join(', ') || 'none'})`,
+  );
 }
 
 safeMain('measure-reliability', main);

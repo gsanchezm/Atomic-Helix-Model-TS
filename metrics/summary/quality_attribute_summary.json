@@ -329,6 +329,198 @@
         "tool_name": "ALL",
         "platform": "ALL",
         "source_file": "metrics/processed/failure_buckets.csv (WEB/MOBILE_SESSION + LOCATOR_RESOLUTION / total observations)"
+      },
+      {
+        "metric_name": "fail_rate",
+        "metric_value": "0.03",
+        "metric_unit": "ratio",
+        "tool_name": "UNKNOWN",
+        "platform": "ALL",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "fail_to_pass_probability",
+        "metric_value": "",
+        "metric_unit": "ratio",
+        "tool_name": "UNKNOWN",
+        "platform": "ALL",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "flaky_scenario_count",
+        "metric_value": "0",
+        "metric_unit": "count",
+        "tool_name": "UNKNOWN",
+        "platform": "ALL",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "infrastructure_failure_rate",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "UNKNOWN",
+        "platform": "ALL",
+        "source_file": "metrics/processed/failure_buckets.csv (INFRASTRUCTURE_FAILURE / total observations)"
+      },
+      {
+        "metric_name": "pass_rate",
+        "metric_value": "0.97",
+        "metric_unit": "ratio",
+        "tool_name": "UNKNOWN",
+        "platform": "ALL",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "pass_to_fail_probability",
+        "metric_value": "",
+        "metric_unit": "ratio",
+        "tool_name": "UNKNOWN",
+        "platform": "ALL",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "retry_count",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "count",
+        "tool_name": "UNKNOWN",
+        "platform": "ALL",
+        "source_file": "not measured upstream"
+      },
+      {
+        "metric_name": "tool_failure_rate",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "UNKNOWN",
+        "platform": "ALL",
+        "source_file": "metrics/processed/failure_buckets.csv (WEB/MOBILE_SESSION + LOCATOR_RESOLUTION / total observations)"
+      },
+      {
+        "metric_name": "fail_rate",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "fail_to_pass_probability",
+        "metric_value": "",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "flaky_scenario_count",
+        "metric_value": "0",
+        "metric_unit": "count",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "infrastructure_failure_rate",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "source_file": "metrics/processed/failure_buckets.csv"
+      },
+      {
+        "metric_name": "pass_rate",
+        "metric_value": "1",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "pass_to_fail_probability",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "retry_count",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "count",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "source_file": "not measured upstream"
+      },
+      {
+        "metric_name": "tool_failure_rate",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "source_file": "metrics/processed/failure_buckets.csv"
+      },
+      {
+        "metric_name": "fail_rate",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "fail_to_pass_probability",
+        "metric_value": "",
+        "metric_unit": "ratio",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "flaky_scenario_count",
+        "metric_value": "0",
+        "metric_unit": "count",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "infrastructure_failure_rate",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "ratio",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "source_file": "metrics/processed/failure_buckets.csv"
+      },
+      {
+        "metric_name": "pass_rate",
+        "metric_value": "1",
+        "metric_unit": "ratio",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "pass_to_fail_probability",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "retry_count",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "count",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "source_file": "not measured upstream"
+      },
+      {
+        "metric_name": "tool_failure_rate",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "ratio",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "source_file": "metrics/processed/failure_buckets.csv"
       }
     ],
     "Performance Efficiency": [
