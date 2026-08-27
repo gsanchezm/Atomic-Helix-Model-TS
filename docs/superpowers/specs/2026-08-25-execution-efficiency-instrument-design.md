@@ -225,20 +225,28 @@ Findings, in order of how they narrow the hypothesis:
    by `driver.$(target)` no longer present by the time `.click()` actually queries for it. This
    codebase's own history already flags Appium action handlers as "may be insufficient for Android
    flakiness" as a standing, general risk — this is not a new category of problem.
-4. **A concrete, checkable suppression-layer gap.** `chaos-proxy.ts`'s `suppressChaos` retries errors
-   matching `TRANSIENT_SIGNATURE_REGEX`, which includes the substring `nosuchelement` — but the actually
-   observed error text ("...because element wasn't found") does not obviously contain that substring.
-   **Not confirmed** (would need the raw WebdriverIO exception's exact `.name`/`.message` from this run,
-   which wasn't captured at that granularity) — but if the underlying error class doesn't literally match
-   the regex, a plausibly-transient Android click race would be classified as deterministic and skipped
-   by the one mechanism designed to absorb exactly this kind of noise.
+4. **A concrete, checkable suppression-layer gap — confirmed, not just suspected.** Traced the full
+   error-propagation chain (`Click.ts`'s bare `await element.click()`, no try/catch → `suppressChaos`'s
+   catch block → `client.ts`'s `reject(new Error(response.errorMessage))`, no reformatting anywhere) and
+   confirmed the observed message IS what `isTransientJitter()` tested. Grepped
+   `node_modules/webdriverio/build/node.js` directly and confirmed "Can't call ${cmd} on element with
+   selector "X" because element wasn't found" is WebdriverIO's own fixed internal message for this exact
+   scenario. Ran it through both Python's `re` and Node's real `RegExp` engine against the pre-fix regex:
+   **did not match** — `suppressChaos` gave this click zero retries.
 
-**Conclusion: most likely a real, environment/timing-driven Android UI race, exposed by a genuine
-readiness-check gap in a shared molecule, and (unconfirmed) possibly missed by chaos-proxy's transient-jitter
-regex.** Not proven with certainty — would need either a reproduction or finer-grained proxy telemetry
-from that specific run to confirm the exact exception class. Candidate fixes, not yet applied (out of
-this instrument's scope): add a `WAIT_FOR_ELEMENT` before the click in `addToppings()`, and/or widen
-`TRANSIENT_SIGNATURE_REGEX` if the raw error class is confirmed not to match today.
+**Conclusion: a real, environment/timing-driven Android UI race, exposed by a genuine readiness-check gap
+in a shared molecule, and confirmed missed by chaos-proxy's transient-jitter regex.** **Fixed 2026-08-27**
+(commit `6a49706`), two complementary changes, not chained: (1) `addToppings()` now does
+`WAIT_FOR_ELEMENT` before `CLICK`, matching its sibling `assertTotalReflectsToppings()` — closes the race
+proactively, and per adversarial review alone likely would have prevented the observed failure (a
+genuinely-absent element fails fast at the wait step instead, a different, non-matching error format, so
+the CLICK path is never reached); (2) `TRANSIENT_SIGNATURE_REGEX` widened as reactive defense-in-depth for
+the same failure class elsewhere — anchored to `because (element|sibling|it) wasn't found`, NOT the bare
+substring `wasn't found`, after adversarial review caught that a bare-substring match is tested against
+*every* action `suppressChaos` sees (including `ASSERT_TEXT`, which embeds real app UI copy, and the
+MobSF/schema-fuzz/TLS-check/ZAP actions, which embed raw external tool output) — a coincidental "wasn't
+found" in either could have silently reclassified a genuinely deterministic failure as transient. Full
+review-and-fix writeup in the commit message.
 
 ## Recommended next step (not yet done)
 
