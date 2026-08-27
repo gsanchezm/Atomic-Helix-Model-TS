@@ -33,6 +33,8 @@ function toppingButtonSelector(topping: string): string {
         : `[data-testid='topping-${slug}']`;
 }
 
+const TOPPING_BUTTON_PRESENCE_MS = 5_000;
+
 /**
  * Parses the feature's comma-separated topping list and returns trimmed
  * non-empty values. Exposed for the route so the api driver can populate
@@ -54,7 +56,16 @@ export async function addToppings(commaSeparated: string): Promise<string[]> {
     }
     for (const topping of toppings) {
         log.info({ topping, driver }, 'Adding topping');
-        await sendIntent(INTENT.CLICK, toppingButtonSelector(topping));
+        const selector = toppingButtonSelector(topping);
+        // The size-selection step immediately before this one can still be settling (re-render/re-layout
+        // of the topping list) when this runs — a bare CLICK with no readiness check races that render,
+        // most exposed on mobile (Appium/emulator render latency) under a real, longer-running journey.
+        // Root-caused 2026-08-27 after a twin-android dispatch hit "element wasn't found" on this exact
+        // click; the atomic suite's own identical operation passed in the same run, ruling out a
+        // deterministic defect — this is a timing race, closed the same way its sibling
+        // assertTotalReflectsToppings() already guards its own read below.
+        await sendIntent(INTENT.WAIT_FOR_ELEMENT, `${selector}||${TOPPING_BUTTON_PRESENCE_MS}`);
+        await sendIntent(INTENT.CLICK, selector);
     }
     return toppings;
 }

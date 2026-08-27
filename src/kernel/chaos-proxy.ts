@@ -163,6 +163,26 @@ function routeToPlugin(
 const TRANSIENT_SIGNATURE_REGEX = new RegExp(
     // UI-level jitter — element flakiness during a render/transition.
     'staleelementreference|elementnotinteractable|nosuchelement|timeouterror|targetclosederror|node is detached' +
+    // WebdriverIO's own lazily-resolved-element idiom ("Can't call click on element with selector
+    // "X" because element wasn't found", also "...because sibling wasn't found" / "...because it
+    // wasn't found" for the custom$/next/previous/parent element-chain variants — all three confirmed
+    // 2026-08-27 by reading node_modules/webdriverio/build/node.js directly, not assumed). Same
+    // category as the entries above (an element not yet in the view hierarchy at the instant checked,
+    // present once render/transition settles) — root-caused after a real twin-android dispatch hit
+    // exactly this text on a CLICK and was classified deterministic, getting zero retries, because
+    // this exact wording didn't match any pattern above.
+    //
+    // Anchored to "because (element|sibling|it) wasn't found" rather than the bare substring
+    // "wasn't found" — caught by adversarial review (2026-08-27): a bare substring match is tested
+    // against every action suppressChaos sees, not just CLICK. ASSERT_TEXT's plugin-side
+    // implementations (playwright/webdriverio/mobilewright/appium) throw `expected "X", got "Y"` with
+    // Y being real rendered app copy — an app empty-state or error string that happened to read
+    // "wasn't found" would get silently retried instead of failing fast. Same risk from the
+    // security/API tool actions that embed raw external output (RunMobSfApkScan, RunSchemaFuzz,
+    // RunTlsCheck, RunZapScan — up to 1-4KB of a real tool's stdout/stderr/response body). The
+    // anchored five-word phrase is WebdriverIO's own fixed internal framing, not something either
+    // app content or a third-party tool's own error text would plausibly reproduce verbatim.
+    '|because (element|sibling|it) wasn\'t found' +
     // Transport-level jitter — under long iOS/WDA operations the appium plugin's
     // event loop momentarily blocks and refuses the proxy's gRPC connection
     // (gRPC "14 UNAVAILABLE" / ECONNREFUSED). It recovers once the op completes,
