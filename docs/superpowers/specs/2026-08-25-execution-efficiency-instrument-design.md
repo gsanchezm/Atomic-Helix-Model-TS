@@ -124,7 +124,34 @@ didn't; averaging across all 16 is why the script's numbers are lower and more r
 initial single-row read. **The atomic side is still N=1 per comparandum — not adequate to report as a
 §9 number** per §8.5's evidence policy, regardless of the twin's larger effective N.
 
-## What's built
+**Android illustrative pass (2026-08-26).** First-ever real dispatch of the twin's Android journey
+end-to-end: `pnpm experiments:run-campaign -- --instrument efficiency --platform-leg android --repeats
+1` (atomic GH run `33043202001`, success; twin GH run `33044995629`, `conclusion=failure` but
+`likelyInfra=false` — 15/16 Outline rows passed cleanly, 1 failed at `And they add toppings "mushrooms"`
+with `Error: Can't call click on element with selector
+"android=new UiSelector().resourceId("btn-topping-mushrooms")" because element wasn't found` — a real,
+newly-surfaced Android locator issue in the twin's implementation, not infra noise; logged as a follow-up,
+out of this instrument's scope to fix. The extractor correctly dropped that 1 failed row and used the
+remaining 15, per its designed non-PASS-row guard):
+
+| Comparandum | Atomic step-time (N=1) | Twin step-time (N=15 mean) | Ratio |
+|---|---|---|---|
+| Reach "logged in" | 128ms | 12,626ms | twin ≈98.6× atomic |
+| Reach "cart populated" | 296ms | 23,206ms | twin ≈78.4× atomic |
+| *(negative control)* catalog-click → builder rendered | 3,282ms | 3,218ms | ≈parity, as expected |
+
+Sanity-checked against the raw per-step `cucumber-jsonl` data for one twin row directly (not just the
+aggregated mean) — individually plausible real durations (e.g. 38.6s for the card-details form fill,
+18.7s to open the login screen), not an extraction artifact. The negative control landing at parity
+again (~3.2s for a single tap in *both* arms) is the key control: it shows Android/Appium UI automation
+is uniformly far slower than Playwright/web *regardless of arm* (own baseline ≈3.2s per interaction), so
+the ~80-99× deltas on the two real comparanda aren't "Android is slow" noise — they're what happens when
+a multi-step UI journey, each step already paying that same ~3s+ Appium overhead, is compared against a
+single API call whose cost barely changes across platforms (128ms/296ms Android vs. 109ms/188ms web —
+consistent with hitting the same backend either way). The atomic method's efficiency advantage is
+*larger*, not smaller, on the platform where UI automation itself is more expensive — directionally
+exactly what the corollary predicts, and a much starker illustration than web's ~3.4-3.5×. Still N=1 on
+the atomic side (N=15 on twin) — same §8.5 caveat as web: not yet a §9 number.
 
 `scripts/experiments/execution-efficiency-delta.ts` (`pnpm experiments:execution-efficiency-delta`) —
 extracts both comparandum pairs plus the negative control from a given atomic/twin `cucumber-jsonl` run
