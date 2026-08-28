@@ -235,18 +235,33 @@ Findings, in order of how they narrow the hypothesis:
    **did not match** — `suppressChaos` gave this click zero retries.
 
 **Conclusion: a real, environment/timing-driven Android UI race, exposed by a genuine readiness-check gap
-in a shared molecule, and confirmed missed by chaos-proxy's transient-jitter regex.** **Fixed 2026-08-27**
-(commit `6a49706`), two complementary changes, not chained: (1) `addToppings()` now does
-`WAIT_FOR_ELEMENT` before `CLICK`, matching its sibling `assertTotalReflectsToppings()` — closes the race
-proactively, and per adversarial review alone likely would have prevented the observed failure (a
-genuinely-absent element fails fast at the wait step instead, a different, non-matching error format, so
-the CLICK path is never reached); (2) `TRANSIENT_SIGNATURE_REGEX` widened as reactive defense-in-depth for
-the same failure class elsewhere — anchored to `because (element|sibling|it) wasn't found`, NOT the bare
-substring `wasn't found`, after adversarial review caught that a bare-substring match is tested against
-*every* action `suppressChaos` sees (including `ASSERT_TEXT`, which embeds real app UI copy, and the
-MobSF/schema-fuzz/TLS-check/ZAP actions, which embed raw external tool output) — a coincidental "wasn't
-found" in either could have silently reclassified a genuinely deterministic failure as transient. Full
-review-and-fix writeup in the commit message.
+in a shared molecule, and confirmed missed by chaos-proxy's transient-jitter regex.** Two complementary
+fixes were attempted 2026-08-27 (commit `6a49706`), not chained: (1) `addToppings()` adding
+`WAIT_FOR_ELEMENT` before `CLICK`, matching its sibling `assertTotalReflectsToppings()`; (2)
+`TRANSIENT_SIGNATURE_REGEX` widened as reactive defense-in-depth, anchored to
+`because (element|sibling|it) wasn't found`, NOT the bare substring `wasn't found`, after adversarial
+review caught that a bare-substring match is tested against *every* action `suppressChaos` sees
+(including `ASSERT_TEXT`, which embeds real app UI copy, and the MobSF/schema-fuzz/TLS-check/ZAP actions,
+which embed raw external tool output) — a coincidental "wasn't found" in either could have silently
+reclassified a genuinely deterministic failure as transient.
+
+**(1) was itself a regression, caught by a follow-up smoke dispatch and reverted (commit `df0c637`).**
+The user explicitly asked for one more real Android dispatch specifically to check the fix before trusting
+it for a larger N-increase campaign — exactly the reasoning in "Why N matters" above, now validated by a
+concrete near-miss. Result: `WAIT_FOR_ELEMENT` before `CLICK` turned the original ~1-in-16 probabilistic
+race into a **100%-reproducible failure** — 6/6 atomic topping-scenarios (every market) and effectively
+all twin Outline rows, every failure now "element still not displayed after 5000ms" instead of the
+original error. Root cause: `WaitForElementAction`
+(`src/plugins/appium/actions/WaitForElement.ts`) only does a passive `driver.$(selector)
+.waitForDisplayed({timeout})` poll — no scrolling. `Click.ts`'s own flow calls
+`helpers.scrollIntoViewSafe()` before clicking. The topping buttons are below the fold on the Android
+builder screen; only `CLICK`'s internal scroll brings them into view — waiting for "displayed" before
+anything scrolls just times out, every time. (1) was reverted back to a bare `CLICK`. **(2) was kept** —
+an independent, passive retry classifier with no scroll-ordering dependency, not implicated in the
+regression. Current state: mitigated (the rare race can now self-heal via retry if it recurs, untested
+against an actual recurrence) but not proactively fixed — a real fix needs platform-aware scroll-then-wait
+logic inside `CLICK`/`scrollIntoViewSafe` itself, left as an explicit follow-up. Full write-up: commits
+`6a49706` (root cause + first attempt) and `df0c637` (regression + revert).
 
 ## Recommended next step (not yet done)
 
