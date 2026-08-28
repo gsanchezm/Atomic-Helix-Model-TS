@@ -33,8 +33,6 @@ function toppingButtonSelector(topping: string): string {
         : `[data-testid='topping-${slug}']`;
 }
 
-const TOPPING_BUTTON_PRESENCE_MS = 5_000;
-
 /**
  * Parses the feature's comma-separated topping list and returns trimmed
  * non-empty values. Exposed for the route so the api driver can populate
@@ -56,16 +54,21 @@ export async function addToppings(commaSeparated: string): Promise<string[]> {
     }
     for (const topping of toppings) {
         log.info({ topping, driver }, 'Adding topping');
-        const selector = toppingButtonSelector(topping);
-        // The size-selection step immediately before this one can still be settling (re-render/re-layout
-        // of the topping list) when this runs — a bare CLICK with no readiness check races that render,
-        // most exposed on mobile (Appium/emulator render latency) under a real, longer-running journey.
-        // Root-caused 2026-08-27 after a twin-android dispatch hit "element wasn't found" on this exact
-        // click; the atomic suite's own identical operation passed in the same run, ruling out a
-        // deterministic defect — this is a timing race, closed the same way its sibling
-        // assertTotalReflectsToppings() already guards its own read below.
-        await sendIntent(INTENT.WAIT_FOR_ELEMENT, `${selector}||${TOPPING_BUTTON_PRESENCE_MS}`);
-        await sendIntent(INTENT.CLICK, selector);
+        // NOT a WAIT_FOR_ELEMENT-then-CLICK pair — tried that 2026-08-27 after a twin-android dispatch
+        // hit "element wasn't found" on this exact click (root cause: a genuine timing race, not a
+        // deterministic defect — the atomic suite's identical operation passed in the same CI run).
+        // The "fix" was itself a regression, caught by a follow-up smoke dispatch: WaitForElementAction
+        // (src/plugins/appium/actions/WaitForElement.ts) only polls `waitForDisplayed`, with no
+        // scrolling — but the topping buttons are below the fold on Android and only get scrolled into
+        // view by CLICK's own internal `scrollIntoViewSafe` (src/plugins/appium/actions/Click.ts).
+        // Waiting for "displayed" before anything has scrolled the element into view timed out 100% of
+        // the time (6/6 atomic scenarios, ~16/16 twin rows) — turning a rare race into a deterministic
+        // failure. Reverted. The remaining mitigation is chaos-proxy.ts's TRANSIENT_SIGNATURE_REGEX
+        // widening (kept — it's a passive retry classifier, doesn't have this scroll-ordering problem)
+        // plus CLICK's own existing scroll-then-click flow, which is what actually handles this element
+        // correctly. If the race recurs, fix it inside CLICK/scrollIntoViewSafe (platform-aware scroll
+        // logic), not by adding a passive wait in front of an element that needs an active scroll.
+        await sendIntent(INTENT.CLICK, toppingButtonSelector(topping));
     }
     return toppings;
 }
