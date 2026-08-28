@@ -761,16 +761,16 @@ code, out of files scanned:
 
 ### 9.5 Execution efficiency (ancillary R3 measurement)
 
-> **Illustrative pass only — not yet a reportable result.** See §8.4's note and
-> `docs/superpowers/specs/2026-08-25-execution-efficiency-instrument-design.md` for the full design,
-> the rejected alternatives, and why. Web: `w1` pair (atomic-web GH run `32768226121`, twin-web GH run
-> `32793108181`) plus 3 dedicated repeats dispatched 2026-08-27 (`pnpm experiments:run-campaign --
-> --instrument efficiency --platform-leg web --repeats 3`). Android: 2 dedicated dispatches (a first
-> repeat 2026-08-26, GH runs `33043202001`/`33044995629`; a third repeat 2026-08-27 after a second
-> repeat's data proved unusable — see below — GH runs `33131801405`/`33133500158`). Both legs: the twin
-> side gets a larger effective N "for free" from its K identical Outline rows within each run. §8.5's
-> evidence policy withholds this from being reported as a number until the atomic side reaches an
-> adequate N too, on both legs — current progress: web N=4, Android N=2.
+> **Web: N≥10 threshold reached, first reportable leg. Android: still illustrative.** See §8.4's note and
+> `docs/superpowers/specs/2026-08-25-execution-efficiency-instrument-design.md` for the full design and
+> the rejected alternatives. Web: the `w1` pair (atomic-web GH run `32768226121`, twin-web GH run
+> `32793108181`) plus 10 dedicated repeats dispatched 2026-08-27 (`pnpm experiments:run-campaign --
+> --instrument efficiency --platform-leg web --repeats 10`) — N=11 atomic, N=176 twin. Android: 2 usable
+> dedicated dispatches (a first repeat 2026-08-26, GH runs `33043202001`/`33044995629`; a third repeat
+> 2026-08-27 after a second repeat's data proved unusable — see below — GH runs
+> `33131801405`/`33133500158`) — N=2 atomic, N=31 twin, still below the N≥10 bar; more Android dispatches
+> in progress as of this note. Both legs: the twin side gets a larger effective N "for free" from its K
+> identical Outline rows within each run.
 >
 > **Android repeat 2 (2026-08-26) is excluded, not silently dropped.** It coincided with a first attempt
 > at fixing the twin-android "add toppings" race (commit `6a49706`) that turned out to be itself a
@@ -778,13 +778,18 @@ code, out of files scanned:
 > design doc for the full story; reverted in `df0c637`). The extractor correctly refused that pair (twin
 > side had zero valid PASS rows) rather than average in failed-run data.
 
-**Web** (N=4 atomic / N=64 twin):
+**Web — N=11 atomic / N=176 twin, the design doc's N≥10 threshold reached 2026-08-27.** Reported with
+spread, not just a point estimate, per §8.5's evidence policy now that N is adequate on this leg:
 
-| Comparandum | Atomic step-time (mean) | Twin step-time (mean) | Ratio (twin/atomic) |
+| Comparandum | Atomic mean ± sd (range) | Twin mean ± sd (range) | Ratio (twin/atomic) |
 |---|---|---|---|
-| Reach "logged in" | 91ms | 423ms | ≈4.7× |
-| Reach "cart populated" | 268ms | 786ms | ≈2.9× |
-| *(negative control)* catalog-click → builder rendered — UI-driven in both arms, no R3 substitution | 73ms | 62ms | ≈0.85× (near parity, as expected) |
+| Reach "logged in" | 87 ± 15ms (57-109) | 386 ± 295ms (193-2,267) | ≈4.4× |
+| Reach "cart populated" | 244 ± 97ms (123-413) | 750 ± 207ms (455-1,501) | ≈3.1× |
+| *(negative control)* catalog-click → builder rendered — UI-driven in both arms, no R3 substitution | 77 ± 10ms (58-90) | 66 ± 18ms (30-180) | ≈0.86× (near parity, as expected) |
+
+The twin's wide login range (up to 2,267ms on one row) is consistent with occasional Render free-tier
+cold-start latency already documented elsewhere in this evaluation — not excluded, since it's a real cost
+the UI-driven path pays that the API-injected path structurally doesn't.
 
 **Android** (N=2 atomic / N=31 twin):
 
