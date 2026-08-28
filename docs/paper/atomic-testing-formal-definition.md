@@ -657,19 +657,19 @@ UI molecule; "cart populated": atomic's checkout cart-injection step vs. twin's 
 sequence) — a catalog/builder-click step pair, driven by UI in *both* arms, is kept only as a disclosed
 negative control, and the atomic-only "builder is open" precondition step is excluded entirely because
 it pays R1's independence cost, not R3's mechanism cost, and would misattribute the two. The illustrative
-pass on web (zero new dispatches — mined from the already-completed parallel-safety `w1` pair) reads:
-"logged in" 109ms atomic vs. 365ms twin (twin ≈3.4× atomic, N=1 vs. N=16-within-run); "cart populated"
-188ms vs. 656ms (≈3.5×, same N); negative control 69ms vs. 52ms (≈parity, as expected of an operation
-with no R3 substitution on either side). Extended to Android (2026-08-26, a dedicated first-ever
-dispatch): "logged in" 128ms vs. 12,626ms (≈98.6×, N=1 vs. N=15-within-run — one Outline row dropped by
-the extractor's non-PASS guard after a real, newly-surfaced Android locator failure unrelated to this
-instrument); "cart populated" 296ms vs. 23,206ms (≈78.4×); negative control 3,282ms vs. 3,218ms
-(≈parity, same N=15). The negative control's own ~3.2s-per-interaction baseline on both arms shows
+pass — web (started from the already-completed parallel-safety `w1` pair, then 3 dedicated repeats,
+N=4 atomic/N=64 twin as of 2026-08-27) and Android (2 usable dedicated dispatches, N=2 atomic/N=31 twin
+— a third dispatch's data was excluded, not silently dropped, after coinciding with a since-reverted
+regression in an unrelated fix attempt, see below) — see §9.5 for the current per-comparandum numbers.
+Ratios: web ≈3.4-4.7× (logged in) / ≈2.3-3.5× (cart populated); Android ≈78-123× / ≈78-79×; both legs'
+negative control stays near parity throughout, as expected of an operation with no R3 substitution on
+either side. The negative control's own ~3.2s-per-interaction baseline on Android (both arms) shows
 Android/Appium UI automation is uniformly far more expensive than web regardless of arm, while the
 atomic side's API-call cost stays roughly platform-invariant — so the much larger Android ratio is the
 same substitution effect at a higher UI-cost baseline, not a different phenomenon. See §9.5 for the full
-tables. **Not a §9 result on either platform** — the atomic side is N=1 per comparandum, and §8.5's
-evidence policy requires adequate N before reporting a number, not just a directionally-consistent one.
+tables. **Not a §9 result on either platform yet** — the atomic side is N=4 (web) / N=2 (Android) per
+comparandum as of 2026-08-27, and §8.5's evidence policy requires a larger, pre-committed N before
+reporting a number, not just a directionally-consistent one.
 
 ### 8.5 Evidence policy (inherited from the framework's own norm)
 
@@ -763,31 +763,40 @@ code, out of files scanned:
 
 > **Illustrative pass only — not yet a reportable result.** See §8.4's note and
 > `docs/superpowers/specs/2026-08-25-execution-efficiency-instrument-design.md` for the full design,
-> the rejected alternatives, and why. Web: computed by `pnpm experiments:execution-efficiency-delta`,
-> mined from the already-completed parallel-safety `w1` pair (atomic-web GH run `32768226121`, twin-web
-> GH run `32793108181`) — zero new dispatches. Android: a dedicated first-ever dispatch (atomic-android
-> GH run `33043202001`, twin-android GH run `33044995629`). Both legs: the atomic side is N=1 per
-> comparandum; the twin side gets a larger effective N "for free" from its K=16 identical Outline rows
-> within one run (16 on web; 15 on Android — one row failed on a real, newly-surfaced Android locator
-> issue unrelated to this instrument, dropped by the extractor's non-PASS-row guard rather than averaged
-> in as a false zero). §8.5's evidence policy withholds this from being reported as a number until the
-> atomic side has adequate N too, on both legs.
+> the rejected alternatives, and why. Web: `w1` pair (atomic-web GH run `32768226121`, twin-web GH run
+> `32793108181`) plus 3 dedicated repeats dispatched 2026-08-27 (`pnpm experiments:run-campaign --
+> --instrument efficiency --platform-leg web --repeats 3`). Android: 2 dedicated dispatches (a first
+> repeat 2026-08-26, GH runs `33043202001`/`33044995629`; a third repeat 2026-08-27 after a second
+> repeat's data proved unusable — see below — GH runs `33131801405`/`33133500158`). Both legs: the twin
+> side gets a larger effective N "for free" from its K identical Outline rows within each run. §8.5's
+> evidence policy withholds this from being reported as a number until the atomic side reaches an
+> adequate N too, on both legs — current progress: web N=4, Android N=2.
+>
+> **Android repeat 2 (2026-08-26) is excluded, not silently dropped.** It coincided with a first attempt
+> at fixing the twin-android "add toppings" race (commit `6a49706`) that turned out to be itself a
+> regression — every topping-touching scenario failed deterministically that run (see §8.4's note and the
+> design doc for the full story; reverted in `df0c637`). The extractor correctly refused that pair (twin
+> side had zero valid PASS rows) rather than average in failed-run data.
 
-**Web:**
+**Web** (N=4 atomic / N=64 twin):
 
-| Comparandum | Atomic step-time | Twin step-time | Ratio (twin/atomic) |
+| Comparandum | Atomic step-time (mean) | Twin step-time (mean) | Ratio (twin/atomic) |
 |---|---|---|---|
-| Reach "logged in" | 109ms (N=1) | 365ms (N=16 mean) | ≈3.4× |
-| Reach "cart populated" | 188ms (N=1) | 656ms (N=16 mean) | ≈3.5× |
-| *(negative control)* catalog-click → builder rendered — UI-driven in both arms, no R3 substitution | 69ms (N=1) | 52ms (N=16 mean) | ≈0.75× (near parity, as expected) |
+| Reach "logged in" | 91ms | 423ms | ≈4.7× |
+| Reach "cart populated" | 268ms | 786ms | ≈2.9× |
+| *(negative control)* catalog-click → builder rendered — UI-driven in both arms, no R3 substitution | 73ms | 62ms | ≈0.85× (near parity, as expected) |
 
-**Android:**
+**Android** (N=2 atomic / N=31 twin):
 
-| Comparandum | Atomic step-time | Twin step-time | Ratio (twin/atomic) |
+| Comparandum | Atomic step-time (mean) | Twin step-time (mean) | Ratio (twin/atomic) |
 |---|---|---|---|
-| Reach "logged in" | 128ms (N=1) | 12,626ms (N=15 mean) | ≈98.6× |
-| Reach "cart populated" | 296ms (N=1) | 23,206ms (N=15 mean) | ≈78.4× |
-| *(negative control)* catalog-click → builder rendered — UI-driven in both arms, no R3 substitution | 3,282ms (N=1) | 3,218ms (N=15 mean) | ≈0.98× (near parity, as expected) |
+| Reach "logged in" | 106ms | 13,046ms | ≈123.1× |
+| Reach "cart populated" | 356ms | 27,753ms | ≈78.1× |
+| *(negative control)* catalog-click → builder rendered — UI-driven in both arms, no R3 substitution | 2,991ms | 3,304ms | ≈1.10× (near parity, as expected) |
+
+Ratios are stable across the growing N on both legs (web: 3.4-4.7× logged-in, 2.3-3.5× cart-populated
+across all 4 atomic samples so far; Android: 78-123× and 78-79× across both usable samples) — directionally
+consistent with the illustrative single-sample pass, not an artifact of it.
 
 The negative control's own baseline (~3.2s per Android UI interaction, both arms) shows Appium/mobile
 automation is uniformly far more expensive than Playwright/web *regardless of arm* — the atomic side's
