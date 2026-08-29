@@ -575,7 +575,7 @@ generalization check (§10.2) — not one of the primary instruments.
 | **Diagnosability** (from R1, compounded) | A fault fails exactly the atomic scenario that owns it, classified into its true failure bucket; the same fault in the journey produces a wider blast radius (the whole journey fails) and can surface far from its true cause (e.g. a cart-calculation fault only manifesting at the order-confirmation assertion) | Systematic fault injection at a layer **both arms genuinely share** — backend/network, not UI vs. API setup, since the twin's setup is now all-UI while the atomic arm's is API and a setup-layer fault wouldn't be the "same" fault in both. One representative fault per entry in the existing 14-bucket taxonomy (`scripts/metrics/lib/failure-buckets.ts`). Measure blast radius (# scenarios/oracles failing) and localization accuracy (does the reported bucket name the true cause, or the symptom where it happened to surface) | Injecting from the *whole* taxonomy, at a shared layer, removes both fault-selection bias and arm-asymmetric injection as sources of bias |
 | **Determinism** (from R4, mediated by R2) | The twin shows a higher pass↔fail transition rate across repeated runs than the atomic suite, *even with TOM's chaos suppression identical in both arms* | Repeat each suite across **N=30** `run_index` values under one `experiment_batch_id`, on **web (Playwright/Chromium) + Appium-Android** (iOS excluded from repetition), both arms at `retry: 0` (see §8.3) so a masked retry doesn't hide the signal; reuse the existing reliability infrastructure (`measure-reliability.ts`, pass→fail / fail→pass transition probabilities) | TOM's chaos suppression (`λ < 0`) only absorbs *transient* noise and fails fast on deterministic ones (README:27,48). R2 collisions in the twin are deterministic, not transient — TOM won't retry them away. That's the mechanism making the delta attributable to the method. Suppression applies identically to both arms, so it still partially masks method-induced flakiness in the twin too — read the delta as a **conservative, lower-bound** estimate |
 | **Platform invariance** (from R3, Corollary 1) | **Measured 2026-08-23 — see the note below the table.** Porting the atomic suites from Playwright (web) to Appium (Android + iOS, both live-verified in CI) costs 0 spec-layer changes, confirmed structurally; the same structural check on the twin also reads 0 — but the twin's *live* mobile port was only ever run on Android (iOS was never attempted for the twin, and is out of scope per §8.3's exclusion of iOS from the repeated determinism/twin runs), and that Android-only port costs a small, non-zero amount of twin-only implementation code (63 LOC, 1 file) that the atomic arm has no equivalent of | For both arms, check the `.feature`/step-definition layer for platform-conditional code (structural, symmetric across arms, and platform-agnostic by construction — it does not require live execution on either mobile platform); separately, for the twin only, classify each file touched while getting its **Android** mobile leg green as spec-forced (counts), plugin-gap (excluded, disclosed), or out-of-scope (Mobilewright artifacts, §7.1 — neither counted nor plugin-gap) | Isolates the *specification*-level cost from the architecture, which is held constant and already supports both platforms; the two measurements are kept separate rather than combined into one number because they use different procedures (structural check vs. classified historical diff) — combining them would fail §8.1's own construct-validity standard |
-| **Execution efficiency** (from R3, ancillary — companion to Platform invariance, not a §5 Rule-derived corollary in its own right) | **Illustrative pass — web 2026-08-25, extended to Android 2026-08-26 — see the note below the table.** Reaching a given precondition state via API injection (`LoginDao`, the checkout DAO's cart-population call — the same mechanisms named in §8.3's R3 row) costs less step-time than reaching the *same* state via the UI molecule sequence R3's transformation substitutes for it (`submitCredentials`, catalog→builder UI navigation) | Per-operation `cucumber-jsonl` step-`durationMs` for two comparandum pairs that reach an identical functional end state by a genuinely different mechanism in each arm ("logged in"; "cart populated with 1 item") — **not** whole-suite or whole-job wall-clock, and **not** an assembled sum of atomic scenarios (see the design note for both rejected alternatives and why) | Whole-job wall-clock conflates this instrument's own atomic/twin volume and job-shape asymmetry (the `e2e-web` job's full matrix vs. the twin's single unmatrixed job, plus a chained visual-diff job downstream of neither arm's actual test execution) with any method effect. Per-operation step-time removes both: the unit compared is one operation reaching one state, symmetric regardless of how many other scenarios either suite happens to run alongside it |
+| **Execution efficiency** (from R3, ancillary — companion to Platform invariance, not a §5 Rule-derived corollary in its own right) | **Web and Android both reach the N≥10 evidence bar (web 2026-08-27, Android 2026-08-28) — see the note below the table.** Reaching a given precondition state via API injection (`LoginDao`, the checkout DAO's cart-population call — the same mechanisms named in §8.3's R3 row) costs less step-time than reaching the *same* state via the UI molecule sequence R3's transformation substitutes for it (`submitCredentials`, catalog→builder UI navigation) | Per-operation `cucumber-jsonl` step-`durationMs` for two comparandum pairs that reach an identical functional end state by a genuinely different mechanism in each arm ("logged in"; "cart populated with 1 item") — **not** whole-suite or whole-job wall-clock, and **not** an assembled sum of atomic scenarios (see the design note for both rejected alternatives and why) | Whole-job wall-clock conflates this instrument's own atomic/twin volume and job-shape asymmetry (the `e2e-web` job's full matrix vs. the twin's single unmatrixed job, plus a chained visual-diff job downstream of neither arm's actual test execution) with any method effect. Per-operation step-time removes both: the unit compared is one operation reaching one state, symmetric regardless of how many other scenarios either suite happens to run alongside it |
 
 **Threat specific to the portability instrument.** Mobile execution (Appium, Android + iOS) is
 not optional here — it *is* the instrument, not an add-on (see §7.1). But it makes this instrument the
@@ -656,20 +656,21 @@ independence cost on either side ("logged in": atomic `LoginDao` Background step
 UI molecule; "cart populated": atomic's checkout cart-injection step vs. twin's full catalog→builder UI
 sequence) — a catalog/builder-click step pair, driven by UI in *both* arms, is kept only as a disclosed
 negative control, and the atomic-only "builder is open" precondition step is excluded entirely because
-it pays R1's independence cost, not R3's mechanism cost, and would misattribute the two. The illustrative
-pass — web (started from the already-completed parallel-safety `w1` pair, then 3 dedicated repeats,
-N=4 atomic/N=64 twin as of 2026-08-27) and Android (2 usable dedicated dispatches, N=2 atomic/N=31 twin
-— a third dispatch's data was excluded, not silently dropped, after coinciding with a since-reverted
-regression in an unrelated fix attempt, see below) — see §9.5 for the current per-comparandum numbers.
-Ratios: web ≈3.4-4.7× (logged in) / ≈2.3-3.5× (cart populated); Android ≈78-123× / ≈78-79×; both legs'
-negative control stays near parity throughout, as expected of an operation with no R3 substitution on
-either side. The negative control's own ~3.2s-per-interaction baseline on Android (both arms) shows
-Android/Appium UI automation is uniformly far more expensive than web regardless of arm, while the
-atomic side's API-call cost stays roughly platform-invariant — so the much larger Android ratio is the
-same substitution effect at a higher UI-cost baseline, not a different phenomenon. See §9.5 for the full
-tables. **Not a §9 result on either platform yet** — the atomic side is N=4 (web) / N=2 (Android) per
-comparandum as of 2026-08-27, and §8.5's evidence policy requires a larger, pre-committed N before
-reporting a number, not just a directionally-consistent one.
+it pays R1's independence cost, not R3's mechanism cost, and would misattribute the two. **Both legs now
+cross the design doc's N≥10 evidence bar** — web (started from the already-completed parallel-safety `w1`
+pair, then 10 dedicated repeats, N=11 atomic/N=176 twin as of 2026-08-27) and Android (10 usable dedicated
+dispatches out of 13 attempted — repeats 001, 003-006, 008, 009, 011-013 — N=10 atomic/N=159 twin as of
+2026-08-28; repeats 002, 007, and 010 excluded, not silently dropped, each for a distinct, investigated
+reason — see below and §9.5) — see §9.5 for the current per-comparandum numbers. Ratios: web ≈3.4-4.7×
+(logged in) / ≈2.3-3.5× (cart populated); Android ≈85-127× (logged in) / ≈78-90× (cart populated), stable
+across the full N=2→N=10 accumulation; both legs' negative control stays near parity throughout (web
+≈0.86×, Android ≈1.03-1.10×), as expected of an operation with no R3 substitution on either side. The
+negative control's own ~3.1-3.3s-per-interaction baseline on Android (both arms) shows Android/Appium UI
+automation is uniformly far more expensive than web regardless of arm, while the atomic side's API-call
+cost stays roughly platform-invariant — so the much larger Android ratio is the same substitution effect
+at a higher UI-cost baseline, not a different phenomenon. See §9.5 for the full tables. **Both legs are now
+§9 results** — the atomic side is N=11 (web) / N=10 (Android) per comparandum as of 2026-08-28, meeting
+§8.5's evidence policy bar for a reported number rather than just a directionally-consistent one.
 
 ### 8.5 Evidence policy (inherited from the framework's own norm)
 
@@ -761,22 +762,30 @@ code, out of files scanned:
 
 ### 9.5 Execution efficiency (ancillary R3 measurement)
 
-> **Web: N≥10 threshold reached, first reportable leg. Android: still illustrative.** See §8.4's note and
+> **Both legs reach the N≥10 threshold — web 2026-08-27, Android 2026-08-28.** See §8.4's note and
 > `docs/superpowers/specs/2026-08-25-execution-efficiency-instrument-design.md` for the full design and
 > the rejected alternatives. Web: the `w1` pair (atomic-web GH run `32768226121`, twin-web GH run
 > `32793108181`) plus 10 dedicated repeats dispatched 2026-08-27 (`pnpm experiments:run-campaign --
-> --instrument efficiency --platform-leg web --repeats 10`) — N=11 atomic, N=176 twin. Android: 2 usable
-> dedicated dispatches (a first repeat 2026-08-26, GH runs `33043202001`/`33044995629`; a third repeat
-> 2026-08-27 after a second repeat's data proved unusable — see below — GH runs
-> `33131801405`/`33133500158`) — N=2 atomic, N=31 twin, still below the N≥10 bar; more Android dispatches
-> in progress as of this note. Both legs: the twin side gets a larger effective N "for free" from its K
-> identical Outline rows within each run.
+> --instrument efficiency --platform-leg web --repeats 10`) — N=11 atomic, N=176 twin. Android: 10 usable
+> dedicated dispatches out of 13 attempted, dispatched across 2026-08-26 through 2026-08-28
+> (`pnpm experiments:run-campaign -- --instrument efficiency --platform-leg android --repeats 13`) —
+> repeats 001, 003, 004, 005, 006, 008, 009, 011, 012, 013 usable, N=10 atomic, N=159 twin. Both legs: the
+> twin side gets a larger effective N "for free" from its K identical Outline rows within each run.
 >
-> **Android repeat 2 (2026-08-26) is excluded, not silently dropped.** It coincided with a first attempt
-> at fixing the twin-android "add toppings" race (commit `6a49706`) that turned out to be itself a
-> regression — every topping-touching scenario failed deterministically that run (see §8.4's note and the
-> design doc for the full story; reverted in `df0c637`). The extractor correctly refused that pair (twin
-> side had zero valid PASS rows) rather than average in failed-run data.
+> **Three Android repeats are excluded, not silently dropped — each for a distinct, investigated reason:**
+> **Repeat 2** (2026-08-26, GH runs `33128635991`/`33130393523`) coincided with a first attempt at fixing
+> the twin-android "add toppings" race (commit `6a49706`) that turned out to be itself a regression — every
+> topping-touching scenario failed deterministically that run (see §8.4's note and the design doc for the
+> full story; reverted in `df0c637`). **Repeat 7** (2026-08-28, atomic GH run `33186973238`) failed 2/89
+> scenarios on the atomic side — "Opening a pizza card launches the builder" (a catalog-open click,
+> unrelated to the topping-click mechanism above) and a toppings-total assertion whose own click had
+> already succeeded — confirmed via job logs as isolated Appium flakiness, not a reintroduction of the
+> topping-click regression (neither the failure count nor the specific step/error text matches that
+> pattern). **Repeat 10** (2026-08-28, twin GH run `33213511299`) failed before any scenario ran at all:
+> `curl: (35) Recv failure: Connection reset by peer` downloading the Android APK from the release asset in
+> the "Download Android app artifact" step, confirmed via `gh run view 33213511299 --log-failed` — pure CI
+> network infrastructure, unrelated to app or test logic. In every case the extractor correctly refused the
+> pair (the queried scenario had no valid PASS row) rather than average in failed-run data.
 
 **Web — N=11 atomic / N=176 twin, the design doc's N≥10 threshold reached 2026-08-27.** Reported with
 spread, not just a point estimate, per §8.5's evidence policy now that N is adequate on this leg:
@@ -791,25 +800,27 @@ The twin's wide login range (up to 2,267ms on one row) is consistent with occasi
 cold-start latency already documented elsewhere in this evaluation — not excluded, since it's a real cost
 the UI-driven path pays that the API-injected path structurally doesn't.
 
-**Android** (N=2 atomic / N=31 twin):
+**Android — N=10 atomic / N=159 twin, the design doc's N≥10 threshold reached 2026-08-28.** Reported with
+spread, not just a point estimate, per §8.5's evidence policy now that N is adequate on this leg:
 
-| Comparandum | Atomic step-time (mean) | Twin step-time (mean) | Ratio (twin/atomic) |
+| Comparandum | Atomic mean ± sd (range) | Twin mean ± sd (range) | Ratio (twin/atomic) |
 |---|---|---|---|
-| Reach "logged in" | 106ms | 13,046ms | ≈123.1× |
-| Reach "cart populated" | 356ms | 27,753ms | ≈78.1× |
-| *(negative control)* catalog-click → builder rendered — UI-driven in both arms, no R3 substitution | 2,991ms | 3,304ms | ≈1.10× (near parity, as expected) |
+| Reach "logged in" | 137 ± 76ms (52-280) | 12,929 ± 5,526ms (10,122-50,396) | ≈94.7× |
+| Reach "cart populated" | 286 ± 86ms (130-415) | 25,854 ± 8,871ms (18,737-82,947) | ≈90.3× |
+| *(negative control)* catalog-click → builder rendered — UI-driven in both arms, no R3 substitution | 3,135 ± 199ms (2,700-3,384) | 3,266 ± 384ms (2,684-5,627) | ≈1.04× (near parity, as expected) |
 
 Ratios are stable across the growing N on both legs (web: 3.4-4.7× logged-in, 2.3-3.5× cart-populated
-across all 4 atomic samples so far; Android: 78-123× and 78-79× across both usable samples) — directionally
-consistent with the illustrative single-sample pass, not an artifact of it.
+across all 11 atomic samples; Android: 85-127× logged-in, 78-90× cart-populated across all 10 usable
+atomic samples spanning repeats 001-013) — directionally consistent with the earlier illustrative pass,
+not an artifact of a small N.
 
-The negative control's own baseline (~3.2s per Android UI interaction, both arms) shows Appium/mobile
+The negative control's own baseline (~3.1-3.3s per Android UI interaction, both arms) shows Appium/mobile
 automation is uniformly far more expensive than Playwright/web *regardless of arm* — the atomic side's
-own API-call cost is nearly platform-invariant (128ms/296ms Android vs. 109ms/188ms web, consistent with
+own API-call cost is nearly platform-invariant (137ms/286ms Android vs. 87ms/244ms web, consistent with
 hitting the same backend either way), so the much larger Android ratio isn't "Android is slow" noise; it
 is what the same UI-vs-injection substitution looks like when the UI side's per-step cost is an order of
 magnitude higher. Directionally sharper evidence for the same corollary, on the platform where R3's
-UI-avoidance matters most in absolute terms — still N=1 on the atomic side, same caveat as web.
+UI-avoidance matters most in absolute terms — now backed by the same N≥10 evidence bar as web.
 
 ---
 

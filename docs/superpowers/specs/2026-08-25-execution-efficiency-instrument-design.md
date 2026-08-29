@@ -1,11 +1,13 @@
 # Execution-efficiency instrument — design
 
-**Status: designed + illustrative N=1 pass complete, not yet a §9 result.** Requested 2026-08-25
-after the user noticed atomic-web CI dispatches taking much longer wall-clock than twin-web
-dispatches and correctly pushed back on the naive reading ("atomic should be faster since it
-hydrates via API, not UI — these aren't the results I'd expect"). Investigation confirmed the naive
-comparison was invalid, not the intuition — see "Rejected designs" below. This document is the
-corrected, controlled design.
+**Status: designed, both legs reach the N≥10 evidence bar and are now §9 results (web 2026-08-27,
+Android 2026-08-28).** Requested 2026-08-25 after the user noticed atomic-web CI dispatches taking
+much longer wall-clock than twin-web dispatches and correctly pushed back on the naive reading
+("atomic should be faster since it hydrates via API, not UI — these aren't the results I'd expect").
+Investigation confirmed the naive comparison was invalid, not the intuition — see "Rejected designs"
+below. This document is the corrected, controlled design. See §9.5 of the paper for the final tables;
+the sections below (illustrative pass, Android leg, the twin-android bug investigation, and the final
+N-increase campaign's exclusions) are kept as the historical record of how those numbers were reached.
 
 ## What this measures
 
@@ -263,25 +265,56 @@ against an actual recurrence) but not proactively fixed — a real fix needs pla
 logic inside `CLICK`/`scrollIntoViewSafe` itself, left as an explicit follow-up. Full write-up: commits
 `6a49706` (root cause + first attempt) and `df0c637` (regression + revert).
 
-## Recommended next step (not yet done)
+## Android N-increase campaign — final exclusions (2026-08-28)
 
-Dispatch N≥10 additional single-repeat pairs (parallel=1, no matrix, no chained visual job) per platform
-leg — web reuses the already-completed parallel-safety `w1` pair's shape; android now has its own
-dedicated `efficiency` instrument for exactly this (`pnpm experiments:run-campaign -- --instrument
-efficiency --platform-leg android --repeats N`). Run the extractor over each and report mean ± spread in
-§9.5 once N is adequate on both legs. Android has not yet had more than the one dispatch above as of this
-memory's timestamp.
+Two Android repeats beyond the already-documented repeat 2 (regression, see the section above) were
+excluded from the final N=10 during the push from N=2 to N≥10. Both were investigated via real GH job
+logs before being excluded, per this paper's standing "verify empirically, don't assume benign" practice
+— neither is silently dropped:
 
-**Why N matters here specifically, not just as a policy citation.** The Android dispatch above supplies
-concrete evidence, not just an abstract "N=1 isn't enough": (a) the twin-android run itself hit a
-plausible timing flake on 1/16 of its own within-run repeats, and (b) even among the 15 *passing* rows,
-individual step durations varied enormously in a single dispatch (e.g. one row's own "enter card details"
-step took 38.6s, "provide delivery details" took 19.4s, vs. much smaller values for simpler steps) —
-direct, measured evidence that this environment has real timing volatility a single dispatch cannot
-average out. A single atomic-side data point (N=1) has no such internal check at all — nothing to compare
-it against, no way to tell whether 128ms/296ms was typical or itself an unusually fast/slow draw. More N
-turns the current point estimate into a defensible mean ± spread, lets a future flaky row (like the one
-already observed) get diluted into a distribution instead of silently or visibly perturbing a single
-number, and applies the exact same evidentiary standard this paper already imposes on its other three
-instruments (determinism's N=30, parallel-safety's K=16) rather than a lighter one for this ancillary
-fifth measurement.
+- **Repeat 7 (2026-08-28, atomic GH run `33186973238`).** 2/89 scenarios failed: "Opening a pizza card
+  launches the builder in US" (a catalog-open click, unrelated to the `addToppings()` mechanism behind
+  repeat 2's regression) and a toppings-total assertion whose own preceding click had already succeeded.
+  Explicitly compared against repeat 2's known regression signature (near-100% failure rate, every
+  failure specifically on an "add toppings" click, error text "still not displayed after 5000ms") —
+  matches neither the count nor the specific step/error text. Confirmed as isolated, general Android/
+  Appium flakiness (a documented standing risk in this codebase, unrelated to this instrument), not a
+  reintroduction of the reverted `WAIT_FOR_ELEMENT` regression. The atomic side's queried "logged in"/
+  "cart populated" comparandum scenarios were unaffected, but the extractor's PASS-only guard is
+  scenario-specific, and this run's overall `conclusion=failure` made it simplest to exclude the whole
+  pair rather than special-case a partially-failed run.
+- **Repeat 10 (2026-08-28, twin GH run `33213511299`).** Failed before any scenario ran: `curl: (35) Recv
+  failure: Connection reset by peer` while downloading the Android APK from the GitHub Releases asset, in
+  the workflow's "Download Android app artifact" step — confirmed via `gh run view 33213511299
+  --log-failed`. Pure CI network infrastructure, nothing to do with app or test logic; `run-campaign.ts`'s
+  own `likelyInfra` heuristic correctly flagged it, and `aggregate-campaign-artifacts.ts` correctly
+  excluded it (recorded `skipped-infra`) without needing manual override.
+
+Three more repeats (011, 012, 013) were dispatched to make up for these two exclusions plus repeat 2's,
+closing N=7 → N=10. All six new runs (three atomic, three twin) completed cleanly with no failures of any
+kind — no further exclusions needed.
+
+## Final N achieved (2026-08-28)
+
+Both legs reached the design doc's own N≥10 bar:
+
+- **Web**: N=11 atomic / N=176 twin, reached 2026-08-27 (`pnpm experiments:run-campaign -- --instrument
+  efficiency --platform-leg web --repeats 10`, on top of the pre-existing `w1` pair).
+- **Android**: N=10 atomic / N=159 twin, reached 2026-08-28, from 13 attempted repeats
+  (`pnpm experiments:run-campaign -- --instrument efficiency --platform-leg android --repeats 13`) minus
+  the three exclusions above (repeats 2, 7, 10).
+
+Final per-comparandum tables (mean ± sd, range) are in §9.5 of the paper, not duplicated here to avoid a
+second source of truth that could drift out of sync.
+
+**Why N mattered here specifically, not just as a policy citation.** The Android dispatches supplied
+concrete evidence, not just an abstract "N=1 isn't enough": the twin-android runs hit plausible timing
+flakes on a small fraction of their own within-run repeats, and individual step durations varied
+substantially across dispatches (e.g. the "logged in" comparandum's twin-side range spans
+10,122-50,396ms across the 10 usable repeats). A single atomic-side data point has no internal check at
+all — nothing to compare it against, no way to tell whether one draw was typical or unusually fast/slow.
+The accumulated N turned the original point estimate into a defensible mean ± spread, diluted the flaky
+rows already observed into a distribution instead of letting them silently perturb a single number,
+and applied the same evidentiary standard this paper already imposes on its other three instruments
+(determinism's N=30, parallel-safety's K=16) rather than a lighter one for this ancillary fifth
+measurement.
