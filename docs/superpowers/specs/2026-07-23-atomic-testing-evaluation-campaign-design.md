@@ -217,3 +217,25 @@ reflect what's now decided (currently open TODOs/undecided values):
   not just web) — this is a scope change from the document's current implicit web-only framing.
 - §7.1 / §8.4: note that Mobilewright-Android twin construction is now shared infrastructure for both
   the determinism and portability instruments.
+
+## 8. Addendum (2026-08-29): twin jobs split into their own workflow file
+
+Right before the determinism campaign's first real launch, `gate-twin-web`/`gate-twin-android`/
+`eval-twin-web`/`eval-twin-android` (and a dedicated copy of `resolve-omnipizza-release`) moved out of
+`ahm-execution-helix.yml` into a new file, `ahm-evaluation-campaign.yml`. Reason: both workflows
+previously shared one workflow-level `concurrency` group (`helix-${{ github.ref }}`), so an ordinary CI
+dispatch firing while the campaign orchestrator (build-order step 5/6,
+`scripts/experiments/run-campaign.ts`) was mid-flight would cancel the campaign's in-progress run
+outright, and vice versa — a real risk for a strictly-sequential, potentially multi-day 120-dispatch run.
+Each file now has its own independent `concurrency` group, so an ordinary CI run and a campaign dispatch
+can never cancel each other again.
+
+This does not change the campaign design itself — the matrix, resumability, dispatch-count math, and
+`likelyInfra` classification in §5 are all unaffected. `run-campaign.ts` now maps each leg to the correct
+workflow file via `lib/campaign-matrix.ts`'s `WORKFLOW_FILE` (atomic legs stay on
+`ahm-execution-helix.yml`; twin legs move to `ahm-evaluation-campaign.yml`), and dispatches across both
+files exactly as sequentially as it dispatched within one file before — that property was always enforced
+by the script's own loop, not by GitHub's concurrency group, so losing the free cross-file guarantee from
+sharing one group cost nothing in practice. `aggregate-campaign-artifacts.ts` needed no changes at all —
+it downloads artifacts by GH run id alone, which is workflow-file-agnostic. See
+`ahm-evaluation-campaign.yml`'s own header comment for the full rationale.

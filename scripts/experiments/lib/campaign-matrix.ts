@@ -8,9 +8,14 @@
 // directly and cross-checking against a real completed run's
 // `gh run view --json jobs` / `gh api .../artifacts` output (2026-08-24) —
 // see run-campaign.ts's file header for what was verified and what wasn't
-// (the twin legs' job names have never been observed against a real
-// dispatch; expectedJobCount exists specifically to fail loudly rather than
-// silently if that assumption turns out wrong on the first real one).
+// (at the time, the twin legs' job names had never been observed against a
+// real dispatch; expectedJobCount exists specifically to fail loudly rather
+// than silently if that assumption turns out wrong). The twin legs
+// (eval-twin-web/eval-twin-android) moved to their own file,
+// ahm-evaluation-campaign.yml, on 2026-08-29 (see WORKFLOW_FILE below and
+// that file's own header) — their job/step names were copied verbatim, so
+// the constants below are unchanged, but re-verify against
+// ahm-evaluation-campaign.yml specifically if these ever need re-confirming.
 
 export type Arm = 'atomic' | 'twin';
 export type PlatformLeg = 'web' | 'android';
@@ -35,6 +40,19 @@ export const GH_PLATFORM_INPUT: Record<LegKey, string> = {
   'atomic-android': 'appium-android',
   'twin-web': 'twin-web',
   'twin-android': 'twin-android',
+};
+
+// Which workflow_dispatch-able file a leg's `gh workflow run` targets. Split
+// 2026-08-29: the non-atomic twin's jobs moved out of ahm-execution-helix.yml
+// into their own file (ahm-evaluation-campaign.yml) to isolate the campaign's
+// dispatches from ordinary CI's — see that file's header for the full
+// rationale. atomic-web/atomic-android are the reference implementation's own
+// e2e-web/e2e-android jobs and stay on the main workflow.
+export const WORKFLOW_FILE: Record<LegKey, string> = {
+  'atomic-web': 'ahm-execution-helix.yml',
+  'atomic-android': 'ahm-execution-helix.yml',
+  'twin-web': 'ahm-evaluation-campaign.yml',
+  'twin-android': 'ahm-evaluation-campaign.yml',
 };
 
 // Confirmed against ahm-execution-helix.yml (2026-08-24 read):

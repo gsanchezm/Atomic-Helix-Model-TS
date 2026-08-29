@@ -14,16 +14,26 @@
 // empirical tensions (§7 of that doc) that need a live check before this script
 // can safely generate their dispatch matrix. Left as an explicit follow-up.
 //
-// Hard constraint this script exists to respect: ahm-execution-helix.yml has a
-// WORKFLOW-LEVEL `concurrency: {group: helix-${{ github.ref }}, cancel-in-progress:
-// true}`. Dispatching a second run on the same ref while a prior one is still
-// in flight CANCELS the prior run outright — not queues it. There is therefore
-// no real "concurrency cap" to choose; it is hard-enforced at 1 by GitHub itself.
-// This script dispatches strictly sequentially: one workflow_dispatch call, wait
-// for that exact run to reach a terminal status, THEN the next. A pre-dispatch
-// safety check also refuses to fire if some other run for this workflow+ref is
-// already in flight (e.g. a human manually dispatched one), rather than risk
-// silently attributing that run's outcome to the wrong campaign item.
+// Hard constraint this script exists to respect: both ahm-execution-helix.yml
+// (atomic legs) and, since the 2026-08-29 split, ahm-evaluation-campaign.yml
+// (twin legs — see that file's header for why it's a separate workflow now)
+// each have their OWN workflow-level `concurrency: {group: <name>-${{
+// github.ref }}, cancel-in-progress: true}`. Dispatching a second run on the
+// same file+ref while a prior one on THAT SAME FILE is still in flight
+// CANCELS the prior run outright — not queues it. This is now a per-file
+// guarantee, not a single global one: GitHub itself no longer prevents an
+// atomic-web dispatch (file A) and a twin-web dispatch (file B) from running
+// concurrently. This script's own strictly-sequential dispatch loop — one
+// workflow_dispatch call (against whichever file this item's leg maps to,
+// see lib/campaign-matrix.ts's WORKFLOW_FILE), wait for that exact run to
+// reach a terminal status, THEN the next — is therefore the ONLY thing
+// serializing dispatches across both files; it does not lean on GitHub's
+// per-file concurrency group for that property (only for same-file safety, as
+// a backstop against a stray manual dispatch on the same file). A
+// pre-dispatch safety check also refuses to fire if some other run for the
+// TARGET workflow+ref is already in flight (e.g. a human manually dispatched
+// one), rather than risk silently attributing that run's outcome to the
+// wrong campaign item.
 //
 // Residual structural risk (disclosed, not fully closable): `gh workflow run`
 // does not return a run id synchronously — there is no dispatch nonce GitHub's
@@ -34,8 +44,9 @@
 // per the concurrency group above, OUR run would be the one silently
 // cancelled). The pre-dispatch check closes this for the common case (nothing
 // in flight, then we dispatch); it cannot close the sub-window after our own
-// dispatch fires. Operationally: do not manually dispatch this workflow while
-// this script is running a campaign.
+// dispatch fires. Operationally: do not manually dispatch either
+// ahm-execution-helix.yml or ahm-evaluation-campaign.yml while this script
+// is running a campaign.
 //
 // INFRASTRUCTURE_FAILURE is disclosed, not silently corrected. This script does
 // NOT retry or backfill a flagged dispatch automatically — doing so would be a
@@ -87,13 +98,13 @@ import {
   JOB_NAME_PREFIXES,
   PlatformLeg,
   PRIMARY_STEP_NAME,
+  WORKFLOW_FILE,
   buildCampaignItems,
   buildExecutionEfficiencyItems,
   legKeyOf,
 } from './lib/campaign-matrix';
 
 const REPO_ROOT = join(__dirname, '..', '..');
-const WORKFLOW_FILE = 'ahm-execution-helix.yml';
 const DEFAULT_REF = 'main';
 const CAMPAIGNS_DIR = join(REPO_ROOT, 'reports', 'campaigns');
 
@@ -214,6 +225,11 @@ run-campaign.ts — §8.4 campaign orchestrator (determinism + parallel-safety o
 // ---------------------------------------------------------------------------
 interface DispatchSpec extends CampaignItem {
   ghPlatformInput: string; // the `platform` workflow_dispatch input value
+  // Which workflow_dispatch-able file to target — atomic legs on
+  // ahm-execution-helix.yml, twin legs on ahm-evaluation-campaign.yml (split
+  // 2026-08-29, see lib/campaign-matrix.ts's WORKFLOW_FILE and that
+  // workflow's own header for the rationale).
+  workflowFile: string;
   // Name-prefix matchers against `gh run view --json jobs`' job `name` field.
   // e2e-web's matrix (browser x suite) means MULTIPLE jobs share one dispatch
   // — see the "browser matrix" cost note in lib/campaign-matrix.ts. Only jobs
@@ -228,14 +244,20 @@ interface DispatchSpec extends CampaignItem {
   // and this dispatch is refused rather than silently recorded as a clean,
   // empty result indistinguishable from "checked and found nothing wrong".
   // This matters most for the twin legs: JOB_NAME_PREFIXES['twin-web'/'twin-
-  // android'] have never been verified against a real completed run (the twin
-  // had never been dispatched in CI before 2026-08-23) — this assertion is the
-  // safety net for the first real one.
+  // android'] were verified against real completed runs on the ORIGINAL
+  // shared file (efficiency-instrument dispatches, 2026-08-27/28), but the
+  // 2026-08-29 split moved eval-twin-web/eval-twin-android into their own
+  // file (ahm-evaluation-campaign.yml) — those job/step names have never
+  // been observed rendered from THAT file against a real dispatch. Copied
+  // verbatim, so drift is unexpected, but this assertion is the safety net
+  // for the first real one.
   expectedJobCount: number;
   // Exact (not prefix) name of this leg's primary test-execution step —
-  // confirmed by reading ahm-execution-helix.yml directly for all four job
-  // types. Used by classifyLikelyInfra to distinguish a genuine method-arm
-  // failure from an infra failure elsewhere in the job.
+  // confirmed by reading ahm-execution-helix.yml (atomic legs) /
+  // ahm-evaluation-campaign.yml (twin legs, since the 2026-08-29 split)
+  // directly for all four job types. Used by classifyLikelyInfra to
+  // distinguish a genuine method-arm failure from an infra failure elsewhere
+  // in the job.
   primaryStepName: string;
 }
 
@@ -244,6 +266,7 @@ function toDispatchSpec(item: CampaignItem): DispatchSpec {
   return {
     ...item,
     ghPlatformInput: GH_PLATFORM_INPUT[key],
+    workflowFile: WORKFLOW_FILE[key],
     relevantJobNamePrefixes: JOB_NAME_PREFIXES[key],
     expectedJobCount: EXPECTED_JOB_COUNT[key],
     primaryStepName: PRIMARY_STEP_NAME[key],
@@ -359,10 +382,10 @@ interface GhRunSummary {
 // report "all clear" and waitForNewRun() time out uninformatively. This
 // script's default and documented usage is a branch (`main`); using a
 // tag/SHA is unsupported.
-function listRecentRuns(ref: string, limit: number): GhRunSummary[] {
+function listRecentRuns(ref: string, limit: number, workflowFile: string): GhRunSummary[] {
   const out = ghWithRetry([
     'run', 'list',
-    '--workflow', WORKFLOW_FILE,
+    '--workflow', workflowFile,
     '--branch', ref,
     '--limit', String(limit),
     '--json', 'databaseId,status,conclusion,createdAt,event',
@@ -370,33 +393,57 @@ function listRecentRuns(ref: string, limit: number): GhRunSummary[] {
   return JSON.parse(out);
 }
 
-// Refuses to dispatch if something for this workflow+ref is already in flight —
-// guards against attributing an externally-triggered run (e.g. a human manually
-// dispatching) to the wrong campaign item. Does not attempt to wait it out;
-// surfaces the conflict and lets the operator decide. See the file header for
-// the residual race this does NOT close (the window between our own dispatch
-// and detecting it).
+// All distinct workflow files any campaign leg can target — derived from the
+// shared WORKFLOW_FILE map (not hardcoded) so a future third file can't
+// silently fall out of this safety net.
+const ALL_CAMPAIGN_WORKFLOW_FILES = Array.from(new Set(Object.values(WORKFLOW_FILE)));
+
+// Refuses to dispatch if something is already in flight on EITHER campaign
+// workflow file — not just the one this dispatch targets. Two distinct
+// hazards, both real:
+//   1. Same-file: a run on the SAME file already in flight would get
+//      auto-cancelled by that file's own concurrency group on a new
+//      dispatch (or would cancel it) — the original reason this check
+//      existed, back when there was only one file.
+//   2. Cross-file (new since the 2026-08-29 split): ahm-execution-helix.yml
+//      and ahm-evaluation-campaign.yml have INDEPENDENT concurrency groups,
+//      so a run in flight on the OTHER file would NOT get auto-cancelled —
+//      it would keep running concurrently with whatever this dispatch
+//      starts, both hitting the same shared OmniPizza backend at once. This
+//      repo has already been burned by exactly this class of confound
+//      (concurrent-load backend overload; a load-triggered ZAP false
+//      positive — see project memory). This script's own sequential
+//      dispatch loop prevents this for anything IT dispatches; this check is
+//      what catches an externally-triggered run (a human, or a run orphaned
+//      by a crash between dispatch() and the first manifest write) on either
+//      file.
+// Does not attempt to wait either out; surfaces the conflict and lets the
+// operator decide. See the file header for the residual race this does NOT
+// close (the window between our own dispatch and detecting it).
 function assertNothingInFlight(ref: string): void {
-  const recent = listRecentRuns(ref, 5);
-  const inFlight = recent.filter((r) => ['in_progress', 'queued', 'waiting', 'requested', 'pending'].includes(r.status));
-  if (inFlight.length > 0) {
+  const inFlightByFile = ALL_CAMPAIGN_WORKFLOW_FILES.map((file) => ({
+    file,
+    inFlight: listRecentRuns(ref, 5, file).filter((r) => ['in_progress', 'queued', 'waiting', 'requested', 'pending'].includes(r.status)),
+  })).filter((f) => f.inFlight.length > 0);
+  if (inFlightByFile.length > 0) {
+    const detail = inFlightByFile.map((f) => `${f.file} (ids: ${f.inFlight.map((r) => r.databaseId).join(', ')})`).join('; ');
     throw new Error(
-      `Refusing to dispatch: ${inFlight.length} run(s) for ${WORKFLOW_FILE}@${ref} already in flight ` +
-      `(ids: ${inFlight.map((r) => r.databaseId).join(', ')}). Because that workflow's own concurrency ` +
-      `group cancels in-progress runs on a new dispatch, firing anyway would either cancel someone else's ` +
-      `run or make it impossible to tell which run belongs to this campaign item. Wait for it to finish ` +
-      `(or investigate what dispatched it) before re-running this script — it will resume from the manifest.`,
+      `Refusing to dispatch: run(s) already in flight on ${inFlightByFile.length} campaign workflow file(s)@${ref}: ` +
+      `${detail}. A same-file run would get auto-cancelled by that file's own concurrency group on a new ` +
+      `dispatch; a different-file run would NOT be cancelled and would instead run concurrently against the ` +
+      `same shared backend — both are unsafe to dispatch alongside. Wait for it to finish (or investigate what ` +
+      `dispatched it) before re-running this script — it will resume from the manifest.`,
     );
   }
 }
 
-async function waitForNewRun(ref: string, dispatchedAfter: Date, timeoutSeconds: number, detectPollSeconds: number): Promise<number> {
+async function waitForNewRun(ref: string, dispatchedAfter: Date, timeoutSeconds: number, detectPollSeconds: number, workflowFile: string): Promise<number> {
   const deadline = Date.now() + timeoutSeconds * 1000;
   // Small negative buffer: GH's own createdAt can be a couple seconds before
   // our local "just issued the dispatch" instant depending on clock skew.
   const cutoff = dispatchedAfter.getTime() - 5000;
   while (Date.now() < deadline) {
-    const recent = listRecentRuns(ref, 5).filter((r) => r.event === 'workflow_dispatch');
+    const recent = listRecentRuns(ref, 5, workflowFile).filter((r) => r.event === 'workflow_dispatch');
     const candidates = recent.filter((r) => new Date(r.createdAt).getTime() >= cutoff);
     if (candidates.length > 0) {
       candidates.sort((a, b) => b.databaseId - a.databaseId);
@@ -406,7 +453,7 @@ async function waitForNewRun(ref: string, dispatchedAfter: Date, timeoutSeconds:
   }
   throw new Error(
     `Timed out after ${timeoutSeconds}s waiting for the dispatched run to appear in ` +
-    `'gh run list' for ${WORKFLOW_FILE}@${ref}. Check 'gh run list --workflow=${WORKFLOW_FILE}' manually — ` +
+    `'gh run list' for ${workflowFile}@${ref}. Check 'gh run list --workflow=${workflowFile}' manually — ` +
     `the dispatch may have failed outright, or GH's API is lagging beyond the timeout.`,
   );
 }
@@ -473,7 +520,7 @@ function classifyLikelyInfra(job: GhJobDetail, primaryStepName: string): { likel
 // ---------------------------------------------------------------------------
 function dispatch(spec: DispatchSpec, ref: string): void {
   const args = [
-    'workflow', 'run', WORKFLOW_FILE,
+    'workflow', 'run', spec.workflowFile,
     '--ref', ref,
     '-f', `platform=${spec.ghPlatformInput}`,
     '-f', 'architecture_type=TOM',
@@ -536,7 +583,7 @@ async function main(): Promise<void> {
   if (cli.dryRun) {
     for (const s of specs) {
       console.log(
-        `  [dry-run] ${s.id}  platform=${s.ghPlatformInput}  batch=${s.experimentBatchId}  ` +
+        `  [dry-run] ${s.id}  workflow=${s.workflowFile}  platform=${s.ghPlatformInput}  batch=${s.experimentBatchId}  ` +
         `run_index=${s.runIndex}${s.cucumberParallel ? `  cucumber_parallel=${s.cucumberParallel}` : ''}`,
       );
     }
@@ -544,8 +591,8 @@ async function main(): Promise<void> {
   }
 
   console.warn(
-    'Do not manually dispatch this workflow on this ref while this script is running — see the ' +
-    '"Residual structural risk" note in this file\'s header.',
+    'Do not manually dispatch ahm-execution-helix.yml or ahm-evaluation-campaign.yml on this ref while ' +
+    'this script is running — see the "Residual structural risk" note in this file\'s header.',
   );
 
   const path = manifestPath(cli.instrument, cli.batchSuffix);
@@ -574,7 +621,7 @@ async function main(): Promise<void> {
         `Dispatch ${spec.id} is stuck in 'pending' state in ${path} (dispatched at ${existing.dispatchedAt}, ` +
         `but no GH run id was ever recorded — this script likely crashed between issuing 'gh workflow run' and ` +
         `finding the resulting run). Refusing to auto-resume: check ` +
-        `'gh run list --workflow=${WORKFLOW_FILE} --branch=${cli.ref}' manually. If a matching run exists, edit ` +
+        `'gh run list --workflow=${spec.workflowFile} --branch=${cli.ref}' manually. If a matching run exists, edit ` +
         `${path} to set this entry's status to "in_progress" with its runId, then re-run this script. If no run ` +
         `was actually created, delete this entry from the manifest and re-run to dispatch it fresh.`,
       );
@@ -585,7 +632,7 @@ async function main(): Promise<void> {
       manifest.results[spec.id] = { status: 'pending', dispatchedAt: dispatchedAt.toISOString() };
       saveManifest(path, manifest);
 
-      runId = await waitForNewRun(cli.ref, dispatchedAt, cli.dispatchTimeoutSeconds, cli.detectPollSeconds);
+      runId = await waitForNewRun(cli.ref, dispatchedAt, cli.dispatchTimeoutSeconds, cli.detectPollSeconds, spec.workflowFile);
       console.log(`  -> dispatched as GH run ${runId}; polling for completion...`);
       manifest.results[spec.id] = { status: 'in_progress', dispatchedAt: dispatchedAt.toISOString(), runId };
       saveManifest(path, manifest);
