@@ -683,14 +683,11 @@ count hasn't been executed) is reported as **not yet measured**, not as a placeh
 
 ## 9. Results
 
-> TODO — §9.4 (portability) is fully populated as of 2026-08-23. §9.1 (parallel safety) and §9.3
-> (determinism) are fully populated as of 2026-08-31 — §9.3's 120-dispatch campaign
-> (`det-2026-campaign`) and §9.1's 8-dispatch sweep (`ps-2026-campaign`, dispatched 2026-08-24, table
-> extracted 2026-08-31 via a dedicated `parallel-safety-table.ts` — see §9.1's own note) have both been
-> through the full aggregate → `metrics:experiment` pipeline. §9.2 (diagnosability) remains blocked:
-> the fault-injection harness is built (see working notes) but not yet wired into the campaign
-> orchestrator. §9.5 (execution efficiency, added 2026-08-25) reached the N≥10 evidence bar on both
-> platforms 2026-08-27/28. **No values are estimated or filled until real runs produce them.**
+> All five §9 sub-instruments are now populated with real dispatched data: §9.4 (portability) since
+> 2026-08-23, §9.5 (execution efficiency) since 2026-08-27/28, §9.1 (parallel safety) and §9.3
+> (determinism) since 2026-08-31, §9.2 (diagnosability) since 2026-09-01. See each subsection for
+> methodology, caveats, and — where the data came out that way — honest null or negative results.
+> **No values are estimated or filled; every number below traces to a real GitHub Actions dispatch.**
 
 ### 9.1 Parallel safety
 
@@ -748,22 +745,169 @@ per-run CI-log fact, not something the metrics pipeline itself can verify going 
 
 ### 9.2 Diagnosability (fault injection, one per failure bucket)
 
-| Failure bucket | Injected in | Atomic — blast radius / localized correctly? | Non-atomic — blast radius / localized correctly? |
+**10 injected conditions × 2 arms = 20 dispatches** (`diag-2026-campaign`, dispatched 2026-09-01 by the
+campaign orchestrator, 20/20 completed, 0 flagged `likelyInfra`). Design doc §3 decision 5 planned
+14 buckets; three are honestly excluded rather than silently dropped — `VISUAL_DIFF_FAILURE` /
+`VISUAL_BASELINE_MISSING` (the twin runs no visual/pixelmatch contract — no shared comparison surface
+to inject into) and `API_CONTRACT_FAILURE` (confirmed by reading every candidate error path directly:
+neither login's 403 fallback nor `security_glitch_user`'s checkout-leak message matches
+`failure-buckets.ts`'s schema/contract-violation regex anywhere in this suite). `TIMEOUT_FAILURE` and
+`PERFORMANCE_THRESHOLD_FAILURE` share one injected condition (`performance_glitch_user`) — which bucket
+the classifier reports for each arm is itself part of what is measured. Read out by a dedicated
+`scripts/experiments/diagnosability-table.ts` (`pnpm experiments:diagnosability-table`) reading
+`metrics/raw/cucumber-jsonl/*.jsonl` directly and reusing the existing classifier
+(`scripts/metrics/lib/failure-buckets.ts`) unchanged — for the same reason `measure-reliability.ts`'s
+pooled per-batch slice is wrong for §9.1, it does no new classification logic here either.
+
+**Localization accuracy** — does `classifyFailure()` report the bucket that was actually injected?
+
+| True bucket | Injected via | Atomic reports | Twin reports | Correct (atomic / twin) |
+|---|---|---|---|---|
+| `LOCATOR_RESOLUTION_FAILURE` | chaos-proxy, `CLICK` | `LOCATOR_RESOLUTION_FAILURE` | `LOCATOR_RESOLUTION_FAILURE` | yes / yes |
+| `WEB_SESSION_FAILURE` | chaos-proxy, `CLICK` | `WEB_SESSION_FAILURE` | `WEB_SESSION_FAILURE` | yes / yes |
+| `MOBILE_SESSION_FAILURE` | chaos-proxy, `CLICK` (Android) | `MOBILE_SESSION_FAILURE` | `MOBILE_SESSION_FAILURE` | yes / yes |
+| `INFRASTRUCTURE_FAILURE` | closed port (`ECONNREFUSED`) | `INFRASTRUCTURE_FAILURE` | `INFRASTRUCTURE_FAILURE` | yes / yes |
+| `UI_ACTION_FAILURE` | chaos-proxy, `CLICK` | `INFRASTRUCTURE_FAILURE` | `INFRASTRUCTURE_FAILURE` | **no / no** |
+| `UNKNOWN_FAILURE` | chaos-proxy, `CLICK` (message deliberately unclassifiable) | `INFRASTRUCTURE_FAILURE` | `INFRASTRUCTURE_FAILURE` | **no / no** |
+| `DATA_SETUP_FAILURE` | backend chaos user (`locked_out_user`) | `UNKNOWN_FAILURE` | `TIMEOUT_FAILURE` | **no / no** |
+| `ASSERTION_FAILURE` | backend chaos user (`problem_user`, $0 price) | `UNKNOWN_FAILURE` | *(0 failures — see below)* | **no / n/a** |
+| `API_RESPONSE_FAILURE` | backend chaos user (`error_user`, 50% HTTP 500) | `UNKNOWN_FAILURE`×2, `TIMEOUT_FAILURE`×3 | `TIMEOUT_FAILURE`×7 | **no / no** |
+| `TIMEOUT_FAILURE`, `PERFORMANCE_THRESHOLD_FAILURE` | backend chaos user (`performance_glitch_user`, +3s/call) | *(0 failures — see below)* | *(0 failures — see below)* | n/a / n/a |
+
+4 of 10 injected conditions localize correctly, in both arms, with no exceptions in either direction —
+the four are exactly the conditions whose true error text contains a keyword `failure-buckets.ts` already
+has a rule for (`locator`/`selector`, `playwright`/`webdriver`, `appium`/`emulator`,
+`econnrefused`). Every miss below has a concrete, verified mechanism, not an unexplained gap.
+
+**Blast radius** — measured two ways, because scenario-count alone is misleading here: the atomic suite's
+`reads`/`writes` job split makes its raw scenario totals (89–106) structurally incomparable to the twin's
+16-row suite, and for the five conditions injected at one `CLICK` call, exactly one scenario fails in
+*both* arms regardless of architecture (the injection is single-fire by design — see the retry-masking
+fix below) — a scenario-count blast radius of 1 either way, telling you nothing about atomicity. What
+does differ is how much of the *same* failing scenario's own steps go on to `SKIP` once that one action
+fails — the "wasted oracle" cost that design doc §6 means by blast radius:
+
+| True bucket | Arm | Failed scenarios | Mean skipped steps per failed scenario |
 |---|---|---|---|
-| `API_CONTRACT_FAILURE` | … | — | — |
-| `API_RESPONSE_FAILURE` | … | — | — |
-| `UI_ACTION_FAILURE` | … | — | — |
-| `LOCATOR_RESOLUTION_FAILURE` | … | — | — |
-| `VISUAL_DIFF_FAILURE` | … | — | — |
-| `VISUAL_BASELINE_MISSING` | … | — | — |
-| `PERFORMANCE_THRESHOLD_FAILURE` | … | — | — |
-| `MOBILE_SESSION_FAILURE` | … | — | — |
-| `WEB_SESSION_FAILURE` | … | — | — |
-| `INFRASTRUCTURE_FAILURE` | … | — | — |
-| `DATA_SETUP_FAILURE` | … | — | — |
-| `ASSERTION_FAILURE` | … | — | — |
-| `TIMEOUT_FAILURE` | … | — | — |
-| `UNKNOWN_FAILURE` | … | — | — |
+| `LOCATOR_RESOLUTION_FAILURE` | atomic | 1 (reads) + 1 (writes), of 97 total | 11% (1/15, 3/19) |
+| `LOCATOR_RESOLUTION_FAILURE` | twin | 1, of 16 total | 76% (13/17) |
+| `UI_ACTION_FAILURE` | atomic | 1 + 1, of 97 total | 11% (1/15, 3/19) |
+| `UI_ACTION_FAILURE` | twin | 1, of 16 total | 76% (13/17) |
+| `WEB_SESSION_FAILURE` | atomic | 1 + 1, of 97 total | 11% (1/15, 3/19) |
+| `WEB_SESSION_FAILURE` | twin | 1, of 16 total | 76% (13/17) |
+| `UNKNOWN_FAILURE` | atomic | 1 + 1, of 97 total | 11% (1/15, 3/19) |
+| `UNKNOWN_FAILURE` | twin | 1, of 16 total | 76% (13/17) |
+| `MOBILE_SESSION_FAILURE` | atomic | 1 + 1, of 106 total | 9% (1/15, 2/19) |
+| `MOBILE_SESSION_FAILURE` | twin | 1, of 16 total | 76% (13/17) |
+| `INFRASTRUCTURE_FAILURE` | atomic | 97/97 (whole dispatch) | 17% (mean over 97 failures) |
+| `INFRASTRUCTURE_FAILURE` | twin | 16/16 (whole dispatch) | 82% (mean over 16 failures) |
+| `DATA_SETUP_FAILURE` | atomic | 86/97 (whole dispatch, see below) | 25% (mean over 86 failures) |
+| `DATA_SETUP_FAILURE` | twin | 16/16 (whole dispatch) | 76% (mean over 16 failures) |
+
+The four chaos-proxy conditions injected at the identical `CLICK` call (`LOCATOR_RESOLUTION_FAILURE`,
+`UI_ACTION_FAILURE`, `WEB_SESSION_FAILURE`, `UNKNOWN_FAILURE`) reproduce the *exact same* per-arm skip
+pattern every time — atomic loses 1 of 15 steps (reads job) or 3 of 19 (writes job) downstream of one
+failed click; the twin loses 13 of 17. That consistency (four independent dispatches, one number each
+arm) is itself evidence this is a structural property of scenario granularity, not run-to-run noise: one
+injected fault wastes roughly **7×** as much of the twin's own oracle coverage as it wastes of the atomic
+suite's, because the twin's single scenario still has login, catalog, size/topping selection, delivery,
+and order confirmation queued up behind whichever step happened to fail. `INFRASTRUCTURE_FAILURE` and
+`DATA_SETUP_FAILURE` show the same direction (17%/25% atomic vs. 82%/76% twin) even though their blast
+radius is whole-dispatch in *both* arms for an unrelated reason (below) — the twin still wastes a larger
+share of its own steps per failure.
+
+**Correctly localized: `LOCATOR_RESOLUTION_FAILURE`, `WEB_SESSION_FAILURE`, `MOBILE_SESSION_FAILURE`,
+`INFRASTRUCTURE_FAILURE`.** All four land on their true bucket in both arms with no ambiguity — these are
+the conditions where the raw error text ("Unable to find element…", "Target closed…", "appium…",
+"ECONNREFUSED…") happens to contain one of `failure-buckets.ts`'s existing keywords.
+
+**Misclassified as `INFRASTRUCTURE_FAILURE`: `UI_ACTION_FAILURE` and `UNKNOWN_FAILURE` — a real,
+root-caused classifier bug, not left unexplained.** Both conditions' injected error message is clean and
+unambiguous at the first line (`"Injected fault: click interaction rejected by the target element"` and
+`"Injected fault: unclassified synthetic marker (diagnosability harness)"` — the second deliberately
+hand-written to be unclassifiable). But `diagnosability-table.ts` classifies the scenario's **full**
+`errorMessage`, which — because every action reaches the plugin layer through `sendIntent`'s gRPC client
+(`src/kernel/client.ts`) — always carries a stack trace through
+`node_modules/.pnpm/@grpc+grpc-js@.../grpc-js/src/client.ts` underneath the first line. `INFRASTRUCTURE_FAILURE`'s
+rule (`econnrefused|ehostunreach|enotfound|grpc|proxy|...`, rule #10 of 13 in `RULES`) matches the bare
+substring `grpc` in that stack trace before rule #12 (`click|type|tap|...`, `UI_ACTION_FAILURE`'s own
+keywords) or the true catch-all (`UNKNOWN_FAILURE`, reached only when *no* rule matches) is ever
+evaluated. The second message is the sharper proof: a string written specifically so no keyword rule
+would match it still gets swept into `INFRASTRUCTURE_FAILURE`, which means the classifier's real
+"nothing else matched" fallback is **unreachable** for any error that passes through the kernel's gRPC
+layer — every one of them contains "grpc" in its stack whether or not the fault is actually
+infrastructure-shaped. This is left as-measured, not patched: `failure-buckets.ts` is the same classifier
+§9.3's determinism table already reports bucket attributions from (its dominant `LOCATOR_RESOLUTION_FAILURE`
+finding is unaffected — that keyword sits earlier in `RULES`, at rule #4 — but its attribution inherits
+the same keyword-priority caveat for any future bucket rule ordered after #10). Fixing the rule order now
+would silently rewrite an already-published result rather than report what was actually observed; noted
+here as a known, disclosed defect for a follow-up change, not folded into this measurement retroactively.
+
+**`DATA_SETUP_FAILURE` (`locked_out_user`) — whole-dispatch blast radius by design, two different wrong
+labels.** Both arms authenticate through the same account for their entire run, so a chaos user that
+rejects login at the backend fails every scenario that depends on it — not the single-scenario isolation
+the four `CLICK`-injected conditions show. Atomic: 86 of 97 scenarios failed; the 11 that passed are
+exactly the ones this condition cannot touch — 5 of the "Invalid login credentials" negative-outcome
+scenarios (one of which, "Login rejected when user is locked out," already exercises this exact account
+and already expects rejection, so the injected condition changes nothing about its outcome) plus 6
+market-localization scenarios, which authenticate as `standard_user` rather than the injected account
+(confirmed in `login/features/market-language-localization.feature`). Twin: all 16/16 fail,
+since its one fused journey always starts with this same login. Neither arm's classifier names the true
+bucket. Atomic's raw error (`"HttpError: Sorry, this user has been locked out."`) does not contain any of
+`DATA_SETUP_FAILURE`'s own keywords (`seed|fixture|setup|precondition|login failed|could not
+authenticate|data setup`) — it falls through every rule to the `UNKNOWN_FAILURE` fallback. The twin's UI
+login never surfaces that backend text at all: rejected login leaves the twin waiting on a post-login
+element (`getByTestId('logout-btn')`) that never appears, so what actually throws is
+`"locator.waitFor: Timeout 20000ms exceeded... waiting for getByTestId('logout-btn')..."` — a genuine
+timeout, correctly matching rule #1, but a **downstream symptom** of the injected cause, not the cause
+itself. The same root fault produces two different observable failure shapes depending on whether login
+is API-driven (atomic) or UI-driven (twin), and neither shape happens to carry a keyword the classifier
+recognizes as "data setup."
+
+**`ASSERTION_FAILURE` (`problem_user`, $0 prices) — atomic detects but misnames it; the twin does not
+detect it at all, which is a coverage gap, not a diagnosability finding.** Atomic: 18/97 scenarios fail
+with `"Pizza \"Marinara\" has invalid data: id=\"p06\", price=0"` — a bespoke guard in
+`CheckoutRoute.findPizza` (`src/core/tests/checkout/organisms/checkout.route.ts:501-502`,
+`if (!pizza.id || pizza.price <= 0) throw ...`). That message contains none of `ASSERTION_FAILURE`'s
+keywords (`expected|assert|to equal|to contain|to be|should`) either, so it too falls to
+`UNKNOWN_FAILURE` — atomic catches the fault but the classifier still misnames it. Twin: **0/16
+failures** — confirmed by reading `evaluation/non-atomic-twin/checkout/organisms/checkout-nonatomic.route.ts`,
+whose `prepareCheckoutContext` reads `cartItems[0]?.unit_price ?? 0` straight into `orderContext` with no
+equivalent guard. This is §8.3's mechanical-transformation boundary showing up empirically: the twin was
+built by chaining existing UI molecules end to end, not by re-deriving every internal safety check the
+atomic suite's own API-path helpers happen to carry, so a defensive assertion that lives inside one
+domain's route file was never in scope to inherit. Reported honestly as a **test-coverage difference
+from the transformation process**, not evidence about diagnosability under non-atomicity — the twin
+never gets the chance to localize a fault it never observes.
+
+**`TIMEOUT_FAILURE`/`PERFORMANCE_THRESHOLD_FAILURE` (`performance_glitch_user`, +3s/call) — a confirmed
+injection with a genuine null result, not a failed injection.** Zero failures in both arms was checked
+against the alternative explanation before being reported: median/max step durations for this dispatch
+vs. a clean dispatch of the same suite show the delay took effect (atomic: max step duration 9,629ms vs.
+1,047ms clean; twin: 6,930ms vs. 1,865ms clean — both ~4–9× elevated). Neither arm's own wait/timeout
+thresholds are tight enough for a flat 3s-per-backend-call delay to trip a failure. Reported as a real,
+verified null result: this application's UI-level timeouts are not sensitive to this specific magnitude
+of backend latency, in either arm.
+
+**`API_RESPONSE_FAILURE` (`error_user`, 50% random HTTP 500) — detected by both arms, localized correctly
+by neither.** Atomic: 5/97 failures (2× `UNKNOWN_FAILURE`, 3× `TIMEOUT_FAILURE` — the injected 500 fires
+at 50% probability, so which of the suite's checkout-touching scenarios it lands on varies run to run).
+Twin: 7/16, all `TIMEOUT_FAILURE` — again a downstream UI wait, not the root HTTP failure. The raw backend text
+(`"HttpError: Random checkout error triggered for testing purposes"`) never contains a status code or the
+words `status`, so `API_RESPONSE_FAILURE`'s own rule (`status code|response status|expected
+status|http \d{3}|unexpected status`) never fires for either arm on this backend's actual error format.
+
+**Net.** Of the seven conditions that produced any failures at all, four localize correctly in both arms
+(cases where the classifier already had the right keyword) and three do not, in either arm, for three
+distinct and separately verified reasons: a keyword-priority bug in the shared classifier
+(`UI_ACTION_FAILURE`/`UNKNOWN_FAILURE`), a true-cause message the classifier's keyword list simply
+doesn't cover (`DATA_SETUP_FAILURE`, `ASSERTION_FAILURE`, `API_RESPONSE_FAILURE`), and one condition
+whose UI-driven path replaces the root error with a generic downstream timeout before the classifier ever
+sees it (the twin's login-dependent rows). What is not in question, on the seven conditions that produced
+a signal at all: the atomic suite's per-scenario isolation confines the wasted-oracle cost of any single
+fault to roughly a tenth of one scenario's steps, while the twin's fused journey wastes roughly
+three-quarters of its own steps on the identical fault — the blast-radius asymmetry §8.4 predicts, holding
+consistently across every condition where the comparison is structurally meaningful.
 
 ### 9.3 Determinism (pass↔fail transition rate across repeated runs)
 
