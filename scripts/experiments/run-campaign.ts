@@ -551,6 +551,9 @@ function dispatch(spec: DispatchSpec, ref: string): void {
   if (spec.tomInjectFault && spec.tomInjectFaultAction) {
     args.push('-f', `tom_inject_fault=${spec.tomInjectFault}`);
     args.push('-f', `tom_inject_fault_action=${spec.tomInjectFaultAction}`);
+    if (spec.tomInjectFaultMaxFires) {
+      args.push('-f', `tom_inject_fault_max_fires=${spec.tomInjectFaultMaxFires}`);
+    }
   }
   if (spec.tomInfraBreakPort) {
     args.push('-f', `tom_infra_break_port=${spec.tomInfraBreakPort}`);
@@ -609,7 +612,8 @@ async function main(): Promise<void> {
     for (const s of specs) {
       const diagFields = [
         s.diagnosabilityChaosUser && `diagnosability_chaos_user=${s.diagnosabilityChaosUser}`,
-        s.tomInjectFault && `tom_inject_fault=${s.tomInjectFault}+${s.tomInjectFaultAction}`,
+        s.tomInjectFault && `tom_inject_fault=${s.tomInjectFault}+${s.tomInjectFaultAction}` +
+          (s.tomInjectFaultMaxFires ? `(x${s.tomInjectFaultMaxFires})` : ''),
         s.tomInfraBreakPort && `tom_infra_break_port=${s.tomInfraBreakPort}`,
       ].filter(Boolean).join('  ');
       console.log(

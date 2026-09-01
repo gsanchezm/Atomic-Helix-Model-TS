@@ -84,6 +84,10 @@ on:
         description: '§8.4/§9.2 diagnosability sweep — actionId the injected fault above targets (fires once per proxy process). Required alongside tom_inject_fault, ignored otherwise.'
         required: false
         default: ''
+      tom_inject_fault_max_fires:
+        description: '§8.4/§9.2 diagnosability sweep — own copy of the input in ahm-execution-helix.yml. Use 1 here (nonAtomicTwin profile has retry:0) — see that file for the full rationale.'
+        required: false
+        default: ''
       tom_infra_break_port:
         description: '§8.4/§9.2 diagnosability sweep, INFRASTRUCTURE_FAILURE bucket only — own copy of the input in ahm-execution-helix.yml, see that file for the full rationale.'
         required: false
@@ -232,6 +236,7 @@ jobs:
           # §9.2 diagnosability — read by the chaos-proxy PROCESS this step launches.
           TOM_INJECT_FAULT: ${{ inputs.tom_inject_fault }}
           TOM_INJECT_FAULT_ACTION: ${{ inputs.tom_inject_fault_action }}
+          TOM_INJECT_FAULT_MAX_FIRES: ${{ inputs.tom_inject_fault_max_fires }}
 
       - name: Stagger start (spread backend login load across the run)
         run: sleep $(( RANDOM % 76 ))
@@ -399,6 +404,7 @@ jobs:
           # §9.2 diagnosability — see eval-twin-web's identical comment above.
           TOM_INJECT_FAULT: ${{ inputs.tom_inject_fault }}
           TOM_INJECT_FAULT_ACTION: ${{ inputs.tom_inject_fault_action }}
+          TOM_INJECT_FAULT_MAX_FIRES: ${{ inputs.tom_inject_fault_max_fires }}
           APPIUM_ADDRESS: ${{ inputs.tom_infra_break_port != '' && format('127.0.0.1:{0}', inputs.tom_infra_break_port) || '127.0.0.1:50053' }}
 
       - name: Stagger start (spread backend login load across the run)

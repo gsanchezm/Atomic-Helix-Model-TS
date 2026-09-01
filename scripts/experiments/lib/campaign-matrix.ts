@@ -36,6 +36,11 @@ export interface CampaignItem {
   diagnosabilityChaosUser?: string; // backend-layer injection — DIAGNOSABILITY_CHAOS_USER
   tomInjectFault?: string; // chaos-proxy-layer injection — TOM_INJECT_FAULT
   tomInjectFaultAction?: string; // chaos-proxy-layer injection — TOM_INJECT_FAULT_ACTION
+  // chaos-proxy-layer injection — TOM_INJECT_FAULT_MAX_FIRES. MUST be '2' for the atomic arm (cucumber.js's
+  // `default` profile runs retry:1 — the injected fault has to survive both attempts or cucumber's own
+  // retry silently erases it, see fault-injection.ts's 2026-08-31 comment) and '1' for the twin arm
+  // (`nonAtomicTwin` profile runs retry:0). Only meaningful alongside tomInjectFault/tomInjectFaultAction.
+  tomInjectFaultMaxFires?: string;
   tomInfraBreakPort?: string; // INFRASTRUCTURE_FAILURE only — TOM_INFRA_BREAK_PORT
 }
 
@@ -325,10 +330,20 @@ export function buildDiagnosabilityItems(batchSuffix: string): CampaignItem[] {
         platformLeg: condition.platformLeg,
         experimentBatchId: batchId,
         runIndex: slug,
+        // Forced 1 on every diagnosability item, both arms, both platform legs — android jobs ignore
+        // this input already (single emulator per job); for web it's what makes "the Nth matching
+        // ExecuteIntent call" unambiguous (see fault-injection.ts's TOM_INJECT_FAULT_MAX_FIRES comment
+        // for why concurrent workers would otherwise spread a multi-fire budget across different
+        // scenarios instead of one scenario's retry attempts).
+        cucumberParallel: '1',
         diagnosabilityBucket: condition.bucket,
         diagnosabilityChaosUser: condition.diagnosabilityChaosUser,
         tomInjectFault: condition.tomInjectFault,
         tomInjectFaultAction: condition.tomInjectFaultAction,
+        // atomic runs cucumber.js's `default` profile (retry:1, up to 2 attempts) — the fault must
+        // survive both or the retry silently erases it (see fault-injection.ts). twin runs
+        // `nonAtomicTwin` (retry:0) — only 1 attempt ever happens, so 1 is correct there too.
+        tomInjectFaultMaxFires: condition.tomInjectFault ? (arm === 'atomic' ? '2' : '1') : undefined,
         tomInfraBreakPort: condition.tomInfraBreakPort,
       });
     }
