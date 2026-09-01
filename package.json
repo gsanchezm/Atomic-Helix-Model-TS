@@ -23,6 +23,7 @@
     "experiments:run-campaign": "ts-node -r tsconfig-paths/register scripts/experiments/run-campaign.ts",
     "experiments:aggregate-campaign": "ts-node -r tsconfig-paths/register scripts/experiments/aggregate-campaign-artifacts.ts",
     "experiments:execution-efficiency-delta": "ts-node -r tsconfig-paths/register scripts/experiments/execution-efficiency-delta.ts",
+    "experiments:parallel-safety-table": "ts-node -r tsconfig-paths/register scripts/experiments/parallel-safety-table.ts",
     "test:unit": "node --test -r ts-node/register -r tsconfig-paths/register src/kernel/*.test.ts",
     "test:a11y": "cross-env DRIVER=playwright PLATFORM=web PLUGIN_AXE=true cucumber-js --tags \"@a11y\" --format json:reports/accessibility.json",
     "test:all-browsers": "node scripts/run-cross-browser-sequential.js",

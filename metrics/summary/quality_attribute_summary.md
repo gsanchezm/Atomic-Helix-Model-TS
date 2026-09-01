@@ -11,7 +11,7 @@ architecture_type = **TOM**. These metrics evaluate the automation architecture,
 | Maintainability | duplicated_code_percentage | 7.44 | percent | ALL | ps-2026-campaign | src/**/*.ts |
 | Maintainability | duplicated_loc | 1406 | loc | ALL | ps-2026-campaign | src/**/*.ts |
 | Maintainability | failure_bucket_coverage_percentage | 100 | percent | ALL | ps-2026-campaign | metrics/processed/failure_buckets.csv |
-| Maintainability | files_touched_per_change | 2.08 | files | ALL | ps-2026-campaign | git log |
+| Maintainability | files_touched_per_change | 2.12 | files | ALL | ps-2026-campaign | git log |
 | Maintainability | max_file_size_loc | 849 | loc | ALL | ps-2026-campaign | src/**/*.ts |
 | Maintainability | telemetry_completeness_percentage | NOT_AVAILABLE | percent | ALL | ps-2026-campaign | metrics/raw/tool-events/*.jsonl (none) |
 

@@ -49,7 +49,7 @@
       },
       {
         "metric_name": "files_touched_per_change",
-        "metric_value": "2.08",
+        "metric_value": "2.12",
         "metric_unit": "files",
         "tool_name": "ALL",
         "platform": "ALL",
