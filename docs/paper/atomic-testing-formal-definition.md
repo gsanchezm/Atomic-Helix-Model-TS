@@ -683,14 +683,15 @@ count hasn't been executed) is reported as **not yet measured**, not as a placeh
 
 ## 9. Results
 
-> TODO — §9.4 (portability) is fully populated as of 2026-08-23. §9.1 (parallel safety) has a full
-> `w1-w8` sweep from the campaign orchestrator's 2026-08-24 smoke test, pending
+> TODO — §9.4 (portability) is fully populated as of 2026-08-23. §9.3 (determinism) is fully populated
+> as of 2026-08-31 — the 120-dispatch campaign (`det-2026-campaign`) completed and its data has been
+> through the full aggregate → `metrics:experiment` → reliability-metrics pipeline. §9.1 (parallel
+> safety) has a full `w1-w8` sweep from the campaign orchestrator's 2026-08-24 smoke test, pending
 > `aggregate-campaign-artifacts.ts` + `pnpm metrics:experiment` to turn it into a populated table. §9.2
-> (diagnosability) and §9.3 (determinism) remain blocked: the fault-injection harness is built (see
-> working notes) but not yet wired into the campaign orchestrator, and the 120-dispatch determinism
-> campaign itself hasn't been launched. §9.5 (execution efficiency, added 2026-08-25) has an
-> illustrative N=1-per-comparandum pass only — see §8.4's note — not yet an adequate-N result.
-> **No values are estimated or filled until real runs produce them.**
+> (diagnosability) remains blocked: the fault-injection harness is built (see working notes) but not
+> yet wired into the campaign orchestrator. §9.5 (execution efficiency, added 2026-08-25) reached the
+> N≥10 evidence bar on both platforms 2026-08-27/28. **No values are estimated or filled until real
+> runs produce them.**
 
 ### 9.1 Parallel safety
 
@@ -731,12 +732,47 @@ yet built) to actually drive the full matrix rather than one-off manual dispatch
 
 ### 9.3 Determinism (pass↔fail transition rate across repeated runs)
 
-| Suite | run_index count | Fail→Pass transitions | Pass→Fail transitions | Flaky rate |
-|---|---|---|---|---|
-| Atomic | — | — | — | — |
-| Non-atomic twin | — | — | — | — |
+**N=30 `run_index` values per arm per platform** (`experiment_batch_id=det-2026-campaign`, dispatched
+sequentially by the campaign orchestrator, `scripts/experiments/run-campaign.ts` — 2026-08-29 to
+2026-08-31, 120/120 dispatches completed, 0 flagged `likelyInfra`). Metrics below are at the
+**scenario** level, not the dispatch level: each dispatch runs an entire suite, and "flaky" means one
+tracked scenario's outcome changed at least once across the 30 repeats — a finer grain than "N of 30
+dispatches had a failure" (e.g. the Android atomic row below: 6 of 30 *dispatches* had a failing
+scenario, all traced to exactly 1 *scenario* that flipped state).
 
-*(Read as a conservative/lower-bound delta — see §8.4.)*
+| Platform | Suite | Scenarios tracked | Flaky scenarios | Pass→Fail transitions | Fail→Pass transitions |
+|---|---|---|---|---|---|
+| Web | Atomic | 89 | 0 (0%) | 0/2,581 (0%) | — (no Fail state observed) |
+| Web | Non-atomic twin | 16 | 0 (0%) | 0/464 (0%) | — (no Fail state observed) |
+| Android | Atomic | 98 | 1 (1.0%) | 5/2,836 (0.18%) | 5/6 (83%) |
+| Android | Non-atomic twin | 16 | 16 (100%) | 23/441 (5.2%) | 23/23 (100%) |
+
+**Web: a null result for both arms.** Zero scenarios in either suite changed outcome across 30 repeats.
+This leg cannot support or refute the determinism corollary with the current dataset — reported plainly
+as inconclusive rather than reached for.
+
+**Android: the predicted direction, at a large and consistent magnitude.** The twin's pass→fail
+transition rate (5.2%) is approximately **29×** the atomic suite's (0.18%), and *every one* of the
+twin's 16 tracked scenarios flipped state at least once, against 1 of the atomic suite's 98 — a
+~98× difference in how much of each suite's own scenario population shows any instability at all.
+Both arms' real failures are dominated by the same `LOCATOR_RESOLUTION_FAILURE` bucket (100% of the
+atomic suite's 6 failing observations; 21/23, 91%, of the twin's) on Android/Appium UI interactions —
+this class of platform-level timing sensitivity is not unique to the twin; it is the same failure mode
+already documented and partially mitigated elsewhere in this project (the `chaos-proxy.ts`
+transient-retry widening, see project history). What differs sharply between arms is *blast radius*:
+the atomic suite's R1/R2 isolation confines this risk to whichever single scenario happens to touch the
+affected interaction (here, one topping-selection assertion, hit on 6 of 30 repeats); the twin's long,
+cross-domain, R2-violating journey chains the same class of interaction through login, catalog,
+size/topping selection, delivery, and order confirmation in every one of its 16 concurrent instances —
+so the identical underlying timing risk gets many more opportunities per run to flip *some* instance's
+outcome. This reads as direct support for the §8.4 mechanism: non-atomicity does not invent a new
+defect class here, it propagates an existing one across a much larger share of the suite. As a single
+campaign on one application, the ~29× ratio itself should not be read as a value expected to generalize
+beyond this dataset — the *direction* and the *blast-radius* mechanism are the claims this result
+supports.
+
+*(Read as a conservative/lower-bound delta — see §8.4: TOM's chaos suppression is identical in both
+arms and still partially absorbs transient noise before it reaches this transition count.)*
 
 ### 9.4 Portability (cost to add a second platform)
 

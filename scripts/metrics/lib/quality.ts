@@ -14,6 +14,16 @@ export interface QualityRecord {
   tool_name?: string; // defaults 'ALL'
   platform?: string; // defaults 'ALL'
   viewport?: string; // defaults 'ALL'
+  // Per-record override for experiment_batch_id — defaults to the file-wide
+  // representative-manifest value below, same pattern as tool_name. Needed
+  // whenever a record's metric_value is scoped to ONE specific experiment
+  // batch (e.g. a determinism-only transition-probability slice) rather than
+  // the file-wide default batch: without an explicit override, every record
+  // in the file silently inherits the SAME single batch id regardless of
+  // what data actually produced its value — a real attribution bug found
+  // 2026-08-31 when multiple batches' data first coexisted in one run of
+  // scenario_outcome_history.csv (see measure-reliability.ts).
+  experiment_batch_id?: string;
   source_file: string;
 }
 
@@ -54,7 +64,7 @@ export function writeQualityCsv(absPath: string, records: QualityRecord[]): void
   const rows = records.map((r) => ({
     architecture_type,
     repository_name,
-    experiment_batch_id,
+    experiment_batch_id: r.experiment_batch_id ?? experiment_batch_id,
     run_index,
     workflow_run_id,
     workflow_attempt,

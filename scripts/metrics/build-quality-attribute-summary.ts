@@ -119,16 +119,16 @@ function main(): void {
     for (const { category } of ATTRIBUTES) {
       const rows = byCategory[category] ?? [];
       mdParts.push(`## ${category}`, '');
-      mdParts.push('| Quality Attribute | Metric | Value | Unit | Tool | Source |');
-      mdParts.push('|---|---:|---:|---|---|---|');
+      mdParts.push('| Quality Attribute | Metric | Value | Unit | Tool | Batch | Source |');
+      mdParts.push('|---|---:|---:|---|---|---|---|');
       if (rows.length === 0) {
-        mdParts.push(`| ${category} | _(no metrics emitted)_ |  |  |  |  |`);
+        mdParts.push(`| ${category} | _(no metrics emitted)_ |  |  |  |  |  |`);
       } else {
         for (const r of rows) {
           mdParts.push(
             `| ${mdCell(category)} | ${mdCell(r.metric_name)} | ${mdCell(r.metric_value)} | ${mdCell(
               r.metric_unit,
-            )} | ${mdCell(r.tool_name)} | ${mdCell(r.source_file)} |`,
+            )} | ${mdCell(r.tool_name)} | ${mdCell(r.experiment_batch_id)} | ${mdCell(r.source_file)} |`,
           );
         }
       }
@@ -149,6 +149,7 @@ function main(): void {
         metric_unit: r.metric_unit,
         tool_name: r.tool_name,
         platform: r.platform,
+        experiment_batch_id: r.experiment_batch_id,
         source_file: r.source_file,
       }));
     }

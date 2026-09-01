@@ -4,10 +4,11 @@
     "Maintainability": [
       {
         "metric_name": "average_file_size_loc",
-        "metric_value": "71.7",
+        "metric_value": "71.83",
         "metric_unit": "loc",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "src/**/*.ts"
       },
       {
@@ -16,14 +17,16 @@
         "metric_unit": "complexity",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "no AST pass (heuristic unavailable)"
       },
       {
         "metric_name": "duplicated_code_percentage",
-        "metric_value": "7.46",
+        "metric_value": "7.44",
         "metric_unit": "percent",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "src/**/*.ts"
       },
       {
@@ -32,6 +35,7 @@
         "metric_unit": "loc",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "src/**/*.ts"
       },
       {
@@ -40,14 +44,16 @@
         "metric_unit": "percent",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "metrics/processed/failure_buckets.csv"
       },
       {
         "metric_name": "files_touched_per_change",
-        "metric_value": "2.26",
+        "metric_value": "2.08",
         "metric_unit": "files",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "git log"
       },
       {
@@ -56,6 +62,7 @@
         "metric_unit": "loc",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "src/**/*.ts"
       },
       {
@@ -64,6 +71,7 @@
         "metric_unit": "percent",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "metrics/raw/tool-events/*.jsonl (none)"
       }
     ],
@@ -74,6 +82,7 @@
         "metric_unit": "files",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "git diff unavailable (set METRICS_BASE_REF)"
       },
       {
@@ -82,6 +91,7 @@
         "metric_unit": "score",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "git diff unavailable (set METRICS_BASE_REF)"
       },
       {
@@ -90,6 +100,7 @@
         "metric_unit": "files",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "git diff unavailable (set METRICS_BASE_REF)"
       },
       {
@@ -98,6 +109,7 @@
         "metric_unit": "files",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "git diff unavailable (set METRICS_BASE_REF)"
       },
       {
@@ -106,6 +118,7 @@
         "metric_unit": "files",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "git diff unavailable (set METRICS_BASE_REF)"
       },
       {
@@ -114,6 +127,7 @@
         "metric_unit": "loc",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "git diff unavailable (set METRICS_BASE_REF)"
       },
       {
@@ -122,6 +136,7 @@
         "metric_unit": "loc",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "git diff unavailable (set METRICS_BASE_REF)"
       },
       {
@@ -130,6 +145,7 @@
         "metric_unit": "loc",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "git diff unavailable (set METRICS_BASE_REF)"
       },
       {
@@ -138,6 +154,7 @@
         "metric_unit": "files",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "git diff unavailable (set METRICS_BASE_REF)"
       }
     ],
@@ -148,6 +165,7 @@
         "metric_unit": "files",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "no tool-integration manifests; git diff unavailable (set METRICS_BASE_REF)"
       },
       {
@@ -156,6 +174,7 @@
         "metric_unit": "score",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "no tool-integration manifests; git diff unavailable (set METRICS_BASE_REF)"
       },
       {
@@ -164,6 +183,7 @@
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "no tool-integration manifests; git diff unavailable (set METRICS_BASE_REF)"
       },
       {
@@ -172,6 +192,7 @@
         "metric_unit": "files",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "no tool-integration manifests; git diff unavailable (set METRICS_BASE_REF)"
       },
       {
@@ -180,6 +201,7 @@
         "metric_unit": "files",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "no tool-integration manifests; git diff unavailable (set METRICS_BASE_REF)"
       },
       {
@@ -188,6 +210,7 @@
         "metric_unit": "loc",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "no tool-integration manifests; git diff unavailable (set METRICS_BASE_REF)"
       },
       {
@@ -196,6 +219,7 @@
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "no tool-integration manifests; git diff unavailable (set METRICS_BASE_REF)"
       }
     ],
@@ -206,14 +230,16 @@
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "heuristic: *.api.contract.json under src/core/tests/**/contracts/**"
       },
       {
         "metric_name": "feature_to_tool_coverage",
-        "metric_value": "0.23",
+        "metric_value": "0.43",
         "metric_unit": "ratio",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "executed (feature,tool) pairs / expected (feature,tool) pairs from tags; NA when tool attribution absent"
       },
       {
@@ -222,6 +248,7 @@
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "heuristic: *.locators.json under src/core/tests/**/contracts/**"
       },
       {
@@ -230,6 +257,7 @@
         "metric_unit": "ratio",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "metrics/processed/platform_coverage_matrix.csv"
       },
       {
@@ -238,6 +266,7 @@
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "heuristic: all contract files under src/core/tests/**/contracts/**"
       },
       {
@@ -246,6 +275,7 @@
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "heuristic: src/core/tests/**/step_definitions/*.ts file count"
       },
       {
@@ -254,6 +284,7 @@
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "heuristic: data-access and fixture/data files under the test slices (excl .gitkeep)"
       },
       {
@@ -262,6 +293,7 @@
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "heuristic: *.visual.json under src/core/tests/**/contracts/**"
       }
     ],
@@ -272,22 +304,25 @@
         "metric_unit": "ratio",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
         "source_file": "metrics/processed/scenario_outcome_history.csv"
       },
       {
         "metric_name": "fail_to_pass_probability",
-        "metric_value": "",
+        "metric_value": "0.96",
         "metric_unit": "ratio",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
         "source_file": "metrics/processed/scenario_outcome_history.csv"
       },
       {
         "metric_name": "flaky_scenario_count",
-        "metric_value": "0",
+        "metric_value": "39",
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
         "source_file": "metrics/processed/scenario_outcome_history.csv"
       },
       {
@@ -296,6 +331,7 @@
         "metric_unit": "ratio",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
         "source_file": "metrics/processed/failure_buckets.csv (INFRASTRUCTURE_FAILURE / total observations)"
       },
       {
@@ -304,14 +340,16 @@
         "metric_unit": "ratio",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
         "source_file": "metrics/processed/scenario_outcome_history.csv"
       },
       {
         "metric_name": "pass_to_fail_probability",
-        "metric_value": "0",
+        "metric_value": "0.01",
         "metric_unit": "ratio",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
         "source_file": "metrics/processed/scenario_outcome_history.csv"
       },
       {
@@ -320,14 +358,16 @@
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
         "source_file": "not measured upstream"
       },
       {
         "metric_name": "tool_failure_rate",
-        "metric_value": "0",
+        "metric_value": "0.01",
         "metric_unit": "ratio",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
         "source_file": "metrics/processed/failure_buckets.csv (WEB/MOBILE_SESSION + LOCATOR_RESOLUTION / total observations)"
       },
       {
@@ -336,6 +376,7 @@
         "metric_unit": "ratio",
         "tool_name": "UNKNOWN",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
         "source_file": "metrics/processed/scenario_outcome_history.csv"
       },
       {
@@ -344,6 +385,7 @@
         "metric_unit": "ratio",
         "tool_name": "UNKNOWN",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
         "source_file": "metrics/processed/scenario_outcome_history.csv"
       },
       {
@@ -352,6 +394,7 @@
         "metric_unit": "count",
         "tool_name": "UNKNOWN",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
         "source_file": "metrics/processed/scenario_outcome_history.csv"
       },
       {
@@ -360,6 +403,7 @@
         "metric_unit": "ratio",
         "tool_name": "UNKNOWN",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
         "source_file": "metrics/processed/failure_buckets.csv (INFRASTRUCTURE_FAILURE / total observations)"
       },
       {
@@ -368,6 +412,7 @@
         "metric_unit": "ratio",
         "tool_name": "UNKNOWN",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
         "source_file": "metrics/processed/scenario_outcome_history.csv"
       },
       {
@@ -376,6 +421,7 @@
         "metric_unit": "ratio",
         "tool_name": "UNKNOWN",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
         "source_file": "metrics/processed/scenario_outcome_history.csv"
       },
       {
@@ -384,6 +430,7 @@
         "metric_unit": "count",
         "tool_name": "UNKNOWN",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
         "source_file": "not measured upstream"
       },
       {
@@ -392,6 +439,151 @@
         "metric_unit": "ratio",
         "tool_name": "UNKNOWN",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
+        "source_file": "metrics/processed/failure_buckets.csv (WEB/MOBILE_SESSION + LOCATOR_RESOLUTION / total observations)"
+      },
+      {
+        "metric_name": "fail_rate",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "appium-android",
+        "platform": "ALL",
+        "experiment_batch_id": "ALL",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "fail_to_pass_probability",
+        "metric_value": "0.92",
+        "metric_unit": "ratio",
+        "tool_name": "appium-android",
+        "platform": "ALL",
+        "experiment_batch_id": "ALL",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "flaky_scenario_count",
+        "metric_value": "7",
+        "metric_unit": "count",
+        "tool_name": "appium-android",
+        "platform": "ALL",
+        "experiment_batch_id": "ALL",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "infrastructure_failure_rate",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "appium-android",
+        "platform": "ALL",
+        "experiment_batch_id": "ALL",
+        "source_file": "metrics/processed/failure_buckets.csv (INFRASTRUCTURE_FAILURE / total observations)"
+      },
+      {
+        "metric_name": "pass_rate",
+        "metric_value": "1",
+        "metric_unit": "ratio",
+        "tool_name": "appium-android",
+        "platform": "ALL",
+        "experiment_batch_id": "ALL",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "pass_to_fail_probability",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "appium-android",
+        "platform": "ALL",
+        "experiment_batch_id": "ALL",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "retry_count",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "count",
+        "tool_name": "appium-android",
+        "platform": "ALL",
+        "experiment_batch_id": "ALL",
+        "source_file": "not measured upstream"
+      },
+      {
+        "metric_name": "tool_failure_rate",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "appium-android",
+        "platform": "ALL",
+        "experiment_batch_id": "ALL",
+        "source_file": "metrics/processed/failure_buckets.csv (WEB/MOBILE_SESSION + LOCATOR_RESOLUTION / total observations)"
+      },
+      {
+        "metric_name": "fail_rate",
+        "metric_value": "0.06",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-android",
+        "platform": "ALL",
+        "experiment_batch_id": "ALL",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "fail_to_pass_probability",
+        "metric_value": "0.98",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-android",
+        "platform": "ALL",
+        "experiment_batch_id": "ALL",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "flaky_scenario_count",
+        "metric_value": "32",
+        "metric_unit": "count",
+        "tool_name": "non-atomic-twin-android",
+        "platform": "ALL",
+        "experiment_batch_id": "ALL",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "infrastructure_failure_rate",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-android",
+        "platform": "ALL",
+        "experiment_batch_id": "ALL",
+        "source_file": "metrics/processed/failure_buckets.csv (INFRASTRUCTURE_FAILURE / total observations)"
+      },
+      {
+        "metric_name": "pass_rate",
+        "metric_value": "0.94",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-android",
+        "platform": "ALL",
+        "experiment_batch_id": "ALL",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "pass_to_fail_probability",
+        "metric_value": "0.06",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-android",
+        "platform": "ALL",
+        "experiment_batch_id": "ALL",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "retry_count",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "count",
+        "tool_name": "non-atomic-twin-android",
+        "platform": "ALL",
+        "experiment_batch_id": "ALL",
+        "source_file": "not measured upstream"
+      },
+      {
+        "metric_name": "tool_failure_rate",
+        "metric_value": "0.06",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-android",
+        "platform": "ALL",
+        "experiment_batch_id": "ALL",
         "source_file": "metrics/processed/failure_buckets.csv (WEB/MOBILE_SESSION + LOCATOR_RESOLUTION / total observations)"
       },
       {
@@ -400,6 +592,7 @@
         "metric_unit": "ratio",
         "tool_name": "non-atomic-twin-web",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
         "source_file": "metrics/processed/scenario_outcome_history.csv"
       },
       {
@@ -408,6 +601,7 @@
         "metric_unit": "ratio",
         "tool_name": "non-atomic-twin-web",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
         "source_file": "metrics/processed/scenario_outcome_history.csv"
       },
       {
@@ -416,6 +610,7 @@
         "metric_unit": "count",
         "tool_name": "non-atomic-twin-web",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
         "source_file": "metrics/processed/scenario_outcome_history.csv"
       },
       {
@@ -424,6 +619,7 @@
         "metric_unit": "ratio",
         "tool_name": "non-atomic-twin-web",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
         "source_file": "metrics/processed/failure_buckets.csv"
       },
       {
@@ -432,6 +628,7 @@
         "metric_unit": "ratio",
         "tool_name": "non-atomic-twin-web",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
         "source_file": "metrics/processed/scenario_outcome_history.csv"
       },
       {
@@ -440,6 +637,7 @@
         "metric_unit": "ratio",
         "tool_name": "non-atomic-twin-web",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
         "source_file": "metrics/processed/scenario_outcome_history.csv"
       },
       {
@@ -448,6 +646,7 @@
         "metric_unit": "count",
         "tool_name": "non-atomic-twin-web",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
         "source_file": "not measured upstream"
       },
       {
@@ -456,6 +655,7 @@
         "metric_unit": "ratio",
         "tool_name": "non-atomic-twin-web",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
         "source_file": "metrics/processed/failure_buckets.csv"
       },
       {
@@ -464,6 +664,7 @@
         "metric_unit": "ratio",
         "tool_name": "playwright",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
         "source_file": "metrics/processed/scenario_outcome_history.csv"
       },
       {
@@ -472,6 +673,7 @@
         "metric_unit": "ratio",
         "tool_name": "playwright",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
         "source_file": "metrics/processed/scenario_outcome_history.csv"
       },
       {
@@ -480,6 +682,7 @@
         "metric_unit": "count",
         "tool_name": "playwright",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
         "source_file": "metrics/processed/scenario_outcome_history.csv"
       },
       {
@@ -488,6 +691,7 @@
         "metric_unit": "ratio",
         "tool_name": "playwright",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
         "source_file": "metrics/processed/failure_buckets.csv"
       },
       {
@@ -496,6 +700,7 @@
         "metric_unit": "ratio",
         "tool_name": "playwright",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
         "source_file": "metrics/processed/scenario_outcome_history.csv"
       },
       {
@@ -504,6 +709,7 @@
         "metric_unit": "ratio",
         "tool_name": "playwright",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
         "source_file": "metrics/processed/scenario_outcome_history.csv"
       },
       {
@@ -512,6 +718,7 @@
         "metric_unit": "count",
         "tool_name": "playwright",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
         "source_file": "not measured upstream"
       },
       {
@@ -520,6 +727,799 @@
         "metric_unit": "ratio",
         "tool_name": "playwright",
         "platform": "ALL",
+        "experiment_batch_id": "ALL",
+        "source_file": "metrics/processed/failure_buckets.csv"
+      },
+      {
+        "metric_name": "fail_rate",
+        "metric_value": "0.03",
+        "metric_unit": "ratio",
+        "tool_name": "UNKNOWN",
+        "platform": "ALL",
+        "experiment_batch_id": "batch-adhoc",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "fail_to_pass_probability",
+        "metric_value": "",
+        "metric_unit": "ratio",
+        "tool_name": "UNKNOWN",
+        "platform": "ALL",
+        "experiment_batch_id": "batch-adhoc",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "flaky_scenario_count",
+        "metric_value": "0",
+        "metric_unit": "count",
+        "tool_name": "UNKNOWN",
+        "platform": "ALL",
+        "experiment_batch_id": "batch-adhoc",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "infrastructure_failure_rate",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "UNKNOWN",
+        "platform": "ALL",
+        "experiment_batch_id": "batch-adhoc",
+        "source_file": "metrics/processed/failure_buckets.csv (INFRASTRUCTURE_FAILURE / total observations)"
+      },
+      {
+        "metric_name": "pass_rate",
+        "metric_value": "0.97",
+        "metric_unit": "ratio",
+        "tool_name": "UNKNOWN",
+        "platform": "ALL",
+        "experiment_batch_id": "batch-adhoc",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "pass_to_fail_probability",
+        "metric_value": "",
+        "metric_unit": "ratio",
+        "tool_name": "UNKNOWN",
+        "platform": "ALL",
+        "experiment_batch_id": "batch-adhoc",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "retry_count",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "count",
+        "tool_name": "UNKNOWN",
+        "platform": "ALL",
+        "experiment_batch_id": "batch-adhoc",
+        "source_file": "not measured upstream"
+      },
+      {
+        "metric_name": "tool_failure_rate",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "UNKNOWN",
+        "platform": "ALL",
+        "experiment_batch_id": "batch-adhoc",
+        "source_file": "metrics/processed/failure_buckets.csv (WEB/MOBILE_SESSION + LOCATOR_RESOLUTION / total observations)"
+      },
+      {
+        "metric_name": "fail_rate",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "appium-android",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "fail_to_pass_probability",
+        "metric_value": "0.83",
+        "metric_unit": "ratio",
+        "tool_name": "appium-android",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "flaky_scenario_count",
+        "metric_value": "1",
+        "metric_unit": "count",
+        "tool_name": "appium-android",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "infrastructure_failure_rate",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "appium-android",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "metrics/processed/failure_buckets.csv (INFRASTRUCTURE_FAILURE / total observations)"
+      },
+      {
+        "metric_name": "pass_rate",
+        "metric_value": "1",
+        "metric_unit": "ratio",
+        "tool_name": "appium-android",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "pass_to_fail_probability",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "appium-android",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "retry_count",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "count",
+        "tool_name": "appium-android",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "not measured upstream"
+      },
+      {
+        "metric_name": "tool_failure_rate",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "appium-android",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "metrics/processed/failure_buckets.csv (WEB/MOBILE_SESSION + LOCATOR_RESOLUTION / total observations)"
+      },
+      {
+        "metric_name": "fail_rate",
+        "metric_value": "0.05",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-android",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "fail_to_pass_probability",
+        "metric_value": "1",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-android",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "flaky_scenario_count",
+        "metric_value": "16",
+        "metric_unit": "count",
+        "tool_name": "non-atomic-twin-android",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "infrastructure_failure_rate",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-android",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "metrics/processed/failure_buckets.csv (INFRASTRUCTURE_FAILURE / total observations)"
+      },
+      {
+        "metric_name": "pass_rate",
+        "metric_value": "0.95",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-android",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "pass_to_fail_probability",
+        "metric_value": "0.05",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-android",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "retry_count",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "count",
+        "tool_name": "non-atomic-twin-android",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "not measured upstream"
+      },
+      {
+        "metric_name": "tool_failure_rate",
+        "metric_value": "0.04",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-android",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "metrics/processed/failure_buckets.csv (WEB/MOBILE_SESSION + LOCATOR_RESOLUTION / total observations)"
+      },
+      {
+        "metric_name": "fail_rate",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "fail_to_pass_probability",
+        "metric_value": "",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "flaky_scenario_count",
+        "metric_value": "0",
+        "metric_unit": "count",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "infrastructure_failure_rate",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "metrics/processed/failure_buckets.csv"
+      },
+      {
+        "metric_name": "pass_rate",
+        "metric_value": "1",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "pass_to_fail_probability",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "retry_count",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "count",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "not measured upstream"
+      },
+      {
+        "metric_name": "tool_failure_rate",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "metrics/processed/failure_buckets.csv"
+      },
+      {
+        "metric_name": "fail_rate",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "fail_to_pass_probability",
+        "metric_value": "",
+        "metric_unit": "ratio",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "flaky_scenario_count",
+        "metric_value": "0",
+        "metric_unit": "count",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "infrastructure_failure_rate",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "ratio",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "metrics/processed/failure_buckets.csv"
+      },
+      {
+        "metric_name": "pass_rate",
+        "metric_value": "1",
+        "metric_unit": "ratio",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "pass_to_fail_probability",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "retry_count",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "count",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "not measured upstream"
+      },
+      {
+        "metric_name": "tool_failure_rate",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "ratio",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "experiment_batch_id": "det-2026-campaign",
+        "source_file": "metrics/processed/failure_buckets.csv"
+      },
+      {
+        "metric_name": "fail_rate",
+        "metric_value": "0.01",
+        "metric_unit": "ratio",
+        "tool_name": "appium-android",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-android",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "fail_to_pass_probability",
+        "metric_value": "1",
+        "metric_unit": "ratio",
+        "tool_name": "appium-android",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-android",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "flaky_scenario_count",
+        "metric_value": "6",
+        "metric_unit": "count",
+        "tool_name": "appium-android",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-android",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "infrastructure_failure_rate",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "appium-android",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-android",
+        "source_file": "metrics/processed/failure_buckets.csv (INFRASTRUCTURE_FAILURE / total observations)"
+      },
+      {
+        "metric_name": "pass_rate",
+        "metric_value": "0.99",
+        "metric_unit": "ratio",
+        "tool_name": "appium-android",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-android",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "pass_to_fail_probability",
+        "metric_value": "0.01",
+        "metric_unit": "ratio",
+        "tool_name": "appium-android",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-android",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "retry_count",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "count",
+        "tool_name": "appium-android",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-android",
+        "source_file": "not measured upstream"
+      },
+      {
+        "metric_name": "tool_failure_rate",
+        "metric_value": "0.01",
+        "metric_unit": "ratio",
+        "tool_name": "appium-android",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-android",
+        "source_file": "metrics/processed/failure_buckets.csv (WEB/MOBILE_SESSION + LOCATOR_RESOLUTION / total observations)"
+      },
+      {
+        "metric_name": "fail_rate",
+        "metric_value": "0.09",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-android",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-android",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "fail_to_pass_probability",
+        "metric_value": "0.94",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-android",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-android",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "flaky_scenario_count",
+        "metric_value": "16",
+        "metric_unit": "count",
+        "tool_name": "non-atomic-twin-android",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-android",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "infrastructure_failure_rate",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-android",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-android",
+        "source_file": "metrics/processed/failure_buckets.csv (INFRASTRUCTURE_FAILURE / total observations)"
+      },
+      {
+        "metric_name": "pass_rate",
+        "metric_value": "0.91",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-android",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-android",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "pass_to_fail_probability",
+        "metric_value": "0.09",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-android",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-android",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "retry_count",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "count",
+        "tool_name": "non-atomic-twin-android",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-android",
+        "source_file": "not measured upstream"
+      },
+      {
+        "metric_name": "tool_failure_rate",
+        "metric_value": "0.09",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-android",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-android",
+        "source_file": "metrics/processed/failure_buckets.csv (WEB/MOBILE_SESSION + LOCATOR_RESOLUTION / total observations)"
+      },
+      {
+        "metric_name": "fail_rate",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-web",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "fail_to_pass_probability",
+        "metric_value": "",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-web",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "flaky_scenario_count",
+        "metric_value": "0",
+        "metric_unit": "count",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-web",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "infrastructure_failure_rate",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-web",
+        "source_file": "metrics/processed/failure_buckets.csv"
+      },
+      {
+        "metric_name": "pass_rate",
+        "metric_value": "1",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-web",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "pass_to_fail_probability",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-web",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "retry_count",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "count",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-web",
+        "source_file": "not measured upstream"
+      },
+      {
+        "metric_name": "tool_failure_rate",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-web",
+        "source_file": "metrics/processed/failure_buckets.csv"
+      },
+      {
+        "metric_name": "fail_rate",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-web",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "fail_to_pass_probability",
+        "metric_value": "",
+        "metric_unit": "ratio",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-web",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "flaky_scenario_count",
+        "metric_value": "0",
+        "metric_unit": "count",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-web",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "infrastructure_failure_rate",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "ratio",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-web",
+        "source_file": "metrics/processed/failure_buckets.csv"
+      },
+      {
+        "metric_name": "pass_rate",
+        "metric_value": "1",
+        "metric_unit": "ratio",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-web",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "pass_to_fail_probability",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-web",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "retry_count",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "count",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-web",
+        "source_file": "not measured upstream"
+      },
+      {
+        "metric_name": "tool_failure_rate",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "ratio",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "experiment_batch_id": "eff-2026-campaign-web",
+        "source_file": "metrics/processed/failure_buckets.csv"
+      },
+      {
+        "metric_name": "fail_rate",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "fail_to_pass_probability",
+        "metric_value": "",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "flaky_scenario_count",
+        "metric_value": "0",
+        "metric_unit": "count",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "infrastructure_failure_rate",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
+        "source_file": "metrics/processed/failure_buckets.csv"
+      },
+      {
+        "metric_name": "pass_rate",
+        "metric_value": "1",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "pass_to_fail_probability",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "retry_count",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "count",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
+        "source_file": "not measured upstream"
+      },
+      {
+        "metric_name": "tool_failure_rate",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "ratio",
+        "tool_name": "non-atomic-twin-web",
+        "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
+        "source_file": "metrics/processed/failure_buckets.csv"
+      },
+      {
+        "metric_name": "fail_rate",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "fail_to_pass_probability",
+        "metric_value": "",
+        "metric_unit": "ratio",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "flaky_scenario_count",
+        "metric_value": "0",
+        "metric_unit": "count",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "infrastructure_failure_rate",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "ratio",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
+        "source_file": "metrics/processed/failure_buckets.csv"
+      },
+      {
+        "metric_name": "pass_rate",
+        "metric_value": "1",
+        "metric_unit": "ratio",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "pass_to_fail_probability",
+        "metric_value": "0",
+        "metric_unit": "ratio",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
+        "source_file": "metrics/processed/scenario_outcome_history.csv"
+      },
+      {
+        "metric_name": "retry_count",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "count",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
+        "source_file": "not measured upstream"
+      },
+      {
+        "metric_name": "tool_failure_rate",
+        "metric_value": "NOT_AVAILABLE",
+        "metric_unit": "ratio",
+        "tool_name": "playwright",
+        "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "metrics/processed/failure_buckets.csv"
       }
     ],
@@ -530,14 +1530,16 @@
         "metric_unit": "ms",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "TOM-only overhead"
       },
       {
         "metric_name": "job_duration_ms",
-        "metric_value": "39750",
+        "metric_value": "772584.62",
         "metric_unit": "ms",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "metrics/raw/run-manifest/*.json (mean per-manifest endedAt - startedAt)"
       },
       {
@@ -546,6 +1548,7 @@
         "metric_unit": "ms",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "metrics/processed/scenario_durations.csv (p50 of duration_ms)"
       },
       {
@@ -554,6 +1557,7 @@
         "metric_unit": "ms",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "metrics/processed/scenario_durations.csv (p95 of duration_ms)"
       },
       {
@@ -562,6 +1566,7 @@
         "metric_unit": "ms",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "metrics/processed/scenario_durations.csv (p99 of duration_ms)"
       },
       {
@@ -570,6 +1575,7 @@
         "metric_unit": "ms",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "TOM-only overhead"
       },
       {
@@ -578,6 +1584,7 @@
         "metric_unit": "ms",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "metrics/processed/scenario_durations.csv (mean of duration_ms)"
       },
       {
@@ -586,6 +1593,7 @@
         "metric_unit": "ms",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "not measured upstream"
       },
       {
@@ -594,14 +1602,16 @@
         "metric_unit": "ms",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "not measured upstream"
       },
       {
         "metric_name": "workflow_duration_ms",
-        "metric_value": "18192000",
+        "metric_value": "615780000",
         "metric_unit": "ms",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "metrics/raw/run-manifest/*.json (max endedAt - min startedAt)"
       }
     ],
@@ -612,6 +1622,7 @@
         "metric_unit": "boolean",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "metrics"
       },
       {
@@ -620,6 +1631,7 @@
         "metric_unit": "percent",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "metrics/processed/failure_buckets.csv"
       },
       {
@@ -628,6 +1640,7 @@
         "metric_unit": "boolean",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "logs"
       },
       {
@@ -636,6 +1649,7 @@
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "metrics/processed/failure_buckets.csv"
       },
       {
@@ -644,14 +1658,16 @@
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "metrics/processed"
       },
       {
         "metric_name": "missing_scenario_duration_count",
-        "metric_value": "519",
+        "metric_value": "9605",
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "metrics/processed/scenario_outcome_history.csv"
       },
       {
@@ -660,6 +1676,7 @@
         "metric_unit": "boolean",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "metrics/processed"
       },
       {
@@ -668,6 +1685,7 @@
         "metric_unit": "boolean",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "metrics/raw"
       },
       {
@@ -676,6 +1694,7 @@
         "metric_unit": "percent",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "metrics/raw/tool-events (none)"
       },
       {
@@ -684,6 +1703,7 @@
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "metrics/raw/tool-events (none)"
       },
       {
@@ -692,6 +1712,7 @@
         "metric_unit": "percent",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "metrics/processed/failure_buckets.csv"
       }
     ],
@@ -702,6 +1723,7 @@
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "src/** (caps|profile) + *.env profiles"
       },
       {
@@ -710,14 +1732,16 @@
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "metrics/processed/scenario_outcome_history.csv"
       },
       {
         "metric_name": "platform_coverage_percentage",
-        "metric_value": "0",
+        "metric_value": "14.29",
         "metric_unit": "percent",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "metrics/processed/platform_coverage_matrix.csv; metrics/processed/scenario_outcome_history.csv"
       },
       {
@@ -726,6 +1750,7 @@
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "src/** (android|ios|mobile|web in path)"
       },
       {
@@ -734,22 +1759,25 @@
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "src/**/*.locators.json"
       },
       {
         "metric_name": "successful_platform_matrix_percentage",
-        "metric_value": "0",
+        "metric_value": "14.29",
         "metric_unit": "percent",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "metrics/processed/platform_coverage_matrix.csv; metrics/processed/scenario_outcome_history.csv"
       },
       {
         "metric_name": "successful_tool_count",
-        "metric_value": "2",
+        "metric_value": "4",
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "metrics/processed/scenario_outcome_history.csv"
       },
       {
@@ -758,6 +1786,7 @@
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "scripts/metrics/measure-portability.ts (known TOM tool set)"
       }
     ],
@@ -768,6 +1797,7 @@
         "metric_unit": "boolean",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "metrics/processed/api_isolated_results.csv"
       },
       {
@@ -776,14 +1806,16 @@
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "src/core/tests (*.feature tags)"
       },
       {
         "metric_name": "oracle_count",
-        "metric_value": "1",
+        "metric_value": "2",
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "metrics/processed/{api_isolated_results,visual_comparison_results,performance_summary}.csv; tool-events"
       },
       {
@@ -792,6 +1824,7 @@
         "metric_unit": "boolean",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "metrics/processed/performance_summary.csv"
       },
       {
@@ -800,14 +1833,16 @@
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "src/core/tests + evidence CSVs"
       },
       {
         "metric_name": "tool_count",
-        "metric_value": "2",
+        "metric_value": "4",
         "metric_unit": "count",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "metrics/processed/scenario_outcome_history.csv"
       },
       {
@@ -816,6 +1851,7 @@
         "metric_unit": "boolean",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "metrics/raw/tool-events; metrics/processed/scenario_outcome_history.csv"
       },
       {
@@ -824,6 +1860,7 @@
         "metric_unit": "boolean",
         "tool_name": "ALL",
         "platform": "ALL",
+        "experiment_batch_id": "ps-2026-campaign",
         "source_file": "metrics/processed/visual_comparison_results.csv"
       }
     ]

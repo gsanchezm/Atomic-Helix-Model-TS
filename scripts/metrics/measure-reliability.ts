@@ -38,13 +38,33 @@ const TOOL_FAILURE_BUCKETS = new Set([
 // rate than atomic") is a CROSS-ARM comparison — this only becomes answerable once main() calls this
 // once per distinct tool_name, not just once globally, since fail_rate/transition-probability computed
 // across a pooled mix of arms cannot be attributed to either one.
+//
+// batchId (optional): when provided (the new per-(tool_name, batch) call sites in main(), below), tags
+// every output record's experiment_batch_id with that EXACT batch. When undefined (the 'ALL' and pooled
+// per-tool_name call sites), records are explicitly tagged 'ALL' — mirroring how `toolName: undefined`
+// already means "tag as the literal sentinel 'ALL'" for tool_name. This is NOT optional/cosmetic: without
+// an explicit sentinel here, lib/quality.ts's writeQualityCsv falls back to a "representative manifest"
+// batch id that has NO relationship to which batches actually fed a pooled slice — confirmed to produce
+// real false attribution (a tool_name tagged with a batch it has zero rows from) and ambiguous duplicate
+// rows (a pooled row's fallback label colliding with a genuine same-tool per-batch row) by adversarial
+// review 2026-08-31, the same day the per-batch slices below were added. Explicit 'ALL' closes it the
+// same way sentinel tool_name='ALL' already does.
+//
+// The transition-detection grouping key below keys off each ROW's own experiment_batch_id (not this
+// batchId parameter) — so cross-batch interleaving is prevented for EVERY call site, pooled or scoped,
+// regardless of what's passed here. Pooling here only sums already-batch-clean transition counts across
+// batches, which is a legitimate "aggregate across everything measured so far" statistic, not fabrication
+// (verified independently 2026-08-31 by adversarial review, recomputing a pooled slice by hand). A POOLED
+// number is still never the right one to read for a claim scoped to one specific batch (e.g. §9.3's
+// determinism-only numbers) — use the per-(tool_name, batch) slices in main() for that.
 function computeReliabilityMetrics(
   outcomeRows: Record<string, string>[],
   bucketRows: Record<string, string>[],
   toolName: string | undefined, // undefined -> QualityRecord.tool_name defaults to 'ALL'
+  batchId?: string,
 ): QualityRecord[] {
   const records: QualityRecord[] = [];
-  const tag = { tool_name: toolName };
+  const tag = { tool_name: toolName, experiment_batch_id: batchId ?? 'ALL' };
 
   const total = outcomeRows.length;
   const passes = outcomeRows.filter((r) => outcomeOf(r) === 'PASS').length;
@@ -68,7 +88,7 @@ function computeReliabilityMetrics(
     ...tag,
   });
 
-  // --- Group by (scenario, tool_name, platform); order by run_index for transitions ---
+  // --- Group by (scenario, tool_name, platform, experiment_batch_id); order by run_index for transitions ---
   // tool_name stays IN the key even though outcomeRows is already tool_name-filtered for every
   // per-tool_name call site (main() below) — it's redundant there (empirically confirmed: partitioning
   // by the 2-part vs. 3-part key produces identical groups within a single-tool_name slice) but it is
@@ -77,10 +97,24 @@ function computeReliabilityMetrics(
   // single transition sequence — fabricating flaky_scenario_count / pass_to_fail_probability /
   // fail_to_pass_probability out of pure interleaving, not real flakiness in either arm. Caught by
   // adversarial review (2026-08-26) with an empirical repro before this was ever committed.
+  //
+  // experiment_batch_id added to the key 2026-08-31 for the identical reason, one axis up: once more
+  // than one campaign batch's repeated-run data coexists in scenario_outcome_history.csv for the same
+  // (scenario, tool_name, platform) — e.g. the determinism campaign's det-2026-campaign (run_index
+  // '001'-'030', a real temporal repeat sequence) and the earlier efficiency instrument's
+  // eff-2026-campaign-android (run_index '001'-'013', a DIFFERENT, unrelated repeat sequence) both use
+  // the same tool_name/platform and the same zero-padded run_index scheme — a 2-part-plus-scenario key
+  // sorts their rows into ONE interleaved sequence by run_index string, fabricating transitions between
+  // two batches that were never actually adjacent in time or purpose. Empirically confirmed present in
+  // this exact dataset before the fix (every appium-android / non-atomic-twin-android scenario had both
+  // det-2026-campaign and eff-2026-campaign-android rows sharing run_index '001'-'013'). This key
+  // addition is a no-op for any already-batch-filtered call (every row shares one batch id already) and
+  // only changes behavior for a call fed multiple batches' rows at once — i.e. it protects the pooled
+  // 'ALL'/per-tool_name slices from the same fabrication risk the 2026-08-26 fix closed for arms.
   const groups = new Map<string, Record<string, string>[]>();
   for (const r of outcomeRows) {
     const scenario = r.scenario || r.scenario_name || '';
-    const key = `${scenario}::${r.tool_name || ''}::${r.platform || ''}`;
+    const key = `${scenario}::${r.tool_name || ''}::${r.platform || ''}::${r.experiment_batch_id || ''}`;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(r);
   }
@@ -150,9 +184,13 @@ function computeReliabilityMetrics(
   });
 
   // --- Failure-bucket distribution -> infrastructure / tool failure rates, same slice ---
-  const scopedBuckets = toolName === undefined
-    ? bucketRows
-    : bucketRows.filter((r) => (r.tool_name || '').trim() === toolName);
+  // Scoped by batchId too (when given), matching outcomeRows' own scoping — otherwise the numerator
+  // here could still pull in another batch's bucket rows against this batch's `total` denominator.
+  const scopedBuckets = bucketRows.filter(
+    (r) =>
+      (toolName === undefined || (r.tool_name || '').trim() === toolName) &&
+      (batchId === undefined || (r.experiment_batch_id || '').trim() === batchId),
+  );
 
   if (scopedBuckets.length === 0 || total === 0) {
     records.push({
@@ -221,9 +259,38 @@ function main(): void {
     records.push(...computeReliabilityMetrics(slice, buckets, toolName));
   }
 
+  // Per-(tool_name, experiment_batch_id) slices — added 2026-08-31. The per-tool_name slices above pool
+  // every batch ever collected for that tool (correct for an "aggregate reliability so far" number, now
+  // that the grouping-key fix prevents them from fabricating cross-batch transitions) but CANNOT answer
+  // a claim scoped to one specific campaign batch (e.g. §9.3's determinism-only transition rates) — a
+  // pooled number silently blends in unrelated batches (parallel-safety's worker-level "sequence",
+  // the efficiency instrument's differently-purposed repeats) that happen to share a tool_name/platform.
+  // One slice per (tool_name, batch) actually present in the data; batchId is tagged explicitly on the
+  // output rows via lib/quality.ts's per-record experiment_batch_id override (also added 2026-08-31) so
+  // a reader of reliability_metrics.csv can filter to exactly the batch a claim needs, unambiguously.
+  // The literal string 'ALL' is excluded from batchId here for the identical reason toolName==='ALL' is
+  // excluded above: computeReliabilityMetrics()'s pooled call sites (batchId undefined) now explicitly
+  // tag their own output rows experiment_batch_id='ALL' — a raw input row that happened to carry that
+  // literal value would otherwise get its own per-batch slice key-identical to the pooled one.
+  const toolBatchPairs = [...new Set(
+    outcome
+      .filter((r) => toolNames.includes((r.tool_name || '').trim()))
+      .map((r) => `${(r.tool_name || '').trim()}::${(r.experiment_batch_id || '').trim()}`),
+  )].sort();
+  let batchSliceCount = 0;
+  for (const pairKey of toolBatchPairs) {
+    const [toolName, batchId] = pairKey.split('::');
+    if (!batchId || batchId === 'ALL') continue; // no batch id recorded upstream, or reserved sentinel — nothing meaningful to scope to
+    const slice = outcome.filter(
+      (r) => (r.tool_name || '').trim() === toolName && (r.experiment_batch_id || '').trim() === batchId,
+    );
+    records.push(...computeReliabilityMetrics(slice, buckets, toolName, batchId));
+    batchSliceCount++;
+  }
+
   writeQualityCsv(join(P.processed, 'reliability_metrics.csv'), records);
   console.log(
-    `[measure-reliability] wrote ${records.length} records (1 'ALL' slice + ${toolNames.length} per-tool_name slice(s): ${toolNames.join(', ') || 'none'})`,
+    `[measure-reliability] wrote ${records.length} records (1 'ALL' slice + ${toolNames.length} per-tool_name slice(s): ${toolNames.join(', ') || 'none'} + ${batchSliceCount} per-tool_name-per-batch slice(s))`,
   );
 }
 

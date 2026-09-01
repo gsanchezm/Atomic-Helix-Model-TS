@@ -5,9 +5,9 @@
   "generated_at": "2026-08-24T19:29:31.278Z",
   "totals": {
     "scenarios": 36,
-    "executions": 519,
-    "pass": 516,
-    "fail": 3
+    "executions": 9605,
+    "pass": 9549,
+    "fail": 56
   },
   "artifacts": {
     "scenario_inventory.csv": {
@@ -20,7 +20,7 @@
     },
     "scenario_outcome_history.csv": {
       "present": true,
-      "rows": 519
+      "rows": 9605
     },
     "scenario_durations.csv": {
       "present": true,
@@ -44,7 +44,7 @@
     },
     "failure_buckets.csv": {
       "present": true,
-      "rows": 3
+      "rows": 57
     },
     "proxy_overhead_summary.csv": {
       "present": true,
