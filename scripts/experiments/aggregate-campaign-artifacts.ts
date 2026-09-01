@@ -82,6 +82,7 @@ import {
   PlatformLeg,
   artifactNamesFor,
   buildCampaignItems,
+  buildDiagnosabilityItems,
   buildExecutionEfficiencyItems,
   legKeyOf,
 } from './lib/campaign-matrix';
@@ -95,7 +96,7 @@ const TMP_DOWNLOAD_ROOT = join(REPO_ROOT, 'reports', 'campaigns', '.artifact-tmp
 // CLI args
 // ---------------------------------------------------------------------------
 interface Cli {
-  instrument: 'determinism' | 'parallel-safety' | 'all' | 'efficiency';
+  instrument: 'determinism' | 'parallel-safety' | 'all' | 'efficiency' | 'diagnosability';
   batchSuffix: string;
   dryRun: boolean;
   includeInfraFlagged: boolean;
@@ -125,8 +126,8 @@ aggregate-campaign-artifacts.ts — downloads GH Actions artifacts for every 'co
 item in a run-campaign.ts manifest and merges their metrics/raw/** into the local
 metrics/ tree, so 'pnpm metrics:experiment' has data to read.
 
-  --instrument <determinism|parallel-safety|all|efficiency>   default: all — must match the
-                                                    run-campaign.ts manifest(s) you want to aggregate
+  --instrument <determinism|parallel-safety|diagnosability|all|efficiency>   default: all — must match
+                                                    the run-campaign.ts manifest(s) you want to aggregate
   --batch-suffix <string>                           default: '' — must match run-campaign.ts's --batch-suffix
   --dry-run                                         list what would be downloaded/merged; touches nothing
   --include-infra-flagged                           also merge items run-campaign.ts flagged likelyInfra=true
@@ -145,8 +146,8 @@ metrics/ tree, so 'pnpm metrics:experiment' has data to read.
   }
 
   const instrument = (get('--instrument') ?? 'all') as Cli['instrument'];
-  if (!['determinism', 'parallel-safety', 'all', 'efficiency'].includes(instrument)) {
-    throw new Error(`--instrument must be determinism|parallel-safety|all|efficiency, got "${instrument}"`);
+  if (!['determinism', 'parallel-safety', 'diagnosability', 'all', 'efficiency'].includes(instrument)) {
+    throw new Error(`--instrument must be determinism|parallel-safety|diagnosability|all|efficiency, got "${instrument}"`);
   }
 
   let platformLeg: PlatformLeg | undefined;
@@ -393,7 +394,9 @@ async function main(): Promise<void> {
   const items: CampaignItem[] =
     cli.instrument === 'efficiency'
       ? buildExecutionEfficiencyItems(cli.batchSuffix, cli.platformLeg as PlatformLeg, cli.repeats as number)
-      : buildCampaignItems(cli.instrument, cli.batchSuffix);
+      : cli.instrument === 'diagnosability'
+        ? buildDiagnosabilityItems(cli.batchSuffix)
+        : buildCampaignItems(cli.instrument, cli.batchSuffix);
   const dispatched = loadRelevantCampaignManifests(cli.instrument, cli.batchSuffix);
 
   const completedItems = items.filter((item) => dispatched.get(item.id)?.status === 'completed');

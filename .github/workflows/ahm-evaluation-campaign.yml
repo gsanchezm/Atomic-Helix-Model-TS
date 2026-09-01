@@ -72,6 +72,22 @@ on:
         default: '33'
         type: choice
         options: ['28', '29', '30', '31', '32', '33']
+      diagnosability_chaos_user:
+        description: '§8.4/§9.2 diagnosability sweep — which seeded OmniPizza account this dispatch logs in as (unset/standard_user = off). Own copy of the input in ahm-execution-helix.yml — see that file for the full rationale.'
+        required: false
+        default: ''
+      tom_inject_fault:
+        description: '§8.4/§9.2 diagnosability sweep — chaos-proxy-layer synthetic failure bucket for this dispatch (see src/kernel/fault-injection.ts). Unset = off, normal routing.'
+        required: false
+        default: ''
+      tom_inject_fault_action:
+        description: '§8.4/§9.2 diagnosability sweep — actionId the injected fault above targets (fires once per proxy process). Required alongside tom_inject_fault, ignored otherwise.'
+        required: false
+        default: ''
+      tom_infra_break_port:
+        description: '§8.4/§9.2 diagnosability sweep, INFRASTRUCTURE_FAILURE bucket only — own copy of the input in ahm-execution-helix.yml, see that file for the full rationale.'
+        required: false
+        default: ''
 
 # Same shared identity env every TOM-stamped record across the repo's
 # workflows carries — see ahm-execution-helix.yml's identical block for the
@@ -208,11 +224,14 @@ jobs:
           VIEWPORT: desktop
           DRIVER: playwright
           HEADLESS: 'true'
-          PLAYWRIGHT_ADDRESS: 127.0.0.1:50052
+          PLAYWRIGHT_ADDRESS: ${{ inputs.tom_infra_break_port != '' && format('127.0.0.1:{0}', inputs.tom_infra_break_port) || '127.0.0.1:50052' }}
           API_ADAPTER_ADDRESS: 127.0.0.1:50055
           PLUGIN_PLAYWRIGHT: 'true'
           PLUGIN_PIXELMATCH: 'false'
           PLUGIN_API: 'true'
+          # §9.2 diagnosability — read by the chaos-proxy PROCESS this step launches.
+          TOM_INJECT_FAULT: ${{ inputs.tom_inject_fault }}
+          TOM_INJECT_FAULT_ACTION: ${{ inputs.tom_inject_fault_action }}
 
       - name: Stagger start (spread backend login load across the run)
         run: sleep $(( RANDOM % 76 ))
@@ -235,6 +254,9 @@ jobs:
           PROXY_ADDRESS: 127.0.0.1:50051
           HEADLESS: 'true'
           PLUGIN_PIXELMATCH: 'false'
+          # §9.2 diagnosability — read by the cucumber-js PROCESS this step launches
+          # (checkout-nonatomic.steps.ts's loginViaUi call).
+          DIAGNOSABILITY_CHAOS_USER: ${{ inputs.diagnosability_chaos_user }}
 
       - name: Capture run end time
         if: always()
@@ -374,6 +396,10 @@ jobs:
           ANDROID_UDID: localhost:5555
           PLUGIN_APPIUM: 'true'
           PLUGIN_API: 'true'
+          # §9.2 diagnosability — see eval-twin-web's identical comment above.
+          TOM_INJECT_FAULT: ${{ inputs.tom_inject_fault }}
+          TOM_INJECT_FAULT_ACTION: ${{ inputs.tom_inject_fault_action }}
+          APPIUM_ADDRESS: ${{ inputs.tom_infra_break_port != '' && format('127.0.0.1:{0}', inputs.tom_infra_break_port) || '127.0.0.1:50053' }}
 
       - name: Stagger start (spread backend login load across the run)
         run: sleep $(( RANDOM % 76 ))
@@ -398,6 +424,8 @@ jobs:
           MINIO_PORT: '9000'
           MINIO_ACCESS_KEY: minioadmin
           MINIO_SECRET_KEY: minioadmin
+          # §9.2 diagnosability — see eval-twin-web's identical comment above.
+          DIAGNOSABILITY_CHAOS_USER: ${{ inputs.diagnosability_chaos_user }}
 
       - name: Capture run end time
         if: always()

@@ -23,12 +23,20 @@ export type LegKey = `${Arm}-${PlatformLeg}`;
 
 export interface CampaignItem {
   id: string; // stable, human-readable — the manifest key both scripts share
-  instrument: 'determinism' | 'parallel-safety' | 'efficiency';
+  instrument: 'determinism' | 'parallel-safety' | 'efficiency' | 'diagnosability';
   arm: Arm;
   platformLeg: PlatformLeg;
   experimentBatchId: string;
-  runIndex: string; // repurposed as a worker-level label for parallel-safety
+  runIndex: string; // repurposed as a worker-level label for parallel-safety, a bucket name for diagnosability
   cucumberParallel?: string;
+  // diagnosability only (§9.2) — see buildDiagnosabilityItems below for the full mechanism-per-bucket
+  // rationale. At most one of diagnosabilityChaosUser / (tomInjectFault + tomInjectFaultAction) /
+  // tomInfraBreakPort is set per item, matching "one fault active per process" (design doc §3 decision 2).
+  diagnosabilityBucket?: string; // the true injected bucket, for the §9.2 localization-accuracy comparison
+  diagnosabilityChaosUser?: string; // backend-layer injection — DIAGNOSABILITY_CHAOS_USER
+  tomInjectFault?: string; // chaos-proxy-layer injection — TOM_INJECT_FAULT
+  tomInjectFaultAction?: string; // chaos-proxy-layer injection — TOM_INJECT_FAULT_ACTION
+  tomInfraBreakPort?: string; // INFRASTRUCTURE_FAILURE only — TOM_INFRA_BREAK_PORT
 }
 
 function pad3(n: number): string {
@@ -203,6 +211,125 @@ export function buildExecutionEfficiencyItems(
         experimentBatchId: batchId,
         runIndex: pad3(i),
         cucumberParallel: '1',
+      });
+    }
+  }
+  return items;
+}
+
+// §9.2 diagnosability instrument (build-order step 3's harness, wired into the orchestrator 2026-08-31
+// — see docs/superpowers/specs/2026-08-23-diagnosability-fault-injection-harness-design.md and the
+// 2026-08-31 addendum in project memory for the empirical checks below). Design doc §3 decision 5
+// originally planned 14 buckets × 2 arms = 28 dispatches; three buckets turned out not to be
+// injectable at all (VISUAL_DIFF_FAILURE / VISUAL_BASELINE_MISSING — no shared visual-comparison
+// surface, as the design doc already suspected; API_CONTRACT_FAILURE — confirmed 2026-08-31 by reading
+// every candidate error path directly: neither the login 403 fallback message nor any
+// security_glitch_user checkout-leak string matches failure-buckets.ts's `schema|contract
+// violation|invalid body|json schema` regex anywhere in this suite, so nothing here can even
+// accidentally produce that bucket). TIMEOUT_FAILURE and PERFORMANCE_THRESHOLD_FAILURE share ONE
+// injected condition (performance_glitch_user) per the design doc's own table — which bucket the
+// classifier actually reports for each arm is itself part of what's measured, not a dispatch choice.
+// Net: 10 distinct injected conditions × 2 arms = 20 dispatches, covering 11 of the 14 taxonomy rows.
+//
+// Platform: web for every condition except MOBILE_SESSION_FAILURE (android — a mobile-session fault
+// has no meaning on web) and WEB_SESSION_FAILURE (web — already the default, listed for clarity).
+export interface DiagnosabilityCondition {
+  bucket: string; // FailureBucket name(s) this dispatch is scored against — comma-joined when shared
+  platformLeg: PlatformLeg;
+  diagnosabilityChaosUser?: string;
+  tomInjectFault?: string;
+  tomInjectFaultAction?: string;
+  tomInfraBreakPort?: string;
+}
+
+// Backend-layer (chaos user, threaded through both arms' shared login step) — see
+// checkout.steps.ts / checkout-nonatomic.steps.ts's DIAGNOSABILITY_CHAOS_USER read.
+// Chaos-proxy-layer (fault-injection.ts hook, fires once per process, see that file's 2026-08-31 latch
+// fix) — targets CLICK, which both arms' journeys always call at least once before this fires.
+export const DIAGNOSABILITY_CONDITIONS: DiagnosabilityCondition[] = [
+  { bucket: 'DATA_SETUP_FAILURE', platformLeg: 'web', diagnosabilityChaosUser: 'locked_out_user' },
+  { bucket: 'ASSERTION_FAILURE', platformLeg: 'web', diagnosabilityChaosUser: 'problem_user' },
+  {
+    bucket: 'TIMEOUT_FAILURE,PERFORMANCE_THRESHOLD_FAILURE',
+    platformLeg: 'web',
+    diagnosabilityChaosUser: 'performance_glitch_user',
+  },
+  { bucket: 'API_RESPONSE_FAILURE', platformLeg: 'web', diagnosabilityChaosUser: 'error_user' },
+  {
+    bucket: 'LOCATOR_RESOLUTION_FAILURE',
+    platformLeg: 'web',
+    tomInjectFault: 'LOCATOR_RESOLUTION_FAILURE',
+    tomInjectFaultAction: 'CLICK',
+  },
+  {
+    bucket: 'UI_ACTION_FAILURE',
+    platformLeg: 'web',
+    tomInjectFault: 'UI_ACTION_FAILURE',
+    tomInjectFaultAction: 'CLICK',
+  },
+  {
+    bucket: 'WEB_SESSION_FAILURE',
+    platformLeg: 'web',
+    tomInjectFault: 'WEB_SESSION_FAILURE',
+    tomInjectFaultAction: 'CLICK',
+  },
+  {
+    bucket: 'MOBILE_SESSION_FAILURE',
+    platformLeg: 'android',
+    tomInjectFault: 'MOBILE_SESSION_FAILURE',
+    tomInjectFaultAction: 'CLICK',
+  },
+  {
+    bucket: 'UNKNOWN_FAILURE',
+    platformLeg: 'web',
+    tomInjectFault: 'UNKNOWN_FAILURE',
+    tomInjectFaultAction: 'CLICK',
+  },
+  // Needs no new fault-injection.ts code — a closed port produces a real ECONNREFUSED that
+  // suppressChaos's own transient-jitter classifier still fails deterministically after maxRetries=3
+  // (~1.4-1.8s of backoff, well inside the 300s step timeout — confirmed by reading chaos-proxy.ts's
+  // retry loop directly, not assumed). Port 1 is a reserved/always-closed port, chosen to avoid any
+  // collision with a real service.
+  { bucket: 'INFRASTRUCTURE_FAILURE', platformLeg: 'web', tomInfraBreakPort: '1' },
+];
+
+// Buckets with no dispatch above — reported in §9.2 as honestly excluded, not silently dropped.
+export const DIAGNOSABILITY_EXCLUDED_BUCKETS: Array<{ bucket: string; reason: string }> = [
+  {
+    bucket: 'VISUAL_DIFF_FAILURE',
+    reason: 'the non-atomic twin runs no visual/pixelmatch contract — no shared comparison surface to inject into',
+  },
+  {
+    bucket: 'VISUAL_BASELINE_MISSING',
+    reason: 'same as VISUAL_DIFF_FAILURE — no shared visual-comparison surface',
+  },
+  {
+    bucket: 'API_CONTRACT_FAILURE',
+    reason:
+      "confirmed 2026-08-31: no error path in this suite (login's 403 fallback, security_glitch_user's " +
+      "checkout leak) produces a message matching failure-buckets.ts's schema/contract-violation regex",
+  },
+];
+
+export function buildDiagnosabilityItems(batchSuffix: string): CampaignItem[] {
+  const batchId = `diag-2026-campaign${batchSuffix}`;
+  const arms: Arm[] = ['atomic', 'twin'];
+  const items: CampaignItem[] = [];
+  for (const condition of DIAGNOSABILITY_CONDITIONS) {
+    for (const arm of arms) {
+      const slug = condition.bucket.split(',')[0];
+      items.push({
+        id: `diagnosability__${arm}__${condition.platformLeg}__${slug}`,
+        instrument: 'diagnosability',
+        arm,
+        platformLeg: condition.platformLeg,
+        experimentBatchId: batchId,
+        runIndex: slug,
+        diagnosabilityBucket: condition.bucket,
+        diagnosabilityChaosUser: condition.diagnosabilityChaosUser,
+        tomInjectFault: condition.tomInjectFault,
+        tomInjectFaultAction: condition.tomInjectFaultAction,
+        tomInfraBreakPort: condition.tomInfraBreakPort,
       });
     }
   }

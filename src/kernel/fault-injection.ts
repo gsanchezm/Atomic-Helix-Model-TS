@@ -39,14 +39,28 @@ function isInjectableBucket(value: string): value is InjectableFaultBucket {
     return (INJECTABLE_FAULT_BUCKETS as readonly string[]).includes(value);
 }
 
+// Fires at most once per proxy process. Without this, every ExecuteIntent call whose actionId
+// matches TOM_INJECT_FAULT_ACTION fails — e.g. a live TOM_INJECT_FAULT=UI_ACTION_FAILURE run against
+// place-delivery-order.feature produced 44 real failures (every CLICK in the dispatch), not the one
+// scenario/blast-radius the §9.2 measurement needs (design doc §6: "for the atomic suite this should
+// be exactly the one scenario that owns the faulted behavior"). Latching to the first match bounds
+// blast radius to exactly one scenario (atomic) / one Outline row (twin), matching that requirement —
+// at the cost of being order-dependent (whichever scenario/row happens to call the targeted actionId
+// first is the one that's hit, not a specifically-named one). Caught by advisor review before this
+// harness's first real campaign dispatch, 2026-08-31 — not caught by the 2026-08-23 live verification,
+// which only checked that injection fired at all, not how many times.
+let fired = false;
+
 /**
  * Returns a synthetic FAIL outcome when this dispatch's env targets the
- * given actionId for injection, or null for normal routing. One fault is
- * active per proxy process (TOM_INJECT_FAULT/TOM_INJECT_FAULT_ACTION set
- * once for the dispatch), matching how PLATFORM/DRIVER are already
+ * given actionId for injection AND no fault has fired yet this process, or
+ * null for normal routing. TOM_INJECT_FAULT/TOM_INJECT_FAULT_ACTION are set
+ * once for the dispatch, matching how PLATFORM/DRIVER are already
  * configured per process.
  */
 export function injectedFaultFor(actionId: string): InjectedFaultOutcome | null {
+    if (fired) return null;
+
     const bucket = process.env.TOM_INJECT_FAULT;
     const targetAction = process.env.TOM_INJECT_FAULT_ACTION;
     if (!bucket || !targetAction) return null;
@@ -60,5 +74,6 @@ export function injectedFaultFor(actionId: string): InjectedFaultOutcome | null 
         );
     }
 
+    fired = true;
     return { status: 'FAIL', error: FAULT_MESSAGES[bucket] };
 }

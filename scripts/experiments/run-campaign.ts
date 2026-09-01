@@ -2,17 +2,24 @@
 // See docs/superpowers/specs/2026-07-23-atomic-testing-evaluation-campaign-design.md §5
 // and docs/paper/atomic-testing-formal-definition.md §8.3/§8.4.
 //
-// Scope (deliberately partial — see the 2026-08-24 scope decision in project memory):
-// drives the determinism instrument (120 dispatches: 2 arms x web+Android x N=30)
-// and the parallel-safety instrument (8 dispatches: 2 arms x worker levels 1/2/4/8,
-// web only) = 128 of the campaign's 156 total dispatches. The diagnosability
-// instrument (28 dispatches) is NOT included: its own design doc
-// (docs/superpowers/specs/2026-08-23-diagnosability-fault-injection-harness-design.md
-// line 12) states it is "not yet wired into the campaign orchestrator or CI" —
-// DIAGNOSABILITY_CHAOS_USER / TOM_INJECT_FAULT / TOM_INJECT_FAULT_ACTION do not
-// exist as workflow_dispatch inputs yet, and 3 of its 14 buckets have open
-// empirical tensions (§7 of that doc) that need a live check before this script
-// can safely generate their dispatch matrix. Left as an explicit follow-up.
+// Drives all four instruments now: determinism (120: 2 arms x web+Android x N=30),
+// parallel-safety (8: 2 arms x worker levels 1/2/4/8, web only), diagnosability
+// (20: see lib/campaign-matrix.ts's DIAGNOSABILITY_CONDITIONS — 10 injected
+// conditions x 2 arms, 11 of the 14 taxonomy buckets covered, 3 honestly
+// excluded), plus the ancillary execution-efficiency instrument (--instrument
+// efficiency, ancillary — see that instrument's own header comment in
+// lib/campaign-matrix.ts). Diagnosability was wired in 2026-08-31 — its own
+// design doc (docs/superpowers/specs/2026-08-23-diagnosability-fault-injection-
+// harness-design.md line 12) originally deferred this pending
+// DIAGNOSABILITY_CHAOS_USER/TOM_INJECT_FAULT/TOM_INJECT_FAULT_ACTION
+// workflow_dispatch inputs and resolution of its 3 open empirical tensions
+// (§7 of that doc) — both now done, see lib/campaign-matrix.ts's comment above
+// DIAGNOSABILITY_CONDITIONS for how each tension was resolved. Like efficiency,
+// diagnosability is invoked explicitly (--instrument diagnosability), not
+// folded into --instrument all — determinism/parallel-safety already define
+// what a bare 'all' means and both are long since dispatched under that
+// definition; widening it now would silently change that meaning for anyone
+// re-running it.
 //
 // Hard constraint this script exists to respect: both ahm-execution-helix.yml
 // (atomic legs) and, since the 2026-08-29 split, ahm-evaluation-campaign.yml
@@ -100,6 +107,7 @@ import {
   PRIMARY_STEP_NAME,
   WORKFLOW_FILE,
   buildCampaignItems,
+  buildDiagnosabilityItems,
   buildExecutionEfficiencyItems,
   legKeyOf,
 } from './lib/campaign-matrix';
@@ -112,7 +120,7 @@ const CAMPAIGNS_DIR = join(REPO_ROOT, 'reports', 'campaigns');
 // CLI args — hand-rolled, no dependency. `pnpm experiments:run-campaign -- --help`.
 // ---------------------------------------------------------------------------
 interface Cli {
-  instrument: 'determinism' | 'parallel-safety' | 'all' | 'efficiency';
+  instrument: 'determinism' | 'parallel-safety' | 'all' | 'efficiency' | 'diagnosability';
   ref: string;
   dryRun: boolean;
   cooldownSeconds: number;
@@ -149,9 +157,11 @@ function parseCli(argv: string[]): Cli {
 
   if (has('--help')) {
     console.log(`
-run-campaign.ts — §8.4 campaign orchestrator (determinism + parallel-safety only; see file header)
+run-campaign.ts — §8.4 campaign orchestrator (see file header for scope)
 
-  --instrument <determinism|parallel-safety|all|efficiency>   default: all
+  --instrument <determinism|parallel-safety|diagnosability|all|efficiency>   default: all
+                                                    (all = determinism+parallel-safety only, unchanged
+                                                    since before diagnosability existed — see file header)
   --ref <branch>                                   default: ${DEFAULT_REF}
                                                     NOTE: must be a branch name, not a tag or SHA —
                                                     'gh run list --branch' only accepts branch names;
@@ -182,8 +192,8 @@ run-campaign.ts — §8.4 campaign orchestrator (determinism + parallel-safety o
   }
 
   const instrument = (get('--instrument') ?? 'all') as Cli['instrument'];
-  if (!['determinism', 'parallel-safety', 'all', 'efficiency'].includes(instrument)) {
-    throw new Error(`--instrument must be determinism|parallel-safety|all|efficiency, got "${instrument}"`);
+  if (!['determinism', 'parallel-safety', 'diagnosability', 'all', 'efficiency'].includes(instrument)) {
+    throw new Error(`--instrument must be determinism|parallel-safety|diagnosability|all|efficiency, got "${instrument}"`);
   }
 
   let platformLeg: PlatformLeg | undefined;
@@ -278,6 +288,9 @@ function buildSpecs(cli: Cli): DispatchSpec[] {
     // parseCli() guarantees both are defined whenever instrument === 'efficiency' (throws otherwise) —
     // TS can't see that cross-function invariant, hence the cast.
     return buildExecutionEfficiencyItems(cli.batchSuffix, cli.platformLeg as PlatformLeg, cli.repeats as number).map(toDispatchSpec);
+  }
+  if (cli.instrument === 'diagnosability') {
+    return buildDiagnosabilityItems(cli.batchSuffix).map(toDispatchSpec);
   }
   return buildCampaignItems(cli.instrument, cli.batchSuffix).map(toDispatchSpec);
 }
@@ -530,6 +543,18 @@ function dispatch(spec: DispatchSpec, ref: string): void {
   if (spec.cucumberParallel) {
     args.push('-f', `cucumber_parallel=${spec.cucumberParallel}`);
   }
+  // §9.2 diagnosability — at most one of these three is ever set per item (see
+  // lib/campaign-matrix.ts's DIAGNOSABILITY_CONDITIONS), matching "one fault active per process".
+  if (spec.diagnosabilityChaosUser) {
+    args.push('-f', `diagnosability_chaos_user=${spec.diagnosabilityChaosUser}`);
+  }
+  if (spec.tomInjectFault && spec.tomInjectFaultAction) {
+    args.push('-f', `tom_inject_fault=${spec.tomInjectFault}`);
+    args.push('-f', `tom_inject_fault_action=${spec.tomInjectFaultAction}`);
+  }
+  if (spec.tomInfraBreakPort) {
+    args.push('-f', `tom_infra_break_port=${spec.tomInfraBreakPort}`);
+  }
   gh(args);
 }
 
@@ -582,9 +607,15 @@ async function main(): Promise<void> {
 
   if (cli.dryRun) {
     for (const s of specs) {
+      const diagFields = [
+        s.diagnosabilityChaosUser && `diagnosability_chaos_user=${s.diagnosabilityChaosUser}`,
+        s.tomInjectFault && `tom_inject_fault=${s.tomInjectFault}+${s.tomInjectFaultAction}`,
+        s.tomInfraBreakPort && `tom_infra_break_port=${s.tomInfraBreakPort}`,
+      ].filter(Boolean).join('  ');
       console.log(
         `  [dry-run] ${s.id}  workflow=${s.workflowFile}  platform=${s.ghPlatformInput}  batch=${s.experimentBatchId}  ` +
-        `run_index=${s.runIndex}${s.cucumberParallel ? `  cucumber_parallel=${s.cucumberParallel}` : ''}`,
+        `run_index=${s.runIndex}${s.cucumberParallel ? `  cucumber_parallel=${s.cucumberParallel}` : ''}` +
+        `${diagFields ? `  ${diagFields}` : ''}`,
       );
     }
     return;
