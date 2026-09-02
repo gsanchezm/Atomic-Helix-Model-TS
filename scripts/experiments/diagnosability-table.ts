@@ -1,8 +1,8 @@
-// Diagnosability table — §9.2 instrument (design doc §6: blast radius + localization accuracy).
+// Diagnosability table — §4.2 instrument (design doc §6: blast radius + localization accuracy).
 // See docs/superpowers/specs/2026-08-23-diagnosability-fault-injection-harness-design.md.
 //
 // No generic pipeline computes this (measure-reliability.ts's per-batch slice pools every run_index —
-// wrong here for the same reason it was wrong for §9.1, see parallel-safety-table.ts's header — and
+// wrong here for the same reason it was wrong for §4.1, see parallel-safety-table.ts's header — and
 // blast-radius/localization-accuracy isn't a reliability metric at all). Reads
 // metrics/raw/cucumber-jsonl/*.jsonl directly (one dispatch = one GH run id = a unique file-name
 // prefix, confirmed against the real diag-2026-campaign artifacts) and reuses the EXISTING classifier
@@ -193,7 +193,7 @@ function main(): void {
     JSON.stringify({ results, excludedBuckets: DIAGNOSABILITY_EXCLUDED_BUCKETS }, null, 2) + '\n',
   );
 
-  console.log('§9.2 diagnosability — blast radius + localization accuracy\n');
+  console.log('§4.2 diagnosability — blast radius + localization accuracy\n');
   console.log(
     '| True bucket | Arm | Failed scenarios by job | Reported bucket(s) | Skipped steps per failed scenario |',
   );

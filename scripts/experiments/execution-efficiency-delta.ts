@@ -23,17 +23,22 @@
 // TEXT (confirmed — 'Opening a pizza card launches the builder in <market>'
 // and 'Place a delivery order in <market> paying with credit card' both carry
 // the @android tag in their .feature source, and the twin's single feature
-// file has zero PLATFORM/DRIVER-conditional code per §8.3's structural
+// file has zero PLATFORM/DRIVER-conditional code per §3.2.3's structural
 // check), only the cucumber-jsonl file-name pattern and TOOL_NAME differ
 // (confirmed by reading ahm-execution-helix.yml's TOM_RUN_ID construction for
 // e2e-android / eval-twin-android directly, not assumed from the web
-// pattern). iOS is deliberately NOT supported here — the twin has no iOS
-// implementation at all (no eval-twin-ios job, no
-// evaluation/non-atomic-twin iOS code), consistent with §8.3's documented,
-// deliberate exclusion of iOS from every other repeated-run instrument
-// (macOS runner concurrency). Extending this instrument to iOS would mean
-// building the twin's entire iOS port first — a scope decision, not a script
-// change — so it is out of scope here, matching the rest of the paper.
+// pattern). iOS is deliberately NOT supported here. Precision (2026-09-02
+// hardening audit Q3): this is a VERIFICATION gap, not an implementation
+// gap — every logical key on the twin's journey has an appium.ios contract
+// entry, the reused molecules already embed the atomic iOS suite's
+// workarounds, and the twin's own branches switch on DRIVER, never
+// PLATFORM, so no twin-specific iOS code exists to write. What has never
+// happened is an EXECUTION on iOS (atomic-testing-experiment.yml's
+// experiment-ios job with test_strategy=horizontal-e2e is that smoke), and
+// this script has no ios file-name pattern wired. Consistent with §3.2.3's
+// documented exclusion of iOS from every repeated-run instrument (macOS
+// runner concurrency); extend only after the smoke run proves the journey
+// green there.
 
 import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
@@ -323,7 +328,7 @@ function main(): void {
     );
   }
   console.log(
-    '\nNot a §9 result until N is adequate (§8.5 evidence policy) — see the design doc\'s "Recommended next step" for how many more dispatches that needs.',
+    '\nNot a §4 result until N is adequate (§3.2.5 evidence policy) — see the design doc\'s "Recommended next step" for how many more dispatches that needs.',
   );
 }
 

@@ -34,7 +34,7 @@ const TOOL_FAILURE_BUCKETS = new Set([
 
 // Computes the full Reliability metric set for one slice of scenario_outcome_history.csv rows
 // (already filtered to a single tool_name upstream, or the unfiltered whole for the 'ALL' slice) and
-// the failure_buckets.csv rows filtered to match. §9.3's actual claim ("twin shows a higher transition
+// the failure_buckets.csv rows filtered to match. §4.3's actual claim ("twin shows a higher transition
 // rate than atomic") is a CROSS-ARM comparison — this only becomes answerable once main() calls this
 // once per distinct tool_name, not just once globally, since fail_rate/transition-probability computed
 // across a pooled mix of arms cannot be attributed to either one.
@@ -55,7 +55,7 @@ const TOOL_FAILURE_BUCKETS = new Set([
 // regardless of what's passed here. Pooling here only sums already-batch-clean transition counts across
 // batches, which is a legitimate "aggregate across everything measured so far" statistic, not fabrication
 // (verified independently 2026-08-31 by adversarial review, recomputing a pooled slice by hand). A POOLED
-// number is still never the right one to read for a claim scoped to one specific batch (e.g. §9.3's
+// number is still never the right one to read for a claim scoped to one specific batch (e.g. §4.3's
 // determinism-only numbers) — use the per-(tool_name, batch) slices in main() for that.
 function computeReliabilityMetrics(
   outcomeRows: Record<string, string>[],
@@ -241,7 +241,7 @@ function main(): void {
   // 'ALL' slice — kept for backward compatibility with anything reading the pre-existing pooled row.
   const records: QualityRecord[] = [...computeReliabilityMetrics(outcome, buckets, undefined)];
 
-  // Per-tool_name slices — the actual cross-arm breakdown §9.3 needs (e.g. 'playwright' vs
+  // Per-tool_name slices — the actual cross-arm breakdown §4.3 needs (e.g. 'playwright' vs
   // 'non-atomic-twin-web'). Blank/missing tool_name is skipped (nothing meaningful to slice on);
   // 'UNKNOWN' is NOT filtered out here — it's reported as its own honest slice like any other value,
   // since deciding what counts as noise vs. signal is a reporting-layer judgment, not this script's.
@@ -262,7 +262,7 @@ function main(): void {
   // Per-(tool_name, experiment_batch_id) slices — added 2026-08-31. The per-tool_name slices above pool
   // every batch ever collected for that tool (correct for an "aggregate reliability so far" number, now
   // that the grouping-key fix prevents them from fabricating cross-batch transitions) but CANNOT answer
-  // a claim scoped to one specific campaign batch (e.g. §9.3's determinism-only transition rates) — a
+  // a claim scoped to one specific campaign batch (e.g. §4.3's determinism-only transition rates) — a
   // pooled number silently blends in unrelated batches (parallel-safety's worker-level "sequence",
   // the efficiency instrument's differently-purposed repeats) that happen to share a tool_name/platform.
   // One slice per (tool_name, batch) actually present in the data; batchId is tagged explicitly on the

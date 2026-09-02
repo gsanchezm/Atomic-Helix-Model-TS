@@ -1,11 +1,11 @@
 # =============================================================================
 # AHM — Evaluation Campaign (Non-atomic Twin)
 #
-# Split out of ahm-execution-helix.yml on 2026-08-29, right before the §8.4
+# Split out of ahm-execution-helix.yml on 2026-08-29, right before the §4.3
 # determinism campaign's first real launch (docs/superpowers/specs/2026-07-23-
 # atomic-testing-evaluation-campaign-design.md). Runs ONLY the paper's
 # non-atomic-twin evaluation artifact (`evaluation/non-atomic-twin/`,
-# docs/paper/atomic-testing-formal-definition.md §8.2-§8.4) — never the
+# docs/paper/atomic-testing-formal-definition.md §3.2-§4) — never the
 # reference implementation's own atomic test suite, which stays on
 # ahm-execution-helix.yml.
 #
@@ -63,7 +63,7 @@ on:
         required: false
         default: '001'
       cucumber_parallel:
-        description: 'Cucumber worker count — twin-web only (the §8.4 parallel-safety sweep uses 1/2/4/8). twin-android always runs at 1, single emulator, and ignores this input.'
+        description: 'Cucumber worker count — twin-web only (the §4.1 parallel-safety sweep uses 1/2/4/8). twin-android always runs at 1, single emulator, and ignores this input.'
         required: false
         default: '4'
       android_api_level:
@@ -73,23 +73,23 @@ on:
         type: choice
         options: ['28', '29', '30', '31', '32', '33']
       diagnosability_chaos_user:
-        description: '§8.4/§9.2 diagnosability sweep — which seeded OmniPizza account this dispatch logs in as (unset/standard_user = off). Own copy of the input in ahm-execution-helix.yml — see that file for the full rationale.'
+        description: '§4.2 diagnosability sweep — which seeded OmniPizza account this dispatch logs in as (unset/standard_user = off). Own copy of the input in ahm-execution-helix.yml — see that file for the full rationale.'
         required: false
         default: ''
       tom_inject_fault:
-        description: '§8.4/§9.2 diagnosability sweep — chaos-proxy-layer synthetic failure bucket for this dispatch (see src/kernel/fault-injection.ts). Unset = off, normal routing.'
+        description: '§4.2 diagnosability sweep — chaos-proxy-layer synthetic failure bucket for this dispatch (see src/kernel/fault-injection.ts). Unset = off, normal routing.'
         required: false
         default: ''
       tom_inject_fault_action:
-        description: '§8.4/§9.2 diagnosability sweep — actionId the injected fault above targets (fires once per proxy process). Required alongside tom_inject_fault, ignored otherwise.'
+        description: '§4.2 diagnosability sweep — actionId the injected fault above targets (fires once per proxy process). Required alongside tom_inject_fault, ignored otherwise.'
         required: false
         default: ''
       tom_inject_fault_max_fires:
-        description: '§8.4/§9.2 diagnosability sweep — own copy of the input in ahm-execution-helix.yml. Use 1 here (nonAtomicTwin profile has retry:0) — see that file for the full rationale.'
+        description: '§4.2 diagnosability sweep — own copy of the input in ahm-execution-helix.yml. Use 1 here (nonAtomicTwin profile has retry:0) — see that file for the full rationale.'
         required: false
         default: ''
       tom_infra_break_port:
-        description: '§8.4/§9.2 diagnosability sweep, INFRASTRUCTURE_FAILURE bucket only — own copy of the input in ahm-execution-helix.yml, see that file for the full rationale.'
+        description: '§4.2 diagnosability sweep, INFRASTRUCTURE_FAILURE bucket only — own copy of the input in ahm-execution-helix.yml, see that file for the full rationale.'
         required: false
         default: ''
 
@@ -233,7 +233,7 @@ jobs:
           PLUGIN_PLAYWRIGHT: 'true'
           PLUGIN_PIXELMATCH: 'false'
           PLUGIN_API: 'true'
-          # §9.2 diagnosability — read by the chaos-proxy PROCESS this step launches.
+          # §4.2 diagnosability — read by the chaos-proxy PROCESS this step launches.
           TOM_INJECT_FAULT: ${{ inputs.tom_inject_fault }}
           TOM_INJECT_FAULT_ACTION: ${{ inputs.tom_inject_fault_action }}
           TOM_INJECT_FAULT_MAX_FIRES: ${{ inputs.tom_inject_fault_max_fires }}
@@ -259,7 +259,7 @@ jobs:
           PROXY_ADDRESS: 127.0.0.1:50051
           HEADLESS: 'true'
           PLUGIN_PIXELMATCH: 'false'
-          # §9.2 diagnosability — read by the cucumber-js PROCESS this step launches
+          # §4.2 diagnosability — read by the cucumber-js PROCESS this step launches
           # (checkout-nonatomic.steps.ts's loginViaUi call).
           DIAGNOSABILITY_CHAOS_USER: ${{ inputs.diagnosability_chaos_user }}
 
@@ -401,7 +401,7 @@ jobs:
           ANDROID_UDID: localhost:5555
           PLUGIN_APPIUM: 'true'
           PLUGIN_API: 'true'
-          # §9.2 diagnosability — see eval-twin-web's identical comment above.
+          # §4.2 diagnosability — see eval-twin-web's identical comment above.
           TOM_INJECT_FAULT: ${{ inputs.tom_inject_fault }}
           TOM_INJECT_FAULT_ACTION: ${{ inputs.tom_inject_fault_action }}
           TOM_INJECT_FAULT_MAX_FIRES: ${{ inputs.tom_inject_fault_max_fires }}
@@ -430,7 +430,7 @@ jobs:
           MINIO_PORT: '9000'
           MINIO_ACCESS_KEY: minioadmin
           MINIO_SECRET_KEY: minioadmin
-          # §9.2 diagnosability — see eval-twin-web's identical comment above.
+          # §4.2 diagnosability — see eval-twin-web's identical comment above.
           DIAGNOSABILITY_CHAOS_USER: ${{ inputs.diagnosability_chaos_user }}
 
       - name: Capture run end time

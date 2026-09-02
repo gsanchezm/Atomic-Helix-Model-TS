@@ -73,27 +73,27 @@ on:
         type: choice
         options: ['28', '29', '30', '31', '32', '33']
       cucumber_parallel:
-        description: 'Cucumber worker count (playwright-desktop/responsive — the §8.4 parallel-safety sweep uses 1/2/4/8; the non-atomic twin has its own copy of this input in ahm-evaluation-campaign.yml)'
+        description: 'Cucumber worker count (playwright-desktop/responsive — the §4.1 parallel-safety sweep uses 1/2/4/8; the non-atomic twin has its own copy of this input in ahm-evaluation-campaign.yml)'
         required: false
         default: '4'
       diagnosability_chaos_user:
-        description: '§8.4/§9.2 diagnosability sweep — which seeded OmniPizza account both arms login as for this dispatch (unset/standard_user = off). The non-atomic twin has its own copy of this input in ahm-evaluation-campaign.yml.'
+        description: '§4.2 diagnosability sweep — which seeded OmniPizza account both arms login as for this dispatch (unset/standard_user = off). The non-atomic twin has its own copy of this input in ahm-evaluation-campaign.yml.'
         required: false
         default: ''
       tom_inject_fault:
-        description: '§8.4/§9.2 diagnosability sweep — chaos-proxy-layer synthetic failure bucket for this dispatch (see src/kernel/fault-injection.ts INJECTABLE_FAULT_BUCKETS). Unset = off, normal routing.'
+        description: '§4.2 diagnosability sweep — chaos-proxy-layer synthetic failure bucket for this dispatch (see src/kernel/fault-injection.ts INJECTABLE_FAULT_BUCKETS). Unset = off, normal routing.'
         required: false
         default: ''
       tom_inject_fault_action:
-        description: '§8.4/§9.2 diagnosability sweep — actionId the injected fault above targets (fires once per proxy process, then normal routing resumes — see fault-injection.ts). Required alongside tom_inject_fault, ignored otherwise.'
+        description: '§4.2 diagnosability sweep — actionId the injected fault above targets (fires once per proxy process, then normal routing resumes — see fault-injection.ts). Required alongside tom_inject_fault, ignored otherwise.'
         required: false
         default: ''
       tom_inject_fault_max_fires:
-        description: '§8.4/§9.2 diagnosability sweep — how many times the fault above fires before normal routing resumes (see fault-injection.ts). Use 2 on the atomic arm (cucumber.js default profile retries once) and 1 on the twin arm (nonAtomicTwin profile has retry:0). Default 1 when unset.'
+        description: '§4.2 diagnosability sweep — how many times the fault above fires before normal routing resumes (see fault-injection.ts). Use 2 on the atomic arm (cucumber.js default profile retries once) and 1 on the twin arm (nonAtomicTwin profile has retry:0). Default 1 when unset.'
         required: false
         default: ''
       tom_infra_break_port:
-        description: '§8.4/§9.2 diagnosability sweep, INFRASTRUCTURE_FAILURE bucket only — when set, points the proxy''s outbound plugin address (PLAYWRIGHT_ADDRESS/APPIUM_ADDRESS) at 127.0.0.1:<this port> instead of the real plugin, producing a real ECONNREFUSED. Unset = off, normal routing.'
+        description: '§4.2 diagnosability sweep, INFRASTRUCTURE_FAILURE bucket only — when set, points the proxy''s outbound plugin address (PLAYWRIGHT_ADDRESS/APPIUM_ADDRESS) at 127.0.0.1:<this port> instead of the real plugin, producing a real ECONNREFUSED. Unset = off, normal routing.'
         required: false
         default: ''
 
@@ -491,7 +491,7 @@ jobs:
           # dedicated visual-web job.
           PLUGIN_PIXELMATCH: 'false'
           PLUGIN_API: 'true'
-          # §9.2 diagnosability — read by the chaos-proxy PROCESS this step launches
+          # §4.2 diagnosability — read by the chaos-proxy PROCESS this step launches
           # (must be set here, not on "Run E2E tests" below — see
           # feedback_proxy_platform_viewport_restart memory / fault-injection.ts).
           TOM_INJECT_FAULT: ${{ inputs.tom_inject_fault }}
@@ -529,7 +529,7 @@ jobs:
           # doesn't load capability it won't use AND the hook self-skips
           # if the plugin ever did register the capability.
           PLUGIN_PIXELMATCH: 'false'
-          # §9.2 diagnosability — read by the cucumber-js PROCESS this step launches
+          # §4.2 diagnosability — read by the cucumber-js PROCESS this step launches
           # (checkout.steps.ts's loginAs call). Default 'standard_user' matches off.
           DIAGNOSABILITY_CHAOS_USER: ${{ inputs.diagnosability_chaos_user }}
 
@@ -1248,7 +1248,7 @@ jobs:
           ANDROID_UDID: localhost:5555
           PLUGIN_APPIUM: 'true'
           PLUGIN_API: 'true'
-          # §9.2 diagnosability — see e2e-web's identical comment above.
+          # §4.2 diagnosability — see e2e-web's identical comment above.
           TOM_INJECT_FAULT: ${{ inputs.tom_inject_fault }}
           TOM_INJECT_FAULT_ACTION: ${{ inputs.tom_inject_fault_action }}
           TOM_INJECT_FAULT_MAX_FIRES: ${{ inputs.tom_inject_fault_max_fires }}
@@ -1284,7 +1284,7 @@ jobs:
           MINIO_PORT: '9000'
           MINIO_ACCESS_KEY: minioadmin
           MINIO_SECRET_KEY: minioadmin
-          # §9.2 diagnosability — see e2e-web's identical comment above.
+          # §4.2 diagnosability — see e2e-web's identical comment above.
           DIAGNOSABILITY_CHAOS_USER: ${{ inputs.diagnosability_chaos_user }}
 
       - name: Capture run end time
@@ -1891,7 +1891,7 @@ jobs:
   # ---------------------------------------------------------------------------
   # ---------------------------------------------------------------------------
   # Job 5b/5c: Evaluation — Non-atomic Twin — split out to its own workflow,
-  # ahm-evaluation-campaign.yml, on 2026-08-29 (isolates the §8.4 campaign's
+  # ahm-evaluation-campaign.yml, on 2026-08-29 (isolates the evaluation campaign's
   # concurrency group from this workflow's ordinary CI dispatches). See that
   # file's header for the full rationale.
   # ---------------------------------------------------------------------------

@@ -14,7 +14,7 @@ import {
 import type { CheckoutWorld } from '@core/tests/support/world';
 
 // EVALUATION ARTIFACT — see ../../README.md and
-// docs/paper/atomic-testing-formal-definition.md §8.3. Pairs 1:1 with
+// docs/paper/atomic-testing-formal-definition.md §3.2.3. Pairs 1:1 with
 // src/core/tests/pizzaBuilder/organisms/pizzaBuilder.route.ts.
 //
 // Deliberately NOT PizzaBuilderRoute reused wholesale: that class's own

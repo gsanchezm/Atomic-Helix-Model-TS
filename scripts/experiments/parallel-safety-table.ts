@@ -1,16 +1,16 @@
-// Parallel-safety table — §9.1 instrument (Corollary 2, reframed per §8.4's
+// Parallel-safety table — §4.1 instrument (Corollary 2, reframed per §3.2.4's
 // "Note on the parallel-safety instrument's reframing": this application has
 // no username-keyed shared mutable state, so the claim under test is
 // resilience under concurrent same-account UI traffic, not data-collision
 // correctness).
 //
 // measure-reliability.ts's per-(tool_name, experiment_batch_id) slice (added
-// 2026-08-31 for §9.3) deliberately POOLS every run_index within a batch —
+// 2026-08-31 for §4.3) deliberately POOLS every run_index within a batch —
 // correct for determinism/efficiency, where run_index is a repeat of the
 // SAME condition. parallel-safety repurposes run_index as a worker-level
 // LABEL (w1/w2/w4/w8) — four distinct conditions, one dispatch each, not
 // repeats of one condition — so pooling them together would average away
-// the exact per-worker-level breakdown §9.1's table needs. This script reads
+// the exact per-worker-level breakdown §4.1's table needs. This script reads
 // the same upstream scenario_outcome_history.csv and adds that one missing
 // breakdown, without changing measure-reliability.ts's pooled-slice
 // semantics (which stay correct and useful for every other instrument that

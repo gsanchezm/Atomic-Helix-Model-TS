@@ -1,11 +1,11 @@
-// Portability delta — §8.4 Corollary 1 instrument (build-order step 4).
-// See docs/paper/atomic-testing-formal-definition.md §8.4/§9.4 and
+// Portability delta — §4.4 Corollary 1 instrument (build-order step 4).
+// See docs/paper/atomic-testing-formal-definition.md §3.2.4/§4.4 and
 // docs/superpowers/specs/2026-07-23-atomic-testing-evaluation-campaign-design.md §4.
 //
 // Two DELIBERATELY SEPARATE measurements — not one hybrid number. A single
 // "atomic: 0 vs twin: N" delta would mix a structural claim (inspecting the
 // current tree) with a historical git-diff (a past port event), which fails
-// §8.1's own construct-validity standard: the same operator, applied the
+// §3.2.1's own construct-validity standard: the same operator, applied the
 // same way, to both arms.
 //
 //   1. structuralResult — symmetric, computed identically for both arms:
@@ -14,7 +14,7 @@
 //      (the specification doesn't change across platforms) and is directly
 //      comparable across arms.
 //   2. twinOnlyMobilePortCost — NOT symmetric. The twin's mobile-port commits
-//      (342d2e0, 6561098) are diffed and hand-classified per §8.4's counting
+//      (342d2e0, 6561098) are diffed and hand-classified per §3.2.4's counting
 //      policy. The atomic suite has no equivalent commits in this evaluation
 //      (its Android support predates it, at unknown effort/circumstance
 //      parity) — reported as a labeled, non-comparable line item, not forced
@@ -135,7 +135,7 @@ function main(): void {
 
   const twinOnlyMobilePortCost = {
     applicableTo:
-      'twin only — no atomic-arm equivalent exists. Android/Appium support for the atomic suites predates this evaluation; a historical diff of those original enablement commits was considered and rejected (different time, unknown effort/circumstance parity — would not be a like-for-like §8.1 construct-validity comparison). Reported here as a labeled, non-comparable line item, not forced into a fake atomic-side number.',
+      'twin only — no atomic-arm equivalent exists. Android/Appium support for the atomic suites predates this evaluation; a historical diff of those original enablement commits was considered and rejected (different time, unknown effort/circumstance parity — would not be a like-for-like §3.2.1 construct-validity comparison). Reported here as a labeled, non-comparable line item, not forced into a fake atomic-side number.',
     files: classified,
     totals: {
       specForcedReportedInDelta: sum(specForced),

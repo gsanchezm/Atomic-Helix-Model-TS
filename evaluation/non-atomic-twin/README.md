@@ -42,9 +42,9 @@ locator contracts, chaos-suppression policy) is held identical:
 - **R1 (single behavior) is violated structurally** by the feature file itself: one scenario carries
   oracles from all three paired slices instead of living as separate atomic scenarios.
 - **R4 (deterministic outcome)** is not directly transformed — it is the *predicted consequence* of
-  the R2 violation (see §8.4's determinism instrument).
+  the R2 violation (see §4.3's determinism instrument).
 
-See `docs/paper/...` §8.3's ruleset table for the full, disclosed operation-by-operation mapping.
+See `docs/paper/...` §3.2.3's ruleset table for the full, disclosed operation-by-operation mapping.
 
 ## What this is NOT
 
@@ -58,7 +58,7 @@ See `docs/paper/...` §8.3's ruleset table for the full, disclosed operation-by-
   `loginViaUi()`).
 - Not something to "fix" if a run here surfaces a failure. A wider blast radius, a race under
   parallelism, or an occasional stale-state assertion failure here is the **expected, measured
-  signal** (§8.4), not a bug in this harness. If you suspect a genuine bug in the reused
+  signal** (§4.3), not a bug in this harness. If you suspect a genuine bug in the reused
   routes/molecules themselves (as opposed to the deliberate violations), it will also reproduce in
   the atomic suites — verify there first.
 
@@ -72,7 +72,7 @@ and the dashboard ingest pipeline can never accidentally pick it up. It runs onl
 ## Running it
 
 Requires the same live stack as the atomic suites (proxy + `playwright`/`api` plugins at minimum;
-`appium` for the §8.4 portability/determinism mobile leg — the mobile instrument changed from
+`appium` for the §4.3/§4.4 portability/determinism mobile leg — the mobile instrument changed from
 Mobilewright to Appium 2026-07-25, see `docs/paper/atomic-testing-formal-definition.md` §7.1) — see the
 root `README.md`'s Quickstart. Both legs are verified live and green: Playwright at K=16 (240/240
 steps) and Appium/Android (15/15 steps).

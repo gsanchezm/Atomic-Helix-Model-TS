@@ -1,5 +1,5 @@
 # EVALUATION ARTIFACT — see ../../README.md and
-# docs/paper/atomic-testing-formal-definition.md §8.2-8.4. Pairs 1:1 with
+# docs/paper/atomic-testing-formal-definition.md §3.2/§4. Pairs 1:1 with
 # src/core/tests/checkout/features/place-delivery-order.feature — this is
 # where the journey physically lives (one Scenario Outline = one continuous
 # cucumber World/session, so it cannot be split across files), but its steps
@@ -11,7 +11,7 @@
 # pizzaBuilder, and checkout slices (plus the login precondition) into one
 # continuous scenario. Every step below is either verbatim atomic step text
 # or its already-existing UI-molecule replacement for an atomic
-# API-injection step — see the ruleset table in §8.3 for the per-operation
+# API-injection step — see the ruleset table in §3.2.3 for the per-operation
 # mapping. This file is NOT free-hand-authored narrative.
 #
 # Deliberate, disclosed violations relative to the atomic reference suites:
@@ -23,12 +23,12 @@
 #        checkout suite shares standard_user too, but DOES declare the tag).
 #   R3 — login and cart-building go through real UI actions instead of the
 #        atomic suites' API $S_0$ injection (LoginDao.login / addToCart).
-#   R4 — not transformed directly; predicted consequence of R2 (§8.4).
+#   R4 — not transformed directly; predicted consequence of R2 (§3.2.4).
 #
 # Concurrency shape: the K rows below are intentionally near-identical (same
 # account, same market, same pizza) so `CUCUMBER_PARALLEL = 1, 2, 4, 8` sweeps
 # real concurrency against ONE shared account without changing scenario
-# count between sweep points — see §8.3 "Concurrency shape" / §8.4 parallel
+# count between sweep points — see §3.2.3 "Concurrency shape" / §4.1 parallel
 # safety.
 
 @non-atomic-twin

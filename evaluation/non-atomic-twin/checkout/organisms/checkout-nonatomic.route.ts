@@ -23,7 +23,7 @@ import {
 const log = logger.child({ layer: 'route', domain: 'non-atomic-twin-checkout' });
 
 // EVALUATION ARTIFACT — see ../../README.md and
-// docs/paper/atomic-testing-formal-definition.md §8.2-8.4. Pairs 1:1 with
+// docs/paper/atomic-testing-formal-definition.md §3.2/§4. Pairs 1:1 with
 // src/core/tests/checkout/organisms/checkout.route.ts.
 //
 // Owns the journey's login steps too — mirroring the atomic reference
