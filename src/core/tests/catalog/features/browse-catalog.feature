@@ -23,9 +23,16 @@ Feature: Browse the OmniPizza catalog across markets
     # {en:"Add to Cart", es:"Agregar", de:"Hinzufügen", fr:"Ajouter", ja:"追加"}.
     # Earlier values "Add to cart" (lowercase c) and "カートに追加" (full phrase)
     # never matched live FE output.
+    # US/en row split out for @matched-horizontal-e2e (the Horizontal E2E
+    # journey's catalog-browsing behavior, its steps 3-4). Examples-block tags
+    # are additive — other filters see the same rows.
+    @matched-horizontal-e2e
     Examples:
       | market | language | addToCartLabel |
       | US     | en       | Add to Cart    |
+
+    Examples:
+      | market | language | addToCartLabel |
       | MX     | es       | Agregar        |
       | CH     | de       | Hinzufügen     |
       | CH     | fr       | Ajouter        |
@@ -89,9 +96,15 @@ Feature: Browse the OmniPizza catalog across markets
     When they open the pizza "<item>"
     Then the pizza builder is displayed for "<item>"
 
+    # US/en/Pepperoni row split out for @matched-horizontal-e2e (journey steps
+    # 5-6). Examples-block tags are additive.
+    @matched-horizontal-e2e
     Examples:
       | market | language | item       |
       | US     | en       | Pepperoni  |
+
+    Examples:
+      | market | language | item       |
       | MX     | es       | Margherita |
       | CH     | de       | Marinara   |
       | CH     | fr       | Marinara   |

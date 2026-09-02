@@ -1,6 +1,6 @@
-// Campaign orchestrator — §8.4 evaluation campaign (build-order step 5/6).
+// Campaign orchestrator — §3.2/§4 evaluation campaign (build-order step 5/6).
 // See docs/superpowers/specs/2026-07-23-atomic-testing-evaluation-campaign-design.md §5
-// and docs/paper/atomic-testing-formal-definition.md §8.3/§8.4.
+// and docs/paper/atomic-testing-formal-definition.md §3.2.3/§3.2.4.
 //
 // Drives all four instruments now: determinism (120: 2 arms x web+Android x N=30),
 // parallel-safety (8: 2 arms x worker levels 1/2/4/8, web only), diagnosability
@@ -58,7 +58,7 @@
 // INFRASTRUCTURE_FAILURE is disclosed, not silently corrected. This script does
 // NOT retry or backfill a flagged dispatch automatically — doing so would be a
 // form of "re-roll until you get a lucky N=30", which is a construct-validity
-// problem the paper (§8.5's no-fabrication evidence policy) explicitly guards
+// problem the paper (§3.2.5's no-fabrication evidence policy) explicitly guards
 // against. It records a best-effort `likelyInfra` flag per dispatch (did the
 // GH Actions job fail on a step other than its own known primary test-execution
 // step, or end anything other than a clean success/failure — cancelled,
@@ -101,14 +101,20 @@ import { join } from 'path';
 import {
   CampaignItem,
   EXPECTED_JOB_COUNT,
+  EXPERIMENT_EXPECTED_JOB_COUNT,
+  EXPERIMENT_PRIMARY_STEP_NAME,
+  EXPERIMENT_WORKFLOW_FILE,
   GH_PLATFORM_INPUT,
   JOB_NAME_PREFIXES,
   PlatformLeg,
   PRIMARY_STEP_NAME,
+  STRATEGY_OF_ARM,
   WORKFLOW_FILE,
   buildCampaignItems,
   buildDiagnosabilityItems,
   buildExecutionEfficiencyItems,
+  experimentJobNameFor,
+  interleaveByRunIndex,
   legKeyOf,
 } from './lib/campaign-matrix';
 
@@ -121,6 +127,16 @@ const CAMPAIGNS_DIR = join(REPO_ROOT, 'reports', 'campaigns');
 // ---------------------------------------------------------------------------
 interface Cli {
   instrument: 'determinism' | 'parallel-safety' | 'all' | 'efficiency' | 'diagnosability';
+  // 'legacy' (default) dispatches against ahm-execution-helix.yml /
+  // ahm-evaluation-campaign.yml exactly as every completed campaign did.
+  // 'experiment' dispatches the SAME item matrix against
+  // atomic-testing-experiment.yml (research hardening Phase 2): retry:0 both
+  // arms, single job per dispatch, pinned release tag (REQUIRED via
+  // --omnipizza-release-tag), interleaved pair ordering, and the resolved
+  // commit SHA recorded in the campaign manifest (decision (e)).
+  workflowMode: 'legacy' | 'experiment';
+  omnipizzaReleaseTag?: string;
+  evaluationSlice?: 'full' | 'matched';
   ref: string;
   dryRun: boolean;
   cooldownSeconds: number;
@@ -157,7 +173,7 @@ function parseCli(argv: string[]): Cli {
 
   if (has('--help')) {
     console.log(`
-run-campaign.ts — §8.4 campaign orchestrator (see file header for scope)
+run-campaign.ts — §3.2.4 campaign orchestrator (see file header for scope)
 
   --instrument <determinism|parallel-safety|diagnosability|all|efficiency>   default: all
                                                     (all = determinism+parallel-safety only, unchanged
@@ -180,6 +196,15 @@ run-campaign.ts — §8.4 campaign orchestrator (see file header for scope)
   --run-timeout-seconds <n>                         default: 5400 (max wait for one dispatch to reach a
                                                     terminal status before giving up on it)
   --batch-suffix <string>                           default: '' (appended to experiment_batch_id, e.g. for a second campaign attempt)
+  --workflow <legacy|experiment>                    default: legacy. 'experiment' targets
+                                                    atomic-testing-experiment.yml (retry:0 both arms,
+                                                    single-job dispatches, interleaved pair order) and
+                                                    REQUIRES --omnipizza-release-tag
+  --omnipizza-release-tag <tag>                     experiment mode only, REQUIRED there (e.g. v1.1.8) —
+                                                    the exact release the app artifacts are pinned to;
+                                                    recorded in the campaign manifest
+  --evaluation-slice <full|matched>                 experiment mode only, default full — 'matched' runs
+                                                    the atomic arm's @matched-horizontal-e2e slice
   --platform-leg <web|android>                      REQUIRED for --instrument efficiency, no default — must
                                                     exactly match the --platform-leg you later pass to
                                                     aggregate-campaign-artifacts.ts
@@ -210,8 +235,27 @@ run-campaign.ts — §8.4 campaign orchestrator (see file header for scope)
     repeats = parseIntArg('--repeats', get('--repeats'), 1);
   }
 
+  const workflowMode = (get('--workflow') ?? 'legacy') as Cli['workflowMode'];
+  if (!['legacy', 'experiment'].includes(workflowMode)) {
+    throw new Error(`--workflow must be legacy|experiment, got "${workflowMode}"`);
+  }
+  const omnipizzaReleaseTag = get('--omnipizza-release-tag');
+  if (workflowMode === 'experiment' && !omnipizzaReleaseTag) {
+    throw new Error(
+      `--workflow experiment requires --omnipizza-release-tag <tag> (e.g. v1.1.8) — the experiment ` +
+      `workflow never resolves 'latest'; the pinned tag is part of the recorded experimental identity.`,
+    );
+  }
+  const evaluationSlice = (get('--evaluation-slice') ?? 'full') as NonNullable<Cli['evaluationSlice']>;
+  if (!['full', 'matched'].includes(evaluationSlice)) {
+    throw new Error(`--evaluation-slice must be full|matched, got "${evaluationSlice}"`);
+  }
+
   return {
     instrument,
+    workflowMode,
+    omnipizzaReleaseTag,
+    evaluationSlice,
     ref: get('--ref') ?? DEFAULT_REF,
     dryRun: has('--dry-run'),
     cooldownSeconds: parseIntArg('--cooldown-seconds', get('--cooldown-seconds'), 30),
@@ -271,7 +315,19 @@ interface DispatchSpec extends CampaignItem {
   primaryStepName: string;
 }
 
-function toDispatchSpec(item: CampaignItem): DispatchSpec {
+function toDispatchSpec(item: CampaignItem, workflowMode: Cli['workflowMode']): DispatchSpec {
+  if (workflowMode === 'experiment') {
+    // Single-job experiment workflow — same identity fields, new naming layer
+    // (STRATEGY_OF_ARM maps the legacy 'twin' arm to 'horizontal-e2e').
+    return {
+      ...item,
+      ghPlatformInput: item.platformLeg, // the workflow's `platform` input is web|android|ios directly
+      workflowFile: EXPERIMENT_WORKFLOW_FILE,
+      relevantJobNamePrefixes: [experimentJobNameFor(item.arm, item.platformLeg)],
+      expectedJobCount: EXPERIMENT_EXPECTED_JOB_COUNT,
+      primaryStepName: EXPERIMENT_PRIMARY_STEP_NAME,
+    };
+  }
   const key = legKeyOf(item.arm, item.platformLeg);
   return {
     ...item,
@@ -284,15 +340,24 @@ function toDispatchSpec(item: CampaignItem): DispatchSpec {
 }
 
 function buildSpecs(cli: Cli): DispatchSpec[] {
+  let items: CampaignItem[];
   if (cli.instrument === 'efficiency') {
     // parseCli() guarantees both are defined whenever instrument === 'efficiency' (throws otherwise) —
     // TS can't see that cross-function invariant, hence the cast.
-    return buildExecutionEfficiencyItems(cli.batchSuffix, cli.platformLeg as PlatformLeg, cli.repeats as number).map(toDispatchSpec);
+    items = buildExecutionEfficiencyItems(cli.batchSuffix, cli.platformLeg as PlatformLeg, cli.repeats as number);
+  } else if (cli.instrument === 'diagnosability') {
+    items = buildDiagnosabilityItems(cli.batchSuffix);
+  } else {
+    items = buildCampaignItems(cli.instrument, cli.batchSuffix);
   }
-  if (cli.instrument === 'diagnosability') {
-    return buildDiagnosabilityItems(cli.batchSuffix).map(toDispatchSpec);
+  // Experiment mode dispatches in interleaved pair order (atomic-001,
+  // twin-001, atomic-002, ...) so paired runs land close in backend time
+  // (audit Q12). Legacy mode keeps the historical leg-by-leg order so a
+  // resumed legacy manifest replays identically.
+  if (cli.workflowMode === 'experiment') {
+    items = interleaveByRunIndex(items);
   }
-  return buildCampaignItems(cli.instrument, cli.batchSuffix).map(toDispatchSpec);
+  return items.map((item) => toDispatchSpec(item, cli.workflowMode));
 }
 
 // ---------------------------------------------------------------------------
@@ -311,9 +376,15 @@ interface DispatchRecord {
 }
 
 interface CampaignManifest {
-  schemaVersion: '1.1.0';
+  schemaVersion: '1.1.0' | '1.2.0';
   ref: string;
   createdAt: string;
+  // 1.2.0 additions (experiment mode — research hardening decisions (e)/(f)).
+  // Absent on legacy manifests; loadManifest tolerates both.
+  workflowMode?: 'legacy' | 'experiment';
+  resolvedSha?: string; // the SHA `ref` pointed at when the campaign started
+  omnipizzaReleaseTag?: string;
+  evaluationSlice?: 'full' | 'matched';
   results: Record<string, DispatchRecord>; // keyed by DispatchSpec.id
 }
 
@@ -408,8 +479,11 @@ function listRecentRuns(ref: string, limit: number, workflowFile: string): GhRun
 
 // All distinct workflow files any campaign leg can target — derived from the
 // shared WORKFLOW_FILE map (not hardcoded) so a future third file can't
-// silently fall out of this safety net.
-const ALL_CAMPAIGN_WORKFLOW_FILES = Array.from(new Set(Object.values(WORKFLOW_FILE)));
+// silently fall out of this safety net. The experiment workflow joins the
+// same net: a run in flight there shares the same backend as everything else.
+const ALL_CAMPAIGN_WORKFLOW_FILES = Array.from(
+  new Set([...Object.values(WORKFLOW_FILE), EXPERIMENT_WORKFLOW_FILE]),
+);
 
 // Refuses to dispatch if something is already in flight on EITHER campaign
 // workflow file — not just the one this dispatch targets. Two distinct
@@ -531,19 +605,32 @@ function classifyLikelyInfra(job: GhJobDetail, primaryStepName: string): { likel
 // ---------------------------------------------------------------------------
 // Dispatch execution
 // ---------------------------------------------------------------------------
-function dispatch(spec: DispatchSpec, ref: string): void {
-  const args = [
-    'workflow', 'run', spec.workflowFile,
-    '--ref', ref,
-    '-f', `platform=${spec.ghPlatformInput}`,
-    '-f', 'architecture_type=TOM',
-    '-f', `experiment_batch_id=${spec.experimentBatchId}`,
-    '-f', `run_index=${spec.runIndex}`,
-  ];
+function dispatch(spec: DispatchSpec, cli: Cli): void {
+  const args = ['workflow', 'run', spec.workflowFile, '--ref', cli.ref];
+  if (cli.workflowMode === 'experiment') {
+    // atomic-testing-experiment.yml's input surface — test_strategy replaces
+    // the legacy platform-encodes-arm convention, the release tag is pinned,
+    // and ARCHITECTURE_TYPE is hardcoded TOM inside the workflow.
+    args.push(
+      '-f', `test_strategy=${STRATEGY_OF_ARM[spec.arm]}`,
+      '-f', `platform=${spec.platformLeg}`,
+      '-f', `experiment_batch_id=${spec.experimentBatchId}`,
+      '-f', `run_index=${spec.runIndex}`,
+      '-f', `omnipizza_release_tag=${cli.omnipizzaReleaseTag}`,
+      '-f', `evaluation_slice=${spec.evaluationSlice ?? cli.evaluationSlice ?? 'full'}`,
+    );
+  } else {
+    args.push(
+      '-f', `platform=${spec.ghPlatformInput}`,
+      '-f', 'architecture_type=TOM',
+      '-f', `experiment_batch_id=${spec.experimentBatchId}`,
+      '-f', `run_index=${spec.runIndex}`,
+    );
+  }
   if (spec.cucumberParallel) {
     args.push('-f', `cucumber_parallel=${spec.cucumberParallel}`);
   }
-  // §9.2 diagnosability — at most one of these three is ever set per item (see
+  // §4.2 diagnosability — at most one of these three is ever set per item (see
   // lib/campaign-matrix.ts's DIAGNOSABILITY_CONDITIONS), matching "one fault active per process".
   if (spec.diagnosabilityChaosUser) {
     args.push('-f', `diagnosability_chaos_user=${spec.diagnosabilityChaosUser}`);
@@ -551,6 +638,9 @@ function dispatch(spec: DispatchSpec, ref: string): void {
   if (spec.tomInjectFault && spec.tomInjectFaultAction) {
     args.push('-f', `tom_inject_fault=${spec.tomInjectFault}`);
     args.push('-f', `tom_inject_fault_action=${spec.tomInjectFaultAction}`);
+    if (spec.tomInjectFaultTarget && cli.workflowMode === 'experiment') {
+      args.push('-f', `tom_inject_fault_target=${spec.tomInjectFaultTarget}`);
+    }
     if (spec.tomInjectFaultMaxFires) {
       args.push('-f', `tom_inject_fault_max_fires=${spec.tomInjectFaultMaxFires}`);
     }
@@ -626,8 +716,9 @@ async function main(): Promise<void> {
   }
 
   console.warn(
-    'Do not manually dispatch ahm-execution-helix.yml or ahm-evaluation-campaign.yml on this ref while ' +
-    'this script is running — see the "Residual structural risk" note in this file\'s header.',
+    'Do not manually dispatch ahm-execution-helix.yml, ahm-evaluation-campaign.yml, or ' +
+    'atomic-testing-experiment.yml on this ref while this script is running — see the "Residual ' +
+    'structural risk" note in this file\'s header.',
   );
 
   const path = manifestPath(cli.instrument, cli.batchSuffix);
@@ -635,6 +726,31 @@ async function main(): Promise<void> {
   if (manifest.ref !== cli.ref) {
     throw new Error(`Manifest at ${path} was created for ref "${manifest.ref}", refusing to reuse it for "${cli.ref}". Use --batch-suffix to start a fresh manifest.`);
   }
+
+  // Decision (e): record the RESOLVED SHA the ref points at, not just the ref
+  // name — `gh run list --branch` forces us to dispatch by branch, but the
+  // manifest must pin the exact frozen commit. On resume, a moved ref is a
+  // hard error: mixing dispatches from two code states into one campaign is
+  // exactly what the experimental freeze exists to prevent.
+  const headSha = ghWithRetry(['api', `repos/{owner}/{repo}/commits/${cli.ref}`, '--jq', '.sha']).trim();
+  if (manifest.resolvedSha && manifest.resolvedSha !== headSha) {
+    throw new Error(
+      `Manifest at ${path} was created when ${cli.ref} pointed at ${manifest.resolvedSha}, but it now points at ` +
+      `${headSha}. Refusing to resume across a moved ref — finish or discard the old campaign (or use ` +
+      `--batch-suffix for a fresh manifest) rather than silently mixing two code states.`,
+    );
+  }
+  if (!manifest.resolvedSha) {
+    manifest.schemaVersion = '1.2.0';
+    manifest.resolvedSha = headSha;
+    manifest.workflowMode = cli.workflowMode;
+    if (cli.workflowMode === 'experiment') {
+      manifest.omnipizzaReleaseTag = cli.omnipizzaReleaseTag;
+      manifest.evaluationSlice = cli.evaluationSlice;
+    }
+    saveManifest(path, manifest);
+  }
+  console.log(`  ref=${cli.ref} @ ${headSha}  workflow-mode=${cli.workflowMode}${cli.omnipizzaReleaseTag ? `  omnipizza=${cli.omnipizzaReleaseTag}` : ''}`);
 
   const alreadyDone = specs.filter((s) => manifest.results[s.id]?.status === 'completed').length;
   console.log(`Resuming: ${alreadyDone}/${specs.length} already completed in ${path}`);
@@ -663,7 +779,7 @@ async function main(): Promise<void> {
     } else {
       const dispatchedAt = new Date();
       assertNothingInFlight(cli.ref);
-      dispatch(spec, cli.ref);
+      dispatch(spec, cli);
       manifest.results[spec.id] = { status: 'pending', dispatchedAt: dispatchedAt.toISOString() };
       saveManifest(path, manifest);
 

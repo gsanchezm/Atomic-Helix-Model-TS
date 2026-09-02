@@ -47,6 +47,10 @@
     },
     "environment": { "type": ["string", "null"] },
     "nodeVersion": { "type": ["string", "null"] },
-    "os": { "type": ["string", "null"] }
+    "os": { "type": ["string", "null"] },
+    "omnipizzaReleaseTag": { "type": ["string", "null"], "description": "Pinned OmniPizza release tag the mobile artifact was downloaded from (record-only provenance, research hardening decision (f))." },
+    "omnipizzaAppSha256": { "type": ["string", "null"], "description": "SHA-256 of the downloaded mobile app artifact (APK / simulator zip)." },
+    "omnipizzaBackendVersion": { "type": ["string", "null"], "description": "Raw JSON returned by the backend's version endpoint at run time, if reachable." },
+    "omnipizzaFrontendVersion": { "type": ["string", "null"], "description": "Raw JSON returned by the web frontend's /version.json at run time, if reachable." }
   }
 }

@@ -42,7 +42,7 @@ function isInjectableBucket(value: string): value is InjectableFaultBucket {
 // Fires at most TOM_INJECT_FAULT_MAX_FIRES times per proxy process (default 1). Without a cap, every
 // ExecuteIntent call whose actionId matches TOM_INJECT_FAULT_ACTION fails — e.g. a live
 // TOM_INJECT_FAULT=UI_ACTION_FAILURE run against place-delivery-order.feature produced 44 real
-// failures (every CLICK in the dispatch), not the one scenario/blast-radius the §9.2 measurement
+// failures (every CLICK in the dispatch), not the one scenario/blast-radius the §4.2 measurement
 // needs (design doc §6: "for the atomic suite this should be exactly the one scenario that owns the
 // faulted behavior"). A single-fire latch bounds blast radius to one scenario — but a SECOND real bug
 // surfaced live-testing that fix (2026-08-31, CI run 33463608498, 0/97 failures instead of the
@@ -63,13 +63,32 @@ function isInjectableBucket(value: string): value is InjectableFaultBucket {
 // attempts instead of one scenario's two attempts, reintroducing the same masking bug in a subtler form.
 let firedCount = 0;
 
+// Composite targets use a '||' separator (`logicalKey||payload`, see
+// src/plugins/shared/parseCompositeTarget.ts) — the logical key is always the
+// first segment. Plain targets (CLICK etc.) are the key itself.
+function logicalKeyOf(targetSelector: string): string {
+    const sep = targetSelector.indexOf('||');
+    return (sep >= 0 ? targetSelector.slice(0, sep) : targetSelector).trim();
+}
+
 /**
  * Returns a synthetic FAIL outcome when this dispatch's env targets the given actionId for injection
  * AND the fire budget (TOM_INJECT_FAULT_MAX_FIRES, default 1) isn't yet exhausted this process, or
  * null for normal routing. TOM_INJECT_FAULT/TOM_INJECT_FAULT_ACTION are set once for the dispatch,
  * matching how PLATFORM/DRIVER are already configured per process.
+ *
+ * TOM_INJECT_FAULT_TARGET (optional, research hardening Phase 2 / Campaign A):
+ * narrows the match to one LOGICAL KEY, so a fault can be positioned at a
+ * semantically equivalent action in both strategies — e.g. the first CLICK on
+ * `loginButton` (early), a topping button (middle), or `placeOrderButton`
+ * (late) — instead of "the first CLICK anywhere", which lands on whatever the
+ * suite happens to dispatch first and is therefore not comparable across
+ * arms. Unset = original behavior (any target for the matched actionId).
+ * Matching is case-sensitive on the logical key (keys are camelCase
+ * identifiers resolved by the proxy); composite `key||payload` targets match
+ * on their key segment.
  */
-export function injectedFaultFor(actionId: string): InjectedFaultOutcome | null {
+export function injectedFaultFor(actionId: string, targetSelector?: string): InjectedFaultOutcome | null {
     // GitHub Actions sets an unset optional workflow_dispatch input to its declared default — '' here,
     // not absent — so `process.env.TOM_INJECT_FAULT_MAX_FIRES ?? '1'` would NOT fall back to '1' (`??`
     // only catches null/undefined) and `Number('')` is 0, not NaN: maxFires would silently become 0 and
@@ -83,6 +102,14 @@ export function injectedFaultFor(actionId: string): InjectedFaultOutcome | null 
     const targetAction = process.env.TOM_INJECT_FAULT_ACTION;
     if (!bucket || !targetAction) return null;
     if (actionId.toUpperCase() !== targetAction.toUpperCase()) return null;
+
+    // Optional logical-key narrowing — same falsy-check rationale as
+    // TOM_INJECT_FAULT_MAX_FIRES above (an unset workflow_dispatch input
+    // arrives as '', not undefined).
+    const targetKey = process.env.TOM_INJECT_FAULT_TARGET;
+    if (targetKey && (targetSelector === undefined || logicalKeyOf(targetSelector) !== targetKey.trim())) {
+        return null;
+    }
 
     if (!isInjectableBucket(bucket)) {
         throw new Error(

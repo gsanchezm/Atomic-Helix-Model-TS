@@ -13,9 +13,16 @@ Feature: Market-driven language localization across login + post-login UI
     And they log in as "standard_user"
     Then the logout button label is "<logoutLabel>"
 
+    # US row split out so @matched-horizontal-e2e can select the one row whose
+    # UI-login behavior the Horizontal E2E journey borrowed (its steps 1-2).
+    # Examples-block tags are additive — other filters see the same rows.
+    @matched-horizontal-e2e
     Examples:
       | market | language | logoutLabel |
       | US     | English  | Logout      |
+
+    Examples:
+      | market | language | logoutLabel |
       | MX     | Spanish  | Salir       |
       | CH     | German   | Abmelden    |
       | CH     | French   | Déconnexion |

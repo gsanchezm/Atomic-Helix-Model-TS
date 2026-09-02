@@ -21,6 +21,62 @@ export type Arm = 'atomic' | 'twin';
 export type PlatformLeg = 'web' | 'android';
 export type LegKey = `${Arm}-${PlatformLeg}`;
 
+// ---------------------------------------------------------------------------
+// Experiment-workflow naming layer (research hardening Phase 2, 2026-09-02).
+// The NEW workflow (.github/workflows/atomic-testing-experiment.yml) speaks
+// "test_strategy" (atomic | horizontal-e2e) instead of the legacy twin
+// naming, runs ONE job per dispatch on any of three platforms, and requires a
+// pinned OmniPizza release tag. Everything legacy above stays untouched —
+// historical manifests, matchers, and the 192 raw data files keep resolving
+// against the old names (audit Q6/Q7's compatibility ruling).
+// ---------------------------------------------------------------------------
+export type ExperimentStrategy = 'atomic' | 'horizontal-e2e';
+export type ExperimentPlatform = 'web' | 'android' | 'ios';
+
+export const EXPERIMENT_WORKFLOW_FILE = 'atomic-testing-experiment.yml';
+
+export const STRATEGY_OF_ARM: Record<Arm, ExperimentStrategy> = {
+  atomic: 'atomic',
+  twin: 'horizontal-e2e',
+};
+
+// Job display name rendered by the experiment workflow:
+//   name: Experiment — ${{ inputs.test_strategy }} (web|android|ios)
+export function experimentJobNameFor(arm: Arm, platform: ExperimentPlatform): string {
+  return `Experiment — ${STRATEGY_OF_ARM[arm]} (${platform})`;
+}
+
+// One artifact per dispatch: ahm-artifacts-<job key>-<run id>, job keys
+// experiment-web / experiment-android / experiment-ios.
+export function experimentArtifactNamesFor(platform: ExperimentPlatform, runId: number): string[] {
+  return [`ahm-artifacts-experiment-${platform}-${runId}`];
+}
+
+export const EXPERIMENT_PRIMARY_STEP_NAME = 'Run experiment suite';
+export const EXPERIMENT_EXPECTED_JOB_COUNT = 1;
+
+// Interleaves a leg-by-leg item list into paired dispatch order
+// (atomic-001, twin-001, atomic-002, twin-002, ...) so runs sharing a
+// run_index land as close together in backend time as the strictly-sequential
+// orchestrator allows (audit Q12 — approved for the new workflow's
+// campaigns). Items are grouped by (instrument, platformLeg, runIndex); order
+// of groups follows first appearance, order inside a group follows arm order
+// atomic-then-twin.
+export function interleaveByRunIndex(items: CampaignItem[]): CampaignItem[] {
+  const groups = new Map<string, CampaignItem[]>();
+  for (const item of items) {
+    const key = `${item.instrument}::${item.platformLeg}::${item.runIndex}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(item);
+  }
+  const armOrder: Record<Arm, number> = { atomic: 0, twin: 1 };
+  const out: CampaignItem[] = [];
+  for (const group of groups.values()) {
+    out.push(...[...group].sort((a, b) => armOrder[a.arm] - armOrder[b.arm]));
+  }
+  return out;
+}
+
 export interface CampaignItem {
   id: string; // stable, human-readable — the manifest key both scripts share
   instrument: 'determinism' | 'parallel-safety' | 'efficiency' | 'diagnosability';
@@ -29,10 +85,10 @@ export interface CampaignItem {
   experimentBatchId: string;
   runIndex: string; // repurposed as a worker-level label for parallel-safety, a bucket name for diagnosability
   cucumberParallel?: string;
-  // diagnosability only (§9.2) — see buildDiagnosabilityItems below for the full mechanism-per-bucket
+  // diagnosability only (§4.2) — see buildDiagnosabilityItems below for the full mechanism-per-bucket
   // rationale. At most one of diagnosabilityChaosUser / (tomInjectFault + tomInjectFaultAction) /
   // tomInfraBreakPort is set per item, matching "one fault active per process" (design doc §3 decision 2).
-  diagnosabilityBucket?: string; // the true injected bucket, for the §9.2 localization-accuracy comparison
+  diagnosabilityBucket?: string; // the true injected bucket, for the §4.2 localization-accuracy comparison
   diagnosabilityChaosUser?: string; // backend-layer injection — DIAGNOSABILITY_CHAOS_USER
   tomInjectFault?: string; // chaos-proxy-layer injection — TOM_INJECT_FAULT
   tomInjectFaultAction?: string; // chaos-proxy-layer injection — TOM_INJECT_FAULT_ACTION
@@ -42,6 +98,12 @@ export interface CampaignItem {
   // (`nonAtomicTwin` profile runs retry:0). Only meaningful alongside tomInjectFault/tomInjectFaultAction.
   tomInjectFaultMaxFires?: string;
   tomInfraBreakPort?: string; // INFRASTRUCTURE_FAILURE only — TOM_INFRA_BREAK_PORT
+  // Experiment workflow only (Campaign A fault positioning, audit Q8): the
+  // logical key TOM_INJECT_FAULT_TARGET narrows the injected fault to.
+  tomInjectFaultTarget?: string;
+  // Experiment workflow only: 'matched' selects the @matched-horizontal-e2e
+  // behavior-equivalent slice on the atomic arm; ignored by horizontal-e2e.
+  evaluationSlice?: 'full' | 'matched';
 }
 
 function pad3(n: number): string {
@@ -185,7 +247,7 @@ export function buildParallelSafetyItems(batchSuffix: string): CampaignItem[] {
   return items;
 }
 
-// Ancillary execution-efficiency instrument (§8.4/§9.5 — not one of the four §5 Rule-derived
+// Ancillary execution-efficiency instrument (§3.2.4/§4.5 — not one of the four §5 Rule-derived
 // corollaries, see docs/superpowers/specs/2026-08-25-execution-efficiency-instrument-design.md).
 // One clean single-worker dispatch per arm per repeat — cucumber_parallel='1' on both arms, matching
 // the parallel-safety w1 methodology, to avoid the backend-contention confound a higher worker count
@@ -222,7 +284,7 @@ export function buildExecutionEfficiencyItems(
   return items;
 }
 
-// §9.2 diagnosability instrument (build-order step 3's harness, wired into the orchestrator 2026-08-31
+// §4.2 diagnosability instrument (build-order step 3's harness, wired into the orchestrator 2026-08-31
 // — see docs/superpowers/specs/2026-08-23-diagnosability-fault-injection-harness-design.md and the
 // 2026-08-31 addendum in project memory for the empirical checks below). Design doc §3 decision 5
 // originally planned 14 buckets × 2 arms = 28 dispatches; three buckets turned out not to be
@@ -298,7 +360,7 @@ export const DIAGNOSABILITY_CONDITIONS: DiagnosabilityCondition[] = [
   { bucket: 'INFRASTRUCTURE_FAILURE', platformLeg: 'web', tomInfraBreakPort: '1' },
 ];
 
-// Buckets with no dispatch above — reported in §9.2 as honestly excluded, not silently dropped.
+// Buckets with no dispatch above — reported in §4.2 as honestly excluded, not silently dropped.
 export const DIAGNOSABILITY_EXCLUDED_BUCKETS: Array<{ bucket: string; reason: string }> = [
   {
     bucket: 'VISUAL_DIFF_FAILURE',

@@ -289,7 +289,9 @@ async function handleExecuteIntent(call: any, callback: any): Promise<void> {
 
             // Diagnosability harness (build-order step 3): a dispatch targeting this actionId for
             // fault injection short-circuits before the real plugin call — see fault-injection.ts.
-            const injectedFault = injectedFaultFor(actionId);
+            // The RAW targetSelector (logical key, pre-resolution) is passed so
+            // TOM_INJECT_FAULT_TARGET can position the fault at one semantic action.
+            const injectedFault = injectedFaultFor(actionId, targetSelector);
             if (injectedFault) {
                 outcome = injectedFault;
             } else {

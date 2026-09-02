@@ -1,0 +1,729 @@
+# =============================================================================
+# AHM — Atomic Testing Experiment
+#
+# Research-only workflow created 2026-09-02 for the hardening plan's Phase 2
+# (docs/research/2026-09-02-research-hardening-phase1-audit.md §5 and the
+# author's approved decisions (b)-(f)). It runs ONE strategy on ONE platform
+# per dispatch, with symmetric instrumentation between the two strategies:
+#
+#   test_strategy=atomic          -> the reference implementation's functional
+#                                    suite, cucumber `research` profile
+#                                    (retry: 0), single job (no reads/writes
+#                                    matrix, no browser matrix)
+#   test_strategy=horizontal-e2e  -> the Horizontal E2E baseline (the paper's
+#                                    evaluation artifact; legacy internal name
+#                                    "non-atomic twin" retained in paths and
+#                                    the `nonAtomicTwin` profile for data
+#                                    compatibility), retry: 0 as always
+#
+# Deliberate differences from ahm-execution-helix.yml / the legacy
+# ahm-evaluation-campaign.yml, all mandated by the approved decisions:
+#   - retry: 0 in BOTH arms (decision (b) — the completed determinism campaign
+#     ran atomic at retry:1 vs. baseline retry:0; this workflow closes that
+#     asymmetry for every future campaign).
+#   - single job per dispatch, CUCUMBER_PARALLEL default '1', NO random
+#     stagger step (decision (d) + audit Q11/Q14 — the orchestrator serializes
+#     dispatches, so stagger would only add 0-75s of noise to durations).
+#   - `omnipizza_release_tag` is REQUIRED and used verbatim — no
+#     /releases/latest resolution (audit Q4/Q13); the resolver job only
+#     VALIDATES the tag exists and derives the download base URL.
+#   - app-artifact provenance is recorded per run: release tag, SHA-256 of the
+#     downloaded mobile artifact, and the backend/frontend version endpoints
+#     when reachable (decision (f) — record-only until OmniPizza-side pinning
+#     exists). Everything lands in the run manifest
+#     (generate-run-manifest.ts) and in a dedicated experiment-manifest
+#     artifact that also records the resolved commit SHA (decision (e)).
+#   - no visual/perf/security/a11y jobs; the atomic arm's functional tag
+#     expression excludes @security/@security-infra and the @a11y-only
+#     scenario (audit Q1 — @visual/@a11y piggyback tags stay selected and
+#     no-op with their plugins off).
+#   - `evaluation_slice=matched` narrows the atomic arm to
+#     @matched-horizontal-e2e — the 7 atomic scenarios (US-market Examples
+#     rows) whose source behaviors the Horizontal E2E journey concatenates —
+#     for experiments that require behavior-set equivalence (decision (c)/(d)).
+#
+# Fault-position knobs (audit Q8): tom_inject_fault_target narrows the
+# chaos-proxy fault to one LOGICAL KEY (src/kernel/fault-injection.ts), so
+# Campaign A can hit the semantically equivalent action in both strategies:
+# EARLY = first CLICK on loginButton, MIDDLE = a topping/builder CLICK,
+# LATE = CLICK on placeOrderButton. Use a locator/UI-interaction fault class
+# only — ASSERTION_FAILURE is known-asymmetric between arms (audit Q15).
+#
+# This workflow has its own concurrency group: it can never cancel (or be
+# cancelled by) ordinary CI on ahm-execution-helix.yml or legacy campaign
+# dispatches on ahm-evaluation-campaign.yml.
+# =============================================================================
+
+name: AHM — Atomic Testing Experiment
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_strategy:
+        description: 'Which test-design strategy to execute'
+        required: true
+        default: atomic
+        type: choice
+        options: [atomic, horizontal-e2e]
+      platform:
+        description: 'Target platform'
+        required: true
+        default: web
+        type: choice
+        options: [web, android, ios]
+      experiment_batch_id:
+        description: 'Experiment batch id (groups repeated runs)'
+        required: false
+        default: batch-adhoc
+      run_index:
+        description: 'Run index within the batch'
+        required: false
+        default: '001'
+      omnipizza_release_tag:
+        description: 'EXACT OmniPizza release tag to pin app artifacts to (e.g. v1.1.8). Required — this workflow never resolves /releases/latest.'
+        required: true
+      evaluation_slice:
+        description: 'atomic strategy only — full functional suite, or the @matched-horizontal-e2e slice (the 7 US-row scenarios behavior-equivalent to the Horizontal E2E journey). Ignored for horizontal-e2e.'
+        required: false
+        default: full
+        type: choice
+        options: [full, matched]
+      cucumber_parallel:
+        description: 'Cucumber worker count (web only; android/ios always run 1 worker on a single device). Research default is 1.'
+        required: false
+        default: '1'
+      android_api_level:
+        description: 'Android API level (android only)'
+        required: false
+        default: '33'
+        type: choice
+        options: ['28', '29', '30', '31', '32', '33']
+      diagnosability_chaos_user:
+        description: 'Backend-layer fault injection — seeded OmniPizza account to log in as (unset/standard_user = off).'
+        required: false
+        default: ''
+      tom_inject_fault:
+        description: 'Chaos-proxy-layer synthetic failure bucket (see src/kernel/fault-injection.ts). Unset = off.'
+        required: false
+        default: ''
+      tom_inject_fault_action:
+        description: 'actionId the injected fault targets (required alongside tom_inject_fault).'
+        required: false
+        default: ''
+      tom_inject_fault_target:
+        description: 'Optional LOGICAL KEY the injected fault targets (fault position: e.g. loginButton / toppingMushrooms / placeOrderButton). Unset = any target of the matched action.'
+        required: false
+        default: ''
+      tom_inject_fault_max_fires:
+        description: 'Fire budget for the injected fault. Both profiles here run retry:0, so 1 is correct for BOTH strategies.'
+        required: false
+        default: ''
+      tom_infra_break_port:
+        description: 'INFRASTRUCTURE_FAILURE bucket only — mis-point the plugin address at this closed port.'
+        required: false
+        default: ''
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+  # Research dispatches are always TOM-instrumented — there is no
+  # 'standard' mode here; the whole point of this workflow is the metrics tail.
+  ARCHITECTURE_TYPE: TOM
+  EXPERIMENT_BATCH_ID: ${{ inputs.experiment_batch_id || 'batch-adhoc' }}
+  RUN_INDEX: ${{ inputs.run_index || github.run_attempt }}
+  REPOSITORY_NAME: ${{ github.repository }}
+  WORKFLOW_RUN_ID: ${{ github.run_id }}
+  WORKFLOW_ATTEMPT: ${{ github.run_attempt }}
+  COMMIT_SHA: ${{ github.sha }}
+  BRANCH_NAME: ${{ github.ref_name }}
+  NODE_VERSION: '22'
+  LOG_LEVEL: info
+  OMNIPIZZA_RELEASES_REPO: gsanchezm/OmniPizza
+  OMNIPIZZA_RELEASE_TAG: ${{ inputs.omnipizza_release_tag }}
+  PLAYWRIGHT_VERSION: '1.61.1'
+  PLAYWRIGHT_IMAGE: mcr.microsoft.com/playwright:v1.61.1-jammy
+  # Input echo for write-experiment-manifest.sh — the manifest must record the
+  # complete dispatch identity (decision (e)).
+  TEST_STRATEGY: ${{ inputs.test_strategy }}
+  EVALUATION_SLICE: ${{ inputs.evaluation_slice || 'full' }}
+  EXPERIMENT_CUCUMBER_PARALLEL: ${{ inputs.cucumber_parallel || '1' }}
+  DIAGNOSABILITY_CHAOS_USER_INPUT: ${{ inputs.diagnosability_chaos_user }}
+  TOM_INJECT_FAULT_INPUT: ${{ inputs.tom_inject_fault }}
+  TOM_INJECT_FAULT_ACTION_INPUT: ${{ inputs.tom_inject_fault_action }}
+  TOM_INJECT_FAULT_TARGET_INPUT: ${{ inputs.tom_inject_fault_target }}
+  TOM_INJECT_FAULT_MAX_FIRES_INPUT: ${{ inputs.tom_inject_fault_max_fires }}
+  TOM_INFRA_BREAK_PORT_INPUT: ${{ inputs.tom_infra_break_port }}
+
+concurrency:
+  group: atomic-testing-experiment-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  # ---------------------------------------------------------------------------
+  # Validate the PINNED release tag and derive the asset base URL. Unlike the
+  # other workflows' resolvers this never queries /releases/latest — a
+  # research dispatch must be reproducible from its manifest alone.
+  # ---------------------------------------------------------------------------
+  resolve-omnipizza-release:
+    name: Resolve — OmniPizza pinned release
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.fetch.outputs.tag }}
+      base_url: ${{ steps.fetch.outputs.base_url }}
+    steps:
+      - name: Validate pinned release tag
+        id: fetch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${OMNIPIZZA_RELEASE_TAG}"
+          if [ -z "$TAG" ]; then
+            echo "omnipizza_release_tag is required (e.g. v1.1.8) — this workflow never resolves 'latest'."
+            exit 1
+          fi
+          FOUND=$(curl -fsSL \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${OMNIPIZZA_RELEASES_REPO}/releases/tags/${TAG}" \
+            | jq -r .tag_name)
+          if [ "$FOUND" != "$TAG" ]; then
+            echo "Release tag '${TAG}' does not exist in ${OMNIPIZZA_RELEASES_REPO} (got: ${FOUND})."
+            exit 1
+          fi
+          BASE_URL="https://github.com/${OMNIPIZZA_RELEASES_REPO}/releases/download/${TAG}"
+          echo "Pinned OmniPizza release: $TAG"
+          echo "tag=$TAG"           >> "$GITHUB_OUTPUT"
+          echo "base_url=$BASE_URL" >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
+  # Web — single job, both strategies.
+  # ---------------------------------------------------------------------------
+  experiment-web:
+    name: Experiment — ${{ inputs.test_strategy }} (web)
+    needs: resolve-omnipizza-release
+    if: inputs.platform == 'web'
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-jammy
+      options: --user 0
+    env:
+      HOME: /root
+      TOOL_NAME: ${{ inputs.test_strategy == 'atomic' && 'playwright' || 'horizontal-e2e-web' }}
+      PLATFORM: web
+      VIEWPORT: desktop
+      DRIVER: playwright
+      BROWSER: chromium
+      TOM_RUN_ID: tom-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.run_index || github.run_attempt }}-exp-${{ inputs.test_strategy }}-web
+      EXPERIMENT_PROFILE: exp-${{ inputs.test_strategy }}-web
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+      - name: Cache pnpm store
+        uses: actions/cache@v5
+        with:
+          path: ~/.pnpm-store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Record app provenance
+        shell: bash
+        env:
+          BASE_URL: ${{ secrets.BASE_URL }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+        run: bash ci/steps/record-app-provenance.sh web
+
+      - name: Start proxy + plugins
+        shell: bash
+        run: bash ci/steps/start-stack.sh web
+        env:
+          BASE_URL: ${{ secrets.BASE_URL }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          BROWSER: chromium
+          PLATFORM: web
+          VIEWPORT: desktop
+          DRIVER: playwright
+          HEADLESS: 'true'
+          PLAYWRIGHT_ADDRESS: ${{ inputs.tom_infra_break_port != '' && format('127.0.0.1:{0}', inputs.tom_infra_break_port) || '127.0.0.1:50052' }}
+          API_ADAPTER_ADDRESS: 127.0.0.1:50055
+          PLUGIN_PLAYWRIGHT: 'true'
+          PLUGIN_PIXELMATCH: 'false'
+          PLUGIN_API: 'true'
+          # Fault injection is read by the chaos-proxy PROCESS this step
+          # launches (proxy env-isolation — see fault-injection.ts).
+          TOM_INJECT_FAULT: ${{ inputs.tom_inject_fault }}
+          TOM_INJECT_FAULT_ACTION: ${{ inputs.tom_inject_fault_action }}
+          TOM_INJECT_FAULT_TARGET: ${{ inputs.tom_inject_fault_target }}
+          TOM_INJECT_FAULT_MAX_FIRES: ${{ inputs.tom_inject_fault_max_fires }}
+
+      # NO stagger step — decision (d): the orchestrator serializes research
+      # dispatches; random sleep would only add noise to duration measurements.
+
+      - name: Capture run start time
+        if: always()
+        run: echo "RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Run experiment suite
+        shell: bash
+        run: |
+          if [ "${{ inputs.test_strategy }}" = "atomic" ]; then
+            TAG_EXPRESSION="@desktop and not @security and not @security-infra and not @a11y-only"
+            if [ "${{ inputs.evaluation_slice }}" = "matched" ]; then
+              TAG_EXPRESSION="($TAG_EXPRESSION) and @matched-horizontal-e2e"
+            fi
+            ./node_modules/.bin/cucumber-js --profile research --tags "$TAG_EXPRESSION" \
+              --format "json:reports/${EXPERIMENT_PROFILE}.json" --format progress
+          else
+            ./node_modules/.bin/cucumber-js --profile nonAtomicTwin \
+              --format "json:reports/${EXPERIMENT_PROFILE}.json" --format progress
+          fi
+        env:
+          BASE_URL: ${{ secrets.BASE_URL }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          BROWSER: chromium
+          CUCUMBER_PARALLEL: ${{ inputs.cucumber_parallel || '1' }}
+          PLATFORM: web
+          VIEWPORT: desktop
+          DRIVER: playwright
+          PROXY_ADDRESS: 127.0.0.1:50051
+          HEADLESS: 'true'
+          PLUGIN_PIXELMATCH: 'false'
+          DIAGNOSABILITY_CHAOS_USER: ${{ inputs.diagnosability_chaos_user }}
+
+      - name: Capture run end time
+        if: always()
+        run: echo "RUN_ENDED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Write experiment manifest
+        if: always()
+        shell: bash
+        run: bash ci/steps/write-experiment-manifest.sh
+
+      - name: Collect artifacts
+        if: always()
+        run: bash ci/steps/collect-artifacts.sh "$EXPERIMENT_PROFILE"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ahm-artifacts-${{ github.job }}-${{ github.run_id }}
+          path: artifacts/exp-${{ inputs.test_strategy }}-web/
+          if-no-files-found: ignore
+          retention-days: 90
+
+      - name: Teardown
+        if: always()
+        run: bash ci/steps/teardown.sh
+
+  # ---------------------------------------------------------------------------
+  # Android — single job, both strategies. Emulator setup mirrors
+  # ahm-execution-helix.yml's e2e-android verbatim.
+  # ---------------------------------------------------------------------------
+  experiment-android:
+    name: Experiment — ${{ inputs.test_strategy }} (android)
+    needs: resolve-omnipizza-release
+    if: inputs.platform == 'android'
+    runs-on: ubuntu-latest
+    env:
+      TOOL_NAME: ${{ inputs.test_strategy == 'atomic' && 'appium-android' || 'horizontal-e2e-android' }}
+      PLATFORM: android
+      DRIVER: appium
+      TOM_RUN_ID: tom-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.run_index || github.run_attempt }}-exp-${{ inputs.test_strategy }}-android
+      EXPERIMENT_PROFILE: exp-${{ inputs.test_strategy }}-android
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+      - name: Cache pnpm store
+        uses: actions/cache@v5
+        with:
+          path: ~/.pnpm-store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Android platform tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y android-sdk-platform-tools
+          adb version
+
+      - name: Download Android app artifact (pinned)
+        env:
+          OMNIPIZZA_RELEASE_BASE_URL: ${{ needs.resolve-omnipizza-release.outputs.base_url }}
+        run: |
+          mkdir -p assets/apps/android
+          echo "Downloading OmniPizza Android APK from pinned release ${OMNIPIZZA_RELEASE_TAG}"
+          curl -fL "$OMNIPIZZA_RELEASE_BASE_URL/omnipizza-release.apk" \
+            -o assets/apps/android/app-release.apk
+          ls -lh assets/apps/android/app-release.apk
+          SHA256=$(sha256sum assets/apps/android/app-release.apk | cut -d' ' -f1)
+          echo "APK sha256: $SHA256"
+          echo "OMNIPIZZA_APP_SHA256=$SHA256" >> "$GITHUB_ENV"
+
+      - name: Record app provenance
+        shell: bash
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+        run: bash ci/steps/record-app-provenance.sh android
+
+      - name: Start MinIO Telemetry Storage
+        run: |
+          if docker compose version >/dev/null 2>&1; then
+            docker compose -f infrastructure/minio-compose.yml up -d
+          else
+            docker-compose -f infrastructure/minio-compose.yml up -d
+          fi
+          sleep 5
+
+      - name: Start Android emulator (docker-android)
+        run: |
+          docker run -d \
+            --name android-emulator \
+            --privileged \
+            --device /dev/kvm \
+            -p 5554:5554 \
+            -p 5555:5555 \
+            -e API_LEVEL=${{ inputs.android_api_level || '33' }} \
+            -e IMG_TYPE=google_apis \
+            -e ARCHITECTURE=x86_64 \
+            -e DEVICE_ID=pixel \
+            -e MEMORY=4096 \
+            -e CORES=2 \
+            -e DISABLE_ANIMATION=true \
+            -e DISABLE_HIDDEN_POLICY=true \
+            -e SKIP_AUTH=1 \
+            halimqarroum/docker-android:api-${{ inputs.android_api_level || '33' }}
+
+      - name: Start Appium server
+        run: |
+          pnpm exec appium --relaxed-security &
+          sleep 5
+
+      - name: Wait for emulator to be ready
+        run: |
+          echo "Waiting for ADB device to appear..."
+          adb connect localhost:5555
+          for i in $(seq 1 40); do
+            if adb -s localhost:5555 shell getprop sys.boot_completed 2>/dev/null | grep -q "1"; then
+              echo "Emulator ready after $((i * 15))s"
+              break
+            fi
+            echo "  Attempt $i/40 — waiting 15s..."
+            sleep 15
+          done
+          adb devices
+          adb -s localhost:5555 shell getprop sys.boot_completed 2>/dev/null | grep -q "1" \
+            || { echo "Emulator did not report boot_completed within 600s"; exit 1; }
+
+      - name: Start proxy + Appium plugin
+        run: bash ci/steps/start-stack.sh android
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          PLATFORM: android
+          DRIVER: appium
+          APPIUM_HOST: localhost
+          APPIUM_PORT: '4723'
+          CAP_PROFILE: docker_android
+          ANDROID_APP_PATH: assets/apps/android/app-release.apk
+          ANDROID_UDID: localhost:5555
+          PLUGIN_APPIUM: 'true'
+          PLUGIN_API: 'true'
+          TOM_INJECT_FAULT: ${{ inputs.tom_inject_fault }}
+          TOM_INJECT_FAULT_ACTION: ${{ inputs.tom_inject_fault_action }}
+          TOM_INJECT_FAULT_TARGET: ${{ inputs.tom_inject_fault_target }}
+          TOM_INJECT_FAULT_MAX_FIRES: ${{ inputs.tom_inject_fault_max_fires }}
+          APPIUM_ADDRESS: ${{ inputs.tom_infra_break_port != '' && format('127.0.0.1:{0}', inputs.tom_infra_break_port) || '127.0.0.1:50053' }}
+
+      # NO stagger step — see experiment-web.
+
+      - name: Capture run start time
+        if: always()
+        run: echo "RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Run experiment suite
+        shell: bash
+        run: |
+          if [ "${{ inputs.test_strategy }}" = "atomic" ]; then
+            TAG_EXPRESSION="@android and not @security and not @security-infra and not @a11y-only"
+            if [ "${{ inputs.evaluation_slice }}" = "matched" ]; then
+              TAG_EXPRESSION="($TAG_EXPRESSION) and @matched-horizontal-e2e"
+            fi
+            ./node_modules/.bin/cucumber-js --profile research --tags "$TAG_EXPRESSION" \
+              --format "json:reports/${EXPERIMENT_PROFILE}.json" --format progress
+          else
+            ./node_modules/.bin/cucumber-js --profile nonAtomicTwin \
+              --format "json:reports/${EXPERIMENT_PROFILE}.json" --format progress
+          fi
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          CUCUMBER_PARALLEL: '1'
+          PLATFORM: android
+          DRIVER: appium
+          APPIUM_HOST: localhost
+          APPIUM_PORT: '4723'
+          CAP_PROFILE: docker_android
+          ANDROID_APP_PATH: assets/apps/android/app-release.apk
+          ANDROID_UDID: localhost:5555
+          MINIO_ENDPOINT: localhost
+          MINIO_PORT: '9000'
+          MINIO_ACCESS_KEY: minioadmin
+          MINIO_SECRET_KEY: minioadmin
+          DIAGNOSABILITY_CHAOS_USER: ${{ inputs.diagnosability_chaos_user }}
+
+      - name: Capture run end time
+        if: always()
+        run: echo "RUN_ENDED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Show Android emulator logs
+        if: failure()
+        run: |
+          docker ps -a --filter name=android-emulator
+          if docker ps -a --format '{{.Names}}' | grep -qx android-emulator; then
+            docker logs --tail 200 android-emulator
+          else
+            echo "android-emulator container was not created."
+          fi
+
+      - name: Write experiment manifest
+        if: always()
+        shell: bash
+        run: bash ci/steps/write-experiment-manifest.sh
+
+      - name: Collect artifacts
+        if: always()
+        run: bash ci/steps/collect-artifacts.sh "$EXPERIMENT_PROFILE"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ahm-artifacts-${{ github.job }}-${{ github.run_id }}
+          path: artifacts/exp-${{ inputs.test_strategy }}-android/
+          if-no-files-found: ignore
+          retention-days: 90
+
+      - name: Stop emulator
+        if: always()
+        run: docker rm -f android-emulator || true
+
+      - name: Teardown
+        if: always()
+        run: bash ci/steps/teardown.sh
+
+  # ---------------------------------------------------------------------------
+  # iOS — single job, both strategies. Simulator setup mirrors
+  # ahm-execution-helix.yml's e2e-ios. For test_strategy=horizontal-e2e this
+  # is the audit's Deliverable-F "verification gap" smoke: the journey has
+  # never executed on iOS, but every logical key it needs has an appium.ios
+  # contract entry — no twin-specific iOS code exists or should be added
+  # unless this smoke demonstrates a real missing capability.
+  # ---------------------------------------------------------------------------
+  experiment-ios:
+    name: Experiment — ${{ inputs.test_strategy }} (ios)
+    needs: resolve-omnipizza-release
+    if: inputs.platform == 'ios'
+    runs-on: macos-latest
+    env:
+      TOOL_NAME: ${{ inputs.test_strategy == 'atomic' && 'appium-ios' || 'horizontal-e2e-ios' }}
+      PLATFORM: ios
+      DRIVER: appium
+      TOM_RUN_ID: tom-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.run_index || github.run_attempt }}-exp-${{ inputs.test_strategy }}-ios
+      EXPERIMENT_PROFILE: exp-${{ inputs.test_strategy }}-ios
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download iOS simulator artifact (pinned)
+        env:
+          OMNIPIZZA_RELEASE_BASE_URL: ${{ needs.resolve-omnipizza-release.outputs.base_url }}
+        run: |
+          mkdir -p assets/apps/ios
+          echo "Downloading OmniPizza iOS simulator bundle from pinned release ${OMNIPIZZA_RELEASE_TAG}"
+          curl -fL "$OMNIPIZZA_RELEASE_BASE_URL/OmniPizza-Simulator.zip" \
+            -o assets/apps/ios/OmniPizza-Simulator.zip
+          ls -lh assets/apps/ios/OmniPizza-Simulator.zip
+          SHA256=$(shasum -a 256 assets/apps/ios/OmniPizza-Simulator.zip | cut -d' ' -f1)
+          echo "Simulator zip sha256: $SHA256"
+          echo "OMNIPIZZA_APP_SHA256=$SHA256" >> "$GITHUB_ENV"
+
+      - name: Record app provenance
+        shell: bash
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+        run: bash ci/steps/record-app-provenance.sh ios
+
+      - name: Unpack iOS simulator app
+        run: |
+          rm -rf assets/apps/ios/unpacked
+          mkdir -p assets/apps/ios/unpacked
+          unzip -q assets/apps/ios/OmniPizza-Simulator.zip -d assets/apps/ios/unpacked
+          IOS_APP_PATH=$(find assets/apps/ios/unpacked -maxdepth 3 -name '*.app' -type d | head -n 1)
+          if [ -z "$IOS_APP_PATH" ]; then
+            echo "No .app bundle found inside OmniPizza-Simulator.zip"
+            exit 1
+          fi
+          echo "IOS_APP_PATH=$IOS_APP_PATH" >> "$GITHUB_ENV"
+
+      - name: Select and boot iOS simulator
+        run: |
+          DEVICE_LINE=$(xcrun simctl list devices available | grep -E 'iPhone .*\([A-F0-9-]+\) \((Shutdown|Booted)\)' | head -n 1)
+          if [ -z "$DEVICE_LINE" ]; then
+            echo "No available iPhone simulator found"
+            exit 1
+          fi
+          IOS_DEVICE_NAME=$(echo "$DEVICE_LINE" | sed -E 's/^[[:space:]]*([^()]+)[[:space:]]+\(.*/\1/' | xargs)
+          IOS_UDID=$(echo "$DEVICE_LINE" | sed -E 's/.*\(([A-F0-9-]+)\).*/\1/')
+          echo "IOS_DEVICE_NAME=$IOS_DEVICE_NAME" >> "$GITHUB_ENV"
+          echo "IOS_UDID=$IOS_UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$IOS_UDID" || true
+          xcrun simctl bootstatus "$IOS_UDID" -b
+
+      - name: Start MinIO Telemetry Storage
+        run: |
+          MACHINE_ARCH=$(uname -m)
+          MINIO_ARCH=$(node -p "({ arm64: 'arm64', x86_64: 'amd64' })[process.argv[1]] || ''" "$MACHINE_ARCH")
+          if [ -z "$MINIO_ARCH" ]; then
+            echo "Unsupported macOS architecture: $MACHINE_ARCH"
+            exit 1
+          fi
+
+          curl -fL "https://dl.min.io/server/minio/release/darwin-${MINIO_ARCH}/minio" \
+            -o /tmp/minio
+          chmod +x /tmp/minio
+
+          mkdir -p /tmp/ahm-minio-data
+          MINIO_ROOT_USER=minioadmin \
+          MINIO_ROOT_PASSWORD=minioadmin \
+            /tmp/minio server /tmp/ahm-minio-data --address ":9000" --console-address ":9001" &
+
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:9000/minio/health/live >/dev/null; then
+              echo "MinIO ready"
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "MinIO did not become healthy"
+          exit 1
+
+      - name: Start Appium server
+        run: |
+          pnpm exec appium --relaxed-security &
+          sleep 5
+
+      - name: Start proxy + Appium plugin
+        run: bash ci/steps/start-stack.sh ios
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          PLATFORM: ios
+          DRIVER: appium
+          APPIUM_HOST: localhost
+          APPIUM_PORT: '4723'
+          CAP_PROFILE: ci_ios_headless
+          IOS_APP_PATH: ${{ vars.IOS_APP_PATH || env.IOS_APP_PATH }}
+          IOS_UDID: ${{ env.IOS_UDID }}
+          IOS_DEVICE_NAME: ${{ env.IOS_DEVICE_NAME }}
+          PLUGIN_APPIUM: 'true'
+          PLUGIN_API: 'true'
+          MINIO_ENDPOINT: localhost
+          MINIO_PORT: '9000'
+          MINIO_ACCESS_KEY: minioadmin
+          MINIO_SECRET_KEY: minioadmin
+          TOM_INJECT_FAULT: ${{ inputs.tom_inject_fault }}
+          TOM_INJECT_FAULT_ACTION: ${{ inputs.tom_inject_fault_action }}
+          TOM_INJECT_FAULT_TARGET: ${{ inputs.tom_inject_fault_target }}
+          TOM_INJECT_FAULT_MAX_FIRES: ${{ inputs.tom_inject_fault_max_fires }}
+
+      # NO stagger step — see experiment-web.
+
+      - name: Capture run start time
+        if: always()
+        run: echo "RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Run experiment suite
+        shell: bash
+        run: |
+          if [ "${{ inputs.test_strategy }}" = "atomic" ]; then
+            TAG_EXPRESSION="@ios and not @security and not @security-infra and not @a11y-only"
+            if [ "${{ inputs.evaluation_slice }}" = "matched" ]; then
+              TAG_EXPRESSION="($TAG_EXPRESSION) and @matched-horizontal-e2e"
+            fi
+            ./node_modules/.bin/cucumber-js --profile research --tags "$TAG_EXPRESSION" \
+              --format "json:reports/${EXPERIMENT_PROFILE}.json" --format progress
+          else
+            ./node_modules/.bin/cucumber-js --profile nonAtomicTwin \
+              --format "json:reports/${EXPERIMENT_PROFILE}.json" --format progress
+          fi
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          CUCUMBER_PARALLEL: '1'
+          PLATFORM: ios
+          DRIVER: appium
+          APPIUM_HOST: localhost
+          APPIUM_PORT: '4723'
+          CAP_PROFILE: ci_ios_headless
+          IOS_APP_PATH: ${{ vars.IOS_APP_PATH || env.IOS_APP_PATH }}
+          IOS_UDID: ${{ env.IOS_UDID }}
+          IOS_DEVICE_NAME: ${{ env.IOS_DEVICE_NAME }}
+          MINIO_ENDPOINT: localhost
+          MINIO_PORT: '9000'
+          MINIO_ACCESS_KEY: minioadmin
+          MINIO_SECRET_KEY: minioadmin
+          DIAGNOSABILITY_CHAOS_USER: ${{ inputs.diagnosability_chaos_user }}
+
+      - name: Capture run end time
+        if: always()
+        run: echo "RUN_ENDED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Write experiment manifest
+        if: always()
+        shell: bash
+        run: bash ci/steps/write-experiment-manifest.sh
+
+      - name: Collect artifacts
+        if: always()
+        run: bash ci/steps/collect-artifacts.sh "$EXPERIMENT_PROFILE"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ahm-artifacts-${{ github.job }}-${{ github.run_id }}
+          path: artifacts/exp-${{ inputs.test_strategy }}-ios/
+          if-no-files-found: ignore
+          retention-days: 90
+
+      - name: Teardown
+        if: always()
+        run: bash ci/steps/teardown.sh

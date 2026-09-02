@@ -42,6 +42,13 @@ function main(): void {
     endedAt: nullable(e.RUN_ENDED_AT),
     ciProvider: e.GITHUB_ACTIONS === 'true' ? 'github' : null,
     ciRunId: nullable(e.GITHUB_RUN_ID),
+    // Application-artifact provenance (research hardening Phase 2, decision
+    // (f)) — record-only fields stamped by the experiment workflow's
+    // provenance step; null on local runs and on workflows that predate it.
+    omnipizzaReleaseTag: nullable(e.OMNIPIZZA_RELEASE_TAG),
+    omnipizzaAppSha256: nullable(e.OMNIPIZZA_APP_SHA256),
+    omnipizzaBackendVersion: nullable(e.OMNIPIZZA_BACKEND_VERSION),
+    omnipizzaFrontendVersion: nullable(e.OMNIPIZZA_FRONTEND_VERSION),
     tags: [] as string[],
     os: ctx.os,
     nodeVersion: ctx.node_version,

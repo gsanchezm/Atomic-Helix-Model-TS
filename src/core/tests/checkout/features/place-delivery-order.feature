@@ -17,9 +17,18 @@ Feature: Place a delivery order across markets
     And they enter card details "<card>" expiration "<exp>" cvv "<cvv>"
     Then the order is accepted
 
+    # The US row sits in its own Examples block so @matched-horizontal-e2e can
+    # select exactly the row whose literals the Horizontal E2E journey
+    # (evaluation/non-atomic-twin) borrowed — behavior-set-equivalent slice for
+    # the research workflow. Examples-block tags are additive: every other tag
+    # filter still sees the identical row set.
+    @matched-horizontal-e2e
     Examples:
       | market | item       | size   | qty | street            | zip      | suburb  | name                | phone            | card                | exp   | cvv |
       | US     | Pepperoni  | Large  |   1 | 123 Luxury Avenue |    90210 |         | Julian Casablancas  |  +1 415 555 0101 | 4242 4242 4242 4242 | 12/28 | 123 |
+
+    Examples:
+      | market | item       | size   | qty | street            | zip      | suburb  | name                | phone            | card                | exp   | cvv |
       | MX     | Margherita | Medium |   3 | Av. Carranza 123  |    78230 | Polanco | Guillermo Alcantara | +52 55 1234 5678 | 4242 4242 4242 4242 | 12/28 | 123 |
       | CH     | Marinara   | Small  |   1 | Bahnhofstrasse 12 |     8001 |         | Lukas Baumgartner   | +41 44 668 18 00 | 4242 4242 4242 4242 | 12/28 | 123 |
       | JP     | Pepperoni  | Family |   2 |     1-2-3 Shibuya | 150-0002 | Tokyo   | 田中 健太           |  +81 3 1234 5678 | 4242 4242 4242 4242 | 12/28 | 123 |
@@ -49,7 +58,12 @@ Feature: Place a delivery order across markets
     And they choose payment method "PayPal"
     Then the order is accepted
 
-  @desktop @a11y
+  # @a11y-only marks this as the repo's single accessibility-ONLY scenario
+  # (its sole oracle is the axe gate — unlike every other @a11y usage, which
+  # piggybacks on a functional scenario). The research profile's functional
+  # tag expression excludes it so it can't ride along as a vacuous pass when
+  # PLUGIN_AXE is off; ordinary CI expressions are unaffected.
+  @desktop @a11y @a11y-only
   Scenario: Checkout screen passes the automated accessibility gate
     Given they are ordering in market "US"
     And they have an order with "Pepperoni" size "Large" quantity 1

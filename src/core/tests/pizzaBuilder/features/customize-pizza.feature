@@ -53,9 +53,15 @@ Feature: Customize a pizza in the builder across markets
     When they select size "<size>"
     Then the estimated total reflects the price of size "<size>"
 
+    # US row split out for @matched-horizontal-e2e (Horizontal E2E journey
+    # step 7 — size selection). Examples-block tags are additive.
+    @matched-horizontal-e2e
     Examples:
       | market | item       | language | size   |
       | US     | Pepperoni  | en       | Large  |
+
+    Examples:
+      | market | item       | language | size   |
       | MX     | Margherita | es       | Medium |
       | CH     | Marinara   | de       | Small  |
       | CH     | Marinara   | fr       | Small  |
@@ -78,9 +84,14 @@ Feature: Customize a pizza in the builder across markets
     # checks the total updates, so any valid addable topping is equivalent.
     # NOTE for OmniPizza: web↔mobile parity gap — mobile builder lacks the
     # cheese topping group that web's pizza.js carries.
+    # US row split out for @matched-horizontal-e2e (journey step 8 — toppings).
+    @matched-horizontal-e2e
     Examples:
       | market | item       | language | size   | toppings              |
       | US     | Pepperoni  | en       | Large  | mushrooms             |
+
+    Examples:
+      | market | item       | language | size   | toppings              |
       | MX     | Margherita | es       | Medium | mushrooms,black_olives |
       | CH     | Marinara   | de       | Small  | mushrooms             |
       | CH     | Marinara   | fr       | Small  | mushrooms             |
@@ -96,9 +107,15 @@ Feature: Customize a pizza in the builder across markets
     Then the pizza builder is closed
     And the navbar cart count is "<expectedCount>"
 
+    # US row split out for @matched-horizontal-e2e (journey steps 9-10 —
+    # confirm add to cart + builder closes).
+    @matched-horizontal-e2e
     Examples:
       | market | item       | language | size   | initialCount | expectedCount |
       | US     | Pepperoni  | en       | Large  | 0            | 1             |
+
+    Examples:
+      | market | item       | language | size   | initialCount | expectedCount |
       | MX     | Margherita | es       | Medium | 0            | 1             |
       | CH     | Marinara   | de       | Small  | 0            | 1             |
       | CH     | Marinara   | fr       | Small  | 0            | 1             |
