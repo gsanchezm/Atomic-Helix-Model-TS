@@ -79,7 +79,7 @@ export function interleaveByRunIndex(items: CampaignItem[]): CampaignItem[] {
 
 export interface CampaignItem {
   id: string; // stable, human-readable — the manifest key both scripts share
-  instrument: 'determinism' | 'parallel-safety' | 'efficiency' | 'diagnosability' | 'campaign-a';
+  instrument: 'determinism' | 'parallel-safety' | 'efficiency' | 'diagnosability' | 'campaign-a' | 'campaign-b';
   arm: Arm;
   platformLeg: PlatformLeg;
   experimentBatchId: string;
@@ -499,6 +499,51 @@ export function buildCampaignAItems(batchSuffix: string): CampaignItem[] {
     }
   }
   return items; // already in final pre-declared dispatch order — 60 items, 30 pairs
+}
+
+// ---------------------------------------------------------------------------
+// Campaign B — paired determinism under the symmetric experiment workflow (author's "already
+// approved 20 independent paired-run target", 2026-09-03, exercised after Campaign A froze and a
+// 4-combination provenance-instrumentation smoke passed clean on both strategies x web/android).
+// This re-runs the ORIGINAL N=30 determinism campaign's question (does the horizontal-e2e baseline
+// transition pass<->fail more often than the atomic suite?) but under atomic-testing-experiment.yml
+// instead of the legacy workflow — retry:0 symmetric on both arms (closing the retry-asymmetry
+// confound the 2026-09-02 retry-sensitivity re-analysis found and disclosed), plus the improved
+// provenance instrumentation (docs/research/2026-09-03-campaign-a-provenance-adjudication.md §6).
+//
+// No fault injection — this instrument measures baseline pass/fail determinism, not fault-position
+// containment (that's Campaign A). evaluationSlice='full' — the whole atomic suite (matching the
+// original determinism campaign's scope), not the matched-oracle subset (Campaign-A-specific).
+// Platforms: web, android (per the smoke validation's own scope) — no ios leg, consistent with
+// Campaign A and the research-hardening audit's iOS-verification-gap framing.
+//
+// Paired ordering reuses interleaveByRunIndex() unchanged (atomic-001, twin-001, atomic-002, ...) —
+// Campaign B carries no position-rotation/alternating-arm-first requirement analogous to Campaign
+// A's condition 6 (there is no fault position to counterbalance here), so the existing fixed
+// atomic-first pairing is the correct, simpler choice, not an oversight.
+export const CAMPAIGN_B_REPEATS_PER_PLATFORM = 20;
+export const CAMPAIGN_B_PLATFORMS: PlatformLeg[] = ['web', 'android'];
+
+export function buildCampaignBItems(batchSuffix: string, repeatsPerPlatform: number = CAMPAIGN_B_REPEATS_PER_PLATFORM): CampaignItem[] {
+  const batchId = `campaign-b-2026${batchSuffix}`;
+  const items: CampaignItem[] = [];
+  for (const platformLeg of CAMPAIGN_B_PLATFORMS) {
+    for (let i = 1; i <= repeatsPerPlatform; i++) {
+      for (const arm of ['atomic', 'twin'] as Arm[]) {
+        items.push({
+          id: `campaign-b__${arm}__${platformLeg}__${pad3(i)}`,
+          instrument: 'campaign-b',
+          arm,
+          platformLeg,
+          experimentBatchId: batchId,
+          runIndex: pad3(i),
+          cucumberParallel: '1',
+          evaluationSlice: 'full',
+        });
+      }
+    }
+  }
+  return items; // interleaveByRunIndex() applied by the caller (run-campaign.ts), same as legacy determinism
 }
 
 export function buildCampaignItems(

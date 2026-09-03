@@ -82,6 +82,7 @@ import {
   PlatformLeg,
   artifactNamesFor,
   buildCampaignAItems,
+  buildCampaignBItems,
   buildCampaignItems,
   buildDiagnosabilityItems,
   buildExecutionEfficiencyItems,
@@ -97,7 +98,7 @@ const CAMPAIGNS_DIR = join(REPO_ROOT, 'reports', 'campaigns');
 // CLI args
 // ---------------------------------------------------------------------------
 interface Cli {
-  instrument: 'determinism' | 'parallel-safety' | 'all' | 'efficiency' | 'diagnosability' | 'campaign-a';
+  instrument: 'determinism' | 'parallel-safety' | 'all' | 'efficiency' | 'diagnosability' | 'campaign-a' | 'campaign-b';
   // 'legacy' (default) resolves artifact names via artifactNamesFor (the e2e-web/e2e-android/
   // eval-twin-* job shape). 'experiment' resolves them via experimentArtifactNamesFor (the single
   // ahm-artifacts-experiment-<platform>-<runId> shape atomic-testing-experiment.yml uploads) —
@@ -166,16 +167,16 @@ metrics/ tree, so 'pnpm metrics:experiment' has data to read.
   }
 
   const instrument = (get('--instrument') ?? 'all') as Cli['instrument'];
-  if (!['determinism', 'parallel-safety', 'diagnosability', 'campaign-a', 'all', 'efficiency'].includes(instrument)) {
-    throw new Error(`--instrument must be determinism|parallel-safety|diagnosability|campaign-a|all|efficiency, got "${instrument}"`);
+  if (!['determinism', 'parallel-safety', 'diagnosability', 'campaign-a', 'campaign-b', 'all', 'efficiency'].includes(instrument)) {
+    throw new Error(`--instrument must be determinism|parallel-safety|diagnosability|campaign-a|campaign-b|all|efficiency, got "${instrument}"`);
   }
 
   const workflowMode = (get('--workflow') ?? 'legacy') as Cli['workflowMode'];
   if (!['legacy', 'experiment'].includes(workflowMode)) {
     throw new Error(`--workflow must be legacy|experiment, got "${workflowMode}"`);
   }
-  if (instrument === 'campaign-a' && workflowMode !== 'experiment') {
-    throw new Error(`--instrument campaign-a only ever dispatches under the experiment workflow — pass --workflow experiment.`);
+  if ((instrument === 'campaign-a' || instrument === 'campaign-b') && workflowMode !== 'experiment') {
+    throw new Error(`--instrument ${instrument} only ever dispatches under the experiment workflow — pass --workflow experiment.`);
   }
 
   let platformLeg: PlatformLeg | undefined;
@@ -374,7 +375,9 @@ async function main(): Promise<void> {
         ? buildDiagnosabilityItems(cli.batchSuffix)
         : cli.instrument === 'campaign-a'
           ? buildCampaignAItems(cli.batchSuffix)
-          : buildCampaignItems(cli.instrument, cli.batchSuffix);
+          : cli.instrument === 'campaign-b'
+            ? buildCampaignBItems(cli.batchSuffix)
+            : buildCampaignItems(cli.instrument, cli.batchSuffix);
   const dispatched = loadRelevantCampaignManifests(cli.instrument, cli.batchSuffix);
 
   const completedItems = items.filter((item) => dispatched.get(item.id)?.status === 'completed');
