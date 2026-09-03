@@ -6,7 +6,11 @@ import { join } from 'path';
 import { P, ensureDir } from './lib/paths';
 import { resolveExperimentContext, resolveRunId } from './lib/env';
 
-const SCHEMA_VERSION = '1.0.0';
+// 1.1.0 (2026-09-03): added omnipizzaBackendProvenanceStatus (verified | fallback_without_commit |
+// timeout_error) — see ci/steps/record-app-provenance.sh's header and
+// docs/research/2026-09-03-campaign-a-provenance-adjudication.md §6. Additive/optional; older
+// manifests (schema 1.0.0, including all of Campaign A's) simply lack the field.
+const SCHEMA_VERSION = '1.1.0';
 
 function main(): void {
   const ctx = resolveExperimentContext();
@@ -48,6 +52,7 @@ function main(): void {
     omnipizzaReleaseTag: nullable(e.OMNIPIZZA_RELEASE_TAG),
     omnipizzaAppSha256: nullable(e.OMNIPIZZA_APP_SHA256),
     omnipizzaBackendVersion: nullable(e.OMNIPIZZA_BACKEND_VERSION),
+    omnipizzaBackendProvenanceStatus: nullable(e.OMNIPIZZA_BACKEND_PROVENANCE_STATUS),
     omnipizzaFrontendVersion: nullable(e.OMNIPIZZA_FRONTEND_VERSION),
     tags: [] as string[],
     os: ctx.os,

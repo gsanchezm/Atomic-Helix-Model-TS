@@ -27,6 +27,7 @@
     "experiments:diagnosability-table": "ts-node -r tsconfig-paths/register scripts/experiments/diagnosability-table.ts",
     "experiments:retry-sensitivity": "ts-node -r tsconfig-paths/register scripts/experiments/retry-sensitivity-analysis.ts",
     "experiments:campaign-a-analysis": "ts-node -r tsconfig-paths/register scripts/experiments/campaign-a-analysis.ts",
+    "experiments:campaign-a-provenance-check": "ts-node -r tsconfig-paths/register scripts/experiments/campaign-a-provenance-check.ts",
     "test:unit": "node --test -r ts-node/register -r tsconfig-paths/register src/kernel/*.test.ts scripts/experiments/campaign-a-analysis.test.ts",
     "test:a11y": "cross-env DRIVER=playwright PLATFORM=web PLUGIN_AXE=true cucumber-js --tags \"@a11y\" --format json:reports/accessibility.json",
     "test:all-browsers": "node scripts/run-cross-browser-sequential.js",
