@@ -3,7 +3,7 @@
 **Date:** 2026-09-02
 **Status:** FROZEN. Supersedes `docs/research/2026-09-02-campaign-a-metrics-proposal.md` (that document remains as the historical proposal record; this document is the binding one — see §7 for what changed between proposal and freeze). Metric definitions, the oracle mapping, and the execution order below MUST NOT change after Campaign A results are observed.
 **Responds to:** the author's Campaign A approval (2026-09-02), conditions 1-6. Conditions 7 (ingestion/analysis-naming validation) and 8 (branch/tag freeze, deploy freeze, launch) are handled separately — §8 records condition 7's result; condition 8 is explicitly NOT started by this document (dispatch requires the author's own deploy-freeze action first).
-**Frozen at:** commit `<FILL IN AT ATOMIC-TESTING-EXPERIMENT-V2 TAG TIME — this document must not be edited after that tag is created; if a correction is needed post-freeze, it goes in a dated addendum, not an edit to the frozen sections>`.
+**Frozen at:** the exact commit SHA is not restated here — it lives in the `atomic-testing-experiment-v2` annotated tag's own message and in every Campaign A dispatch's campaign manifest (`resolvedSha`, schema 1.2.0, `run-campaign.ts`), so this document never needs editing to record it. §3-§6 (the definitions, mapping, and execution order) must not change after that tag is created; a correction found post-freeze goes in a dated addendum below this section, never an edit to §3-§6 themselves.
 
 ## 1. Design (unchanged from the approved proposal)
 
@@ -129,6 +129,8 @@ The other two matched-slice scenarios (`Selecting a size updates the estimated t
 ## 6. Validity rule (dispatch-level, applies to both metrics)
 
 A dispatch is valid iff the injected-error string is present in the run's cucumber-jsonl (the CLICK actually failed as designed). An invalid dispatch is recorded and backfilled, never silently folded into the N=10 as a clean result — consistent with the campaign's no-fabrication policy (paper §3.2.5) and with the approval's "do not increase N based on observed results" (backfilling an invalid cell restores the pre-declared N; it is not an increase).
+
+**Disclosed gap, for the (not yet written) analysis script:** this rule checks only that the injected-error string is present *somewhere* in the dispatch — it does not verify the string appears in the *expected owning scenario/step* specifically, nor does it exclude a dispatch where an unrelated scenario also failed for an independent reason. §4's atomic MIDDLE/LATE predictions are therefore written `≤1/4`, not `=1/4`, precisely because this gap is real, not a hedge. The metrics-computation script must attribute the injected-error string to the specific carrier scenario/step (per §2's identification method), not merely confirm the dispatch as a whole is valid — otherwise an atomic dispatch with an unrelated second failure would silently inflate M1/MOL for a reason unconnected to fault positioning.
 
 ## 7. What changed between the proposal and this freeze
 
