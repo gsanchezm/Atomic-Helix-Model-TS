@@ -27,7 +27,10 @@ export const INJECTABLE_FAULT_BUCKETS = [
 
 export type InjectableFaultBucket = (typeof INJECTABLE_FAULT_BUCKETS)[number];
 
-const FAULT_MESSAGES: Readonly<Record<InjectableFaultBucket, string>> = {
+// Exported (research hardening, deterministic fault attribution, 2026-09-02) so analysis code
+// (scripts/experiments/campaign-a-analysis.ts) matches on the canonical marker string instead of
+// duplicating it — a single source of truth for "this step's failure was the injected fault."
+export const FAULT_MESSAGES: Readonly<Record<InjectableFaultBucket, string>> = {
     LOCATOR_RESOLUTION_FAILURE: 'Injected fault: unable to find element for the configured locator',
     UI_ACTION_FAILURE: 'Injected fault: click interaction rejected by the target element',
     WEB_SESSION_FAILURE: 'Injected fault: Playwright browser session crashed, target closed unexpectedly',
