@@ -79,7 +79,7 @@ export function interleaveByRunIndex(items: CampaignItem[]): CampaignItem[] {
 
 export interface CampaignItem {
   id: string; // stable, human-readable — the manifest key both scripts share
-  instrument: 'determinism' | 'parallel-safety' | 'efficiency' | 'diagnosability';
+  instrument: 'determinism' | 'parallel-safety' | 'efficiency' | 'diagnosability' | 'campaign-a';
   arm: Arm;
   platformLeg: PlatformLeg;
   experimentBatchId: string;
@@ -411,6 +411,94 @@ export function buildDiagnosabilityItems(batchSuffix: string): CampaignItem[] {
     }
   }
   return items;
+}
+
+// ---------------------------------------------------------------------------
+// Campaign A — matched atomic vs. horizontal-e2e fault-positioning experiment (research hardening
+// author approval, 2026-09-02). Only ever dispatched under the experiment workflow
+// (--workflow experiment); there is no legacy shape for this instrument.
+//
+// Positions/keys/fault class are exactly the approved §1 design: LOCATOR_RESOLUTION_FAILURE on
+// CLICK, single fire (max_fires=1 — the research cucumber profile runs retry:0 on both arms, so
+// unlike the legacy diagnosability instrument's atomic-arm max_fires=2, one fire is correct here
+// too), web platform, evaluationSlice='matched' (ignored by the horizontal-e2e arm).
+//
+// Single-clicker guarantee (verified 2026-09-02, not assumed): each of the three logical keys
+// below is CLICKed from exactly ONE call site in the entire matched-slice suite —
+//   loginButton            -> login.route.ts's attemptLogin()->submitCredentials(), the UI-login
+//                              path taken ONLY by the login domain's own scenario (every other
+//                              matched-slice scenario logs in via the `Given ... logged in as`
+//                              step, which injects a token through LoginDao, never through the UI)
+//   confirmAddToCartButton -> pizzaBuilder.route.ts's confirmAddToCart()->clickConfirmAddToCart(),
+//                              called from exactly one step binding (pizzaBuilder.steps.ts)
+//   placeOrderButton       -> checkout.route.ts's verifyOrderAccepted()->placeOrder(), called from
+//                              exactly one step binding (checkout.steps.ts)
+// So with max_fires=1 the fault cannot land anywhere but the intended owning scenario, REGARDLESS
+// of the 7 matched scenarios' execution order within the process — there is no second candidate
+// click for it to hit. This is a stronger guarantee than "fires on the first matching click";
+// there is only ever one matching click at all in a valid (non-excluded) matched-slice dispatch.
+//
+// One asymmetry this implies, worth flagging here since it feeds directly into the MOL frozen
+// definition (docs/research/2026-09-02-campaign-a-oracle-mapping.md): placeOrderButton's CLICK
+// and its own matched oracle ("Then the order is accepted", o4) are fused into the SAME Gherkin
+// step (checkout.steps.ts: `Then('the order is accepted', ...) -> verifyOrderAccepted()`, whose
+// body issues the click THEN asserts). A LATE-position fault therefore fails THAT step outright —
+// o4 is lost via FAIL, not SKIP. confirmAddToCartButton's click ("When they confirm add to cart")
+// and its oracle ("Then the pizza builder is closed", o3) are SEPARATE steps — a MIDDLE-position
+// fault fails the When and o3 is lost via SKIP (never reached), not FAIL. Both count as LOST under
+// the approved MOL definition (FAILED, SKIPPED, or NOT REACHED are all lost) — this is exactly why
+// that definition doesn't special-case FAIL as "delivered": doing so would have scored LATE and
+// MIDDLE inconsistently for a difference of Gherkin step layout, not of what actually happened to
+// the oracle.
+export interface CampaignAPosition {
+  key: 'EARLY' | 'MIDDLE' | 'LATE';
+  target: string; // TOM_INJECT_FAULT_TARGET logical key
+}
+export const CAMPAIGN_A_POSITIONS: CampaignAPosition[] = [
+  { key: 'EARLY', target: 'loginButton' },
+  { key: 'MIDDLE', target: 'confirmAddToCartButton' },
+  { key: 'LATE', target: 'placeOrderButton' },
+];
+export const CAMPAIGN_A_REPEATS_PER_CELL = 10;
+export const CAMPAIGN_A_FAULT_CLASS = 'LOCATOR_RESOLUTION_FAILURE';
+
+// Pre-declared balanced paired execution order (approval condition 6), built directly in final
+// dispatch order rather than as a separate item list + interleave pass — interleaveByRunIndex's
+// own fixed atomic-then-twin sort would silently destroy the alternation below if applied on top.
+//
+// For pair-slot g = 1..30: position rotates EARLY/MIDDLE/LATE (g-1)%3, repeat-within-cell =
+// ceil(g/3) (1..10), and the arm dispatched first alternates by g's parity (odd g: atomic first;
+// even g: twin/horizontal-e2e first). This gives every one of the 6 (position x cell) — really 3
+// positions, since the cell IS the position for a fixed strategy pair — exactly 5 atomic-first and
+// 5 twin-first pairs (g's of a fixed residue mod 3 alternate parity: 1,4,7,10,...,28 for EARLY is
+// odd,even,odd,even,... 5 of each), a property intentionally verified by
+// campaign-matrix.test.ts rather than left as an unchecked side effect of the arithmetic.
+export function buildCampaignAItems(batchSuffix: string): CampaignItem[] {
+  const batchId = `campaign-a-2026${batchSuffix}`;
+  const items: CampaignItem[] = [];
+  for (let g = 1; g <= CAMPAIGN_A_REPEATS_PER_CELL * CAMPAIGN_A_POSITIONS.length; g++) {
+    const position = CAMPAIGN_A_POSITIONS[(g - 1) % CAMPAIGN_A_POSITIONS.length];
+    const repeat = Math.ceil(g / CAMPAIGN_A_POSITIONS.length); // 1..10
+    const armFirst: Arm = g % 2 === 1 ? 'atomic' : 'twin';
+    const pairArms: Arm[] = [armFirst, armFirst === 'atomic' ? 'twin' : 'atomic'];
+    for (const arm of pairArms) {
+      items.push({
+        id: `campaign-a__${arm}__${position.key.toLowerCase()}__${pad3(repeat)}`,
+        instrument: 'campaign-a',
+        arm,
+        platformLeg: 'web',
+        experimentBatchId: batchId,
+        runIndex: pad3(repeat),
+        cucumberParallel: '1',
+        tomInjectFault: CAMPAIGN_A_FAULT_CLASS,
+        tomInjectFaultAction: 'CLICK',
+        tomInjectFaultMaxFires: '1',
+        tomInjectFaultTarget: position.target,
+        evaluationSlice: 'matched',
+      });
+    }
+  }
+  return items; // already in final pre-declared dispatch order — 60 items, 30 pairs
 }
 
 export function buildCampaignItems(

@@ -47,8 +47,9 @@ Smoke 6 confirms the audit's classification: the journey ran green on iOS **with
 
 ## Known follow-ups (not blockers for approval, blockers for execution)
 
-1. **Author approval** of the Campaign A formulas + N (proposal doc §4).
-2. **Freeze** — create `atomic-testing-experiment-v2` branch + annotated tag immediately before the first campaign; the orchestrator already records the resolved SHA per decision (e).
-3. **Render deploy freeze** — manual, while campaigns are active (autoDeploy is on; a mid-campaign OmniPizza push would change the app under test — the provenance fields would *detect* it, but the freeze *prevents* it).
-4. `aggregate-campaign-artifacts.ts` still speaks the legacy artifact-name layer; wire `experimentArtifactNamesFor` before aggregating an experiment-mode campaign (download failures would be loud, not silent, but fix it first).
-5. Campaign B (paired determinism under the symmetric workflow) needs its own dispatch plan once Campaign A's design is settled.
+1. ~~**Author approval** of the Campaign A formulas + N (proposal doc §4).~~ **DONE 2026-09-02** — approved with refinements; see `docs/research/2026-09-02-campaign-a-frozen-definitions.md` (the binding document, supersedes the proposal).
+2. **Freeze** — create `atomic-testing-experiment-v2` branch + annotated tag immediately before the first campaign; the orchestrator already records the resolved SHA per decision (e). **NOT STARTED** — deliberately, pending item 3.
+3. **Render deploy freeze** — manual, while campaigns are active (autoDeploy is on; a mid-campaign OmniPizza push would change the app under test — the provenance fields would *detect* it, but the freeze *prevents* it). **Author's own action, still outstanding.**
+4. ~~`aggregate-campaign-artifacts.ts` still speaks the legacy artifact-name layer; wire `experimentArtifactNamesFor` before aggregating an experiment-mode campaign.~~ **DONE 2026-09-02** — wired (`--workflow experiment`, shared `lib/artifact-merge.ts`) and validated against all 6 real smoke artifacts, including the previously-unvalidated analysis-layer `tool_name` resolution (`horizontal-e2e-*` values) — see `scripts/experiments/validate-experiment-ingestion.ts` and the frozen-definitions doc §9.
+5. Campaign B (paired determinism under the symmetric workflow) needs its own dispatch plan once Campaign A's design is settled. Still open — explicitly gated on Campaign A completing cleanly (author ruling 2026-09-02: no Campaign B if Campaign A exposes a new instrumentation defect).
+6. **Campaign A dispatch itself** — `buildCampaignAItems()` / `--instrument campaign-a --workflow experiment` is implemented, dry-run verified (60 items, pre-declared balanced order confirmed empirically), but **not dispatched**. Blocked on items 2 and 3 above, both of which require the author's go-ahead, not further implementation.

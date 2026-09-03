@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-02
 **Responds to:** research hardening decision **(c)**: "Metric 1 may remain the within-failed-scenario skipped-step fraction. Metric 2 should be a matched semantic-oracle loss calculated only across the equivalent source behaviors represented in the Horizontal E2E journey. Propose the exact formulas before executing Campaign A." Plus the approvals: fault class must be observable equivalently in both strategies (locator/UI-interaction, **not** ASSERTION_FAILURE), positions Early/Middle/Late.
-**Status:** PROPOSAL — Campaign A is not launched.
+**Status:** SUPERSEDED — approved 2026-09-02 with refinements; the binding exact definitions are now `docs/research/2026-09-02-campaign-a-frozen-definitions.md` (see that document's §7 for exactly what changed: Metric 1's hook exclusion, Metric 2's LOST set including FAILED, the LATE journey-step-14→15 correction, EARLY's atomic MOL stated as exact 0/4, and dropping the optional atomic-full leg). This document is kept as the historical proposal record — do not treat its formulas as current.
 
 ## 1. Experimental design (context for the formulas)
 

@@ -62,7 +62,11 @@ Note the adjusted P→F rises less than the 8 flips might suggest: 12 of the 14 
 - **Per decision (b): retain the existing campaign, no rerun.** The Threats to Validity rewrite must disclose: (i) the retry asymmetry itself; (ii) both numbers (29.6× final-status, 21.1× retry-adjusted); (iii) that 14/30 atomic Android dispatches had an attempt-1 element-wait failure in one scenario — the atomic arm's Android stability as published is partly a retry-policy artifact at the per-transition level, though not at the unstable-scenario-population level; and (iv) that the reconstruction is exact (log-derived), not modeled.
 - Forward-looking fix already implemented: the `research` cucumber profile and `atomic-testing-experiment.yml` run **retry: 0 in both arms**, so no future campaign can reproduce this confound.
 
-## 5. Reproduction
+## 5. Determinism decision — CLOSED (2026-09-02, author ruling)
+
+The author's ruling on this analysis: **retain the existing N=30 campaign, no rerun** (confirming §4's recommendation). Additionally, for the paper rewrite: the **retry-adjusted estimate (21.1×) is the primary method-comparison result**; the **original operational result (29.6×) is retained**, not dropped; and the retry asymmetry itself is disclosed in Threats to Validity. This refines §4's framing (which treated both numbers as co-equal disclosure items) — "primary" here means the number the paper's headline comparison should lead with, since it is the one insulated from the retry-policy confound §2 documents; "retained" means 29.6× stays in the paper as the as-published operational figure, with the asymmetry between the two made explicit rather than only the adjusted number surviving into the rewrite.
+
+## 6. Reproduction
 
 ```bash
 # evidence regeneration (from archived logs):

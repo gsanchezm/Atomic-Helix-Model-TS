@@ -74,29 +74,41 @@
 //      excluded — for the determinism instrument specifically, a real
 //      pass<->fail transition IS the signal being measured, not noise.
 
-import { execFileSync } from 'child_process';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import {
   CampaignItem,
+  ExperimentPlatform,
   PlatformLeg,
   artifactNamesFor,
+  buildCampaignAItems,
   buildCampaignItems,
   buildDiagnosabilityItems,
   buildExecutionEfficiencyItems,
+  experimentArtifactNamesFor,
   legKeyOf,
 } from './lib/campaign-matrix';
+import { cleanupDownloadRoot, downloadArtifact, ensureDownloadRoot, mergeArtifactMetricsRaw } from './lib/artifact-merge';
 
 const REPO_ROOT = join(__dirname, '..', '..');
 const CAMPAIGNS_DIR = join(REPO_ROOT, 'reports', 'campaigns');
-const METRICS_DIR = join(REPO_ROOT, 'metrics');
-const TMP_DOWNLOAD_ROOT = join(REPO_ROOT, 'reports', 'campaigns', '.artifact-tmp');
 
 // ---------------------------------------------------------------------------
 // CLI args
 // ---------------------------------------------------------------------------
 interface Cli {
-  instrument: 'determinism' | 'parallel-safety' | 'all' | 'efficiency' | 'diagnosability';
+  instrument: 'determinism' | 'parallel-safety' | 'all' | 'efficiency' | 'diagnosability' | 'campaign-a';
+  // 'legacy' (default) resolves artifact names via artifactNamesFor (the e2e-web/e2e-android/
+  // eval-twin-* job shape). 'experiment' resolves them via experimentArtifactNamesFor (the single
+  // ahm-artifacts-experiment-<platform>-<runId> shape atomic-testing-experiment.yml uploads) —
+  // required for 'campaign-a' (that instrument only ever dispatches under the experiment workflow)
+  // and available for any other instrument aggregated from an experiment-mode
+  // run-campaign.ts --workflow experiment dispatch. See lib/artifact-merge.ts's file header and
+  // validate-experiment-ingestion.ts for why this mattered: aggregate-campaign-artifacts.ts never
+  // called experimentArtifactNamesFor before this — every experiment-mode campaign's artifacts
+  // would have failed to download (loudly, not silently — see the file header's item 2 — but
+  // still 100% download failure) until this was wired in.
+  workflowMode: 'legacy' | 'experiment';
   batchSuffix: string;
   dryRun: boolean;
   includeInfraFlagged: boolean;
@@ -126,8 +138,16 @@ aggregate-campaign-artifacts.ts — downloads GH Actions artifacts for every 'co
 item in a run-campaign.ts manifest and merges their metrics/raw/** into the local
 metrics/ tree, so 'pnpm metrics:experiment' has data to read.
 
-  --instrument <determinism|parallel-safety|diagnosability|all|efficiency>   default: all — must match
-                                                    the run-campaign.ts manifest(s) you want to aggregate
+  --instrument <determinism|parallel-safety|diagnosability|campaign-a|all|efficiency>   default: all —
+                                                    must match the run-campaign.ts manifest(s) you want to
+                                                    aggregate
+  --workflow <legacy|experiment>                    default: legacy. 'experiment' resolves artifact names
+                                                    via experimentArtifactNamesFor (atomic-testing-
+                                                    experiment.yml's single-job-per-dispatch shape) instead
+                                                    of the legacy e2e-web/e2e-android/eval-twin-* shape —
+                                                    REQUIRED (and the only valid value) for --instrument
+                                                    campaign-a; must match the --workflow you passed to
+                                                    run-campaign.ts for this dispatch
   --batch-suffix <string>                           default: '' — must match run-campaign.ts's --batch-suffix
   --dry-run                                         list what would be downloaded/merged; touches nothing
   --include-infra-flagged                           also merge items run-campaign.ts flagged likelyInfra=true
@@ -146,8 +166,16 @@ metrics/ tree, so 'pnpm metrics:experiment' has data to read.
   }
 
   const instrument = (get('--instrument') ?? 'all') as Cli['instrument'];
-  if (!['determinism', 'parallel-safety', 'diagnosability', 'all', 'efficiency'].includes(instrument)) {
-    throw new Error(`--instrument must be determinism|parallel-safety|diagnosability|all|efficiency, got "${instrument}"`);
+  if (!['determinism', 'parallel-safety', 'diagnosability', 'campaign-a', 'all', 'efficiency'].includes(instrument)) {
+    throw new Error(`--instrument must be determinism|parallel-safety|diagnosability|campaign-a|all|efficiency, got "${instrument}"`);
+  }
+
+  const workflowMode = (get('--workflow') ?? 'legacy') as Cli['workflowMode'];
+  if (!['legacy', 'experiment'].includes(workflowMode)) {
+    throw new Error(`--workflow must be legacy|experiment, got "${workflowMode}"`);
+  }
+  if (instrument === 'campaign-a' && workflowMode !== 'experiment') {
+    throw new Error(`--instrument campaign-a only ever dispatches under the experiment workflow — pass --workflow experiment.`);
   }
 
   let platformLeg: PlatformLeg | undefined;
@@ -174,6 +202,7 @@ metrics/ tree, so 'pnpm metrics:experiment' has data to read.
 
   return {
     instrument,
+    workflowMode,
     platformLeg,
     repeats,
     batchSuffix: get('--batch-suffix') ?? '',
@@ -328,63 +357,10 @@ function saveAggregationState(path: string, state: AggregationState): void {
 }
 
 // ---------------------------------------------------------------------------
-// gh CLI + filesystem merge
-// ---------------------------------------------------------------------------
-
-// Downloads one named artifact from `runId` into a fresh temp dir and returns
-// that dir, or null if the artifact doesn't exist / download failed (logged,
-// not thrown — a missing artifact on a likelyInfra-flagged dispatch is
-// expected, not exceptional).
-function downloadArtifact(runId: number, artifactName: string): string | null {
-  const dest = join(TMP_DOWNLOAD_ROOT, artifactName);
-  rmSync(dest, { recursive: true, force: true });
-  mkdirSync(dest, { recursive: true });
-  try {
-    execFileSync('gh', ['run', 'download', String(runId), '--name', artifactName, '--dir', dest], {
-      cwd: REPO_ROOT,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    return dest;
-  } catch (err) {
-    console.warn(`    ! failed to download artifact "${artifactName}" from run ${runId}: ${err instanceof Error ? err.message : String(err)}`);
-    rmSync(dest, { recursive: true, force: true });
-    return null;
-  }
-}
-
-// Recursively copies every file under `srcDir` into the identically-relative
-// path under `destDir`, creating directories as needed. Safe to call
-// repeatedly (overwrite-in-place) since source files are per-run-id-named —
-// see the file header for why this can't collide across dispatches or across
-// jobs within one dispatch.
-function copyTree(srcDir: string, destDir: string): number {
-  if (!existsSync(srcDir)) return 0;
-  let count = 0;
-  for (const entry of readdirSync(srcDir)) {
-    const srcPath = join(srcDir, entry);
-    const destPath = join(destDir, entry);
-    const st = statSync(srcPath);
-    if (st.isDirectory()) {
-      mkdirSync(destPath, { recursive: true });
-      count += copyTree(srcPath, destPath);
-    } else {
-      mkdirSync(destDir, { recursive: true });
-      copyFileSync(srcPath, destPath);
-      count++;
-    }
-  }
-  return count;
-}
-
-// Merges only metrics/raw/** from a downloaded artifact — see file header for
-// why processed/figures are deliberately excluded.
-function mergeArtifactMetricsRaw(artifactDir: string): number {
-  const rawSrc = join(artifactDir, 'metrics', 'raw');
-  const rawDest = join(METRICS_DIR, 'raw');
-  return copyTree(rawSrc, rawDest);
-}
-
+// gh CLI + filesystem merge — downloadArtifact/copyTree/mergeArtifactMetricsRaw now live in
+// ./lib/artifact-merge.ts (research hardening Phase 2 follow-up, 2026-09-02), shared with
+// validate-experiment-ingestion.ts so the historical smoke-run validation exercises the exact
+// same download/merge path as a real campaign aggregation, not a re-implementation of it.
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -396,7 +372,9 @@ async function main(): Promise<void> {
       ? buildExecutionEfficiencyItems(cli.batchSuffix, cli.platformLeg as PlatformLeg, cli.repeats as number)
       : cli.instrument === 'diagnosability'
         ? buildDiagnosabilityItems(cli.batchSuffix)
-        : buildCampaignItems(cli.instrument, cli.batchSuffix);
+        : cli.instrument === 'campaign-a'
+          ? buildCampaignAItems(cli.batchSuffix)
+          : buildCampaignItems(cli.instrument, cli.batchSuffix);
   const dispatched = loadRelevantCampaignManifests(cli.instrument, cli.batchSuffix);
 
   const completedItems = items.filter((item) => dispatched.get(item.id)?.status === 'completed');
@@ -439,13 +417,21 @@ async function main(): Promise<void> {
     );
   }
 
+  // workflowMode-aware artifact-name resolution — 'experiment' items upload one artifact named
+  // ahm-artifacts-experiment-<platform>-<runId> (verified against atomic-testing-experiment.yml's
+  // three experiment-<platform> jobs' own upload-artifact steps, 2026-09-02); 'legacy' items keep
+  // the historical e2e-web/e2e-android/eval-twin-* shape.
+  const resolveArtifactNames = (item: CampaignItem, runId: number): string[] =>
+    cli.workflowMode === 'experiment'
+      ? experimentArtifactNamesFor(item.platformLeg as ExperimentPlatform, runId)
+      : artifactNamesFor(legKeyOf(item.arm, item.platformLeg), runId);
+
   const toProcess = eligible.filter((item) => state.results[item.id]?.status !== 'complete' || isStale(item));
 
   if (cli.dryRun) {
     for (const item of toProcess) {
       const runId = dispatched.get(item.id)?.runId;
-      const key = legKeyOf(item.arm, item.platformLeg);
-      const names = runId ? artifactNamesFor(key, runId) : ['<no runId recorded>'];
+      const names = runId ? resolveArtifactNames(item, runId) : ['<no runId recorded>'];
       console.log(`  [dry-run] ${item.id}  runId=${runId ?? '?'}  artifacts=${names.join(', ')}`);
     }
     if (!cli.includeInfraFlagged) {
@@ -456,8 +442,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  mkdirSync(TMP_DOWNLOAD_ROOT, { recursive: true });
-  mkdirSync(join(METRICS_DIR, 'raw'), { recursive: true });
+  ensureDownloadRoot();
 
   if (!cli.includeInfraFlagged) {
     for (const item of infraFlagged) {
@@ -480,8 +465,7 @@ async function main(): Promise<void> {
       continue;
     }
     const runId = record.runId;
-    const key = legKeyOf(item.arm, item.platformLeg);
-    const artifactNames = artifactNamesFor(key, runId);
+    const artifactNames = resolveArtifactNames(item, runId);
     console.log(`[${i + 1}/${toProcess.length}] ${item.id}  (GH run ${runId}, ${artifactNames.length} artifact(s))`);
 
     const downloaded: string[] = [];
@@ -509,7 +493,7 @@ async function main(): Promise<void> {
     console.log(`    <- merged ${filesCopied} file(s) from ${downloaded.length}/${artifactNames.length} artifact(s)${failed.length ? `, FAILED: ${failed.join(', ')}` : ''}`);
   }
 
-  rmSync(TMP_DOWNLOAD_ROOT, { recursive: true, force: true });
+  cleanupDownloadRoot();
 
   const finalComplete = Object.values(state.results).filter((r) => r.status === 'complete').length;
   const finalPartial = Object.values(state.results).filter((r) => r.status === 'partial').length;

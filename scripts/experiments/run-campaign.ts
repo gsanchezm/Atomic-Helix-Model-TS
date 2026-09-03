@@ -110,6 +110,7 @@ import {
   PRIMARY_STEP_NAME,
   STRATEGY_OF_ARM,
   WORKFLOW_FILE,
+  buildCampaignAItems,
   buildCampaignItems,
   buildDiagnosabilityItems,
   buildExecutionEfficiencyItems,
@@ -126,7 +127,7 @@ const CAMPAIGNS_DIR = join(REPO_ROOT, 'reports', 'campaigns');
 // CLI args — hand-rolled, no dependency. `pnpm experiments:run-campaign -- --help`.
 // ---------------------------------------------------------------------------
 interface Cli {
-  instrument: 'determinism' | 'parallel-safety' | 'all' | 'efficiency' | 'diagnosability';
+  instrument: 'determinism' | 'parallel-safety' | 'all' | 'efficiency' | 'diagnosability' | 'campaign-a';
   // 'legacy' (default) dispatches against ahm-execution-helix.yml /
   // ahm-evaluation-campaign.yml exactly as every completed campaign did.
   // 'experiment' dispatches the SAME item matrix against
@@ -175,9 +176,13 @@ function parseCli(argv: string[]): Cli {
     console.log(`
 run-campaign.ts — §3.2.4 campaign orchestrator (see file header for scope)
 
-  --instrument <determinism|parallel-safety|diagnosability|all|efficiency>   default: all
+  --instrument <determinism|parallel-safety|diagnosability|campaign-a|all|efficiency>   default: all
                                                     (all = determinism+parallel-safety only, unchanged
                                                     since before diagnosability existed — see file header)
+                                                    campaign-a REQUIRES --workflow experiment (it has
+                                                    no legacy shape) and is already in its own
+                                                    pre-declared balanced dispatch order — see
+                                                    lib/campaign-matrix.ts's buildCampaignAItems
   --ref <branch>                                   default: ${DEFAULT_REF}
                                                     NOTE: must be a branch name, not a tag or SHA —
                                                     'gh run list --branch' only accepts branch names;
@@ -217,8 +222,8 @@ run-campaign.ts — §3.2.4 campaign orchestrator (see file header for scope)
   }
 
   const instrument = (get('--instrument') ?? 'all') as Cli['instrument'];
-  if (!['determinism', 'parallel-safety', 'diagnosability', 'all', 'efficiency'].includes(instrument)) {
-    throw new Error(`--instrument must be determinism|parallel-safety|diagnosability|all|efficiency, got "${instrument}"`);
+  if (!['determinism', 'parallel-safety', 'diagnosability', 'campaign-a', 'all', 'efficiency'].includes(instrument)) {
+    throw new Error(`--instrument must be determinism|parallel-safety|diagnosability|campaign-a|all|efficiency, got "${instrument}"`);
   }
 
   let platformLeg: PlatformLeg | undefined;
@@ -245,6 +250,9 @@ run-campaign.ts — §3.2.4 campaign orchestrator (see file header for scope)
       `--workflow experiment requires --omnipizza-release-tag <tag> (e.g. v1.1.8) — the experiment ` +
       `workflow never resolves 'latest'; the pinned tag is part of the recorded experimental identity.`,
     );
+  }
+  if (instrument === 'campaign-a' && workflowMode !== 'experiment') {
+    throw new Error(`--instrument campaign-a only ever dispatches under the experiment workflow — pass --workflow experiment.`);
   }
   const evaluationSlice = (get('--evaluation-slice') ?? 'full') as NonNullable<Cli['evaluationSlice']>;
   if (!['full', 'matched'].includes(evaluationSlice)) {
@@ -341,12 +349,19 @@ function toDispatchSpec(item: CampaignItem, workflowMode: Cli['workflowMode']): 
 
 function buildSpecs(cli: Cli): DispatchSpec[] {
   let items: CampaignItem[];
+  let alreadyOrdered = false;
   if (cli.instrument === 'efficiency') {
     // parseCli() guarantees both are defined whenever instrument === 'efficiency' (throws otherwise) —
     // TS can't see that cross-function invariant, hence the cast.
     items = buildExecutionEfficiencyItems(cli.batchSuffix, cli.platformLeg as PlatformLeg, cli.repeats as number);
   } else if (cli.instrument === 'diagnosability') {
     items = buildDiagnosabilityItems(cli.batchSuffix);
+  } else if (cli.instrument === 'campaign-a') {
+    // Already in its own pre-declared balanced pair order (position rotation + alternating
+    // arm-first by pair-slot parity, approval condition 6) — interleaveByRunIndex's fixed
+    // atomic-then-twin sort would silently destroy that alternation if applied on top.
+    items = buildCampaignAItems(cli.batchSuffix);
+    alreadyOrdered = true;
   } else {
     items = buildCampaignItems(cli.instrument, cli.batchSuffix);
   }
@@ -354,7 +369,7 @@ function buildSpecs(cli: Cli): DispatchSpec[] {
   // twin-001, atomic-002, ...) so paired runs land close in backend time
   // (audit Q12). Legacy mode keeps the historical leg-by-leg order so a
   // resumed legacy manifest replays identically.
-  if (cli.workflowMode === 'experiment') {
+  if (cli.workflowMode === 'experiment' && !alreadyOrdered) {
     items = interleaveByRunIndex(items);
   }
   return items.map((item) => toDispatchSpec(item, cli.workflowMode));
