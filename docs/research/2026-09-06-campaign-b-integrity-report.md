@@ -4,7 +4,9 @@
 Campaign A remains untouched and is not referenced substantively below except where its own record is relevant
 context (a previously-documented flaky scenario, §F).
 
-Raw data: 80/80 dispatches completed 2026-09-03T20:03:13Z → 2026-09-05T12:45:38Z (~40.7h). Immutable local snapshot
+Raw data: 80/80 dispatches completed 2026-09-03T20:03:13Z → 2026-09-05T13:35:07Z (~41.5h; corrected 2026-09-07 —
+this originally cited the last dispatch's *dispatchedAt*, not its *completedAt*; no other content changed).
+Immutable local snapshot
 + checksums: `archives/campaign-b-raw-2026-09-05/` (164 files: 80 cucumber-jsonl, 80 run-manifest, campaign manifest,
 aggregated-artifacts manifest, run-level table, provenance detail, `SHA256SUMS.txt`). Not yet pushed as a GitHub
 Release/Zenodo archive (Campaign A's dataset-v1 pattern) — recommended as a follow-up if external durability parity
